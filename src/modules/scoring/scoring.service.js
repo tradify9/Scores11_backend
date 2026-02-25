@@ -1,382 +1,490 @@
-import Ball from './ball.model.js';
 import Match from '../match/match.model.js';
-import Player from '../player/player.model.js';
+import Ball from './ball.model.js';
 import Team from '../team/team.model.js';
+import Player from '../player/player.model.js';
 import ApiError from '../../utils/ApiError.js';
-import { emitToMatch } from '../../config/socket.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
 
 export const scoringService = {
-  // Add a ball to the match
+  // Initialize match for live scoring
+  initializeMatch: async (matchId, battingOrder, userId) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+    
+    if (match.status !== MATCH_STATUS.SCHEDULED && match.status !== MATCH_STATUS.READY) {
+      throw new ApiError(400, 'Match cannot be initialized in current status');
+    }
+
+    // Set batting order
+    match.battingOrder = battingOrder;
+    
+    // Initialize first innings
+    match.currentInnings = 1;
+    match.innings.push({
+      inningsNumber: 1,
+      battingTeam: match.toss?.winner || match.team1,
+      bowlingTeam: match.toss?.winner === match.team1 ? match.team2 : match.team1,
+      totalRuns: 0,
+      totalWickets: 0,
+      totalOvers: 0,
+      totalBalls: 0,
+      extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, total: 0 },
+      fallOfWickets: [],
+      battingScorecard: [],
+      bowlingScorecard: [],
+      partnerships: [],
+      currentBatsmen: [],
+      lastOverBalls: [],
+      isCompleted: false,
+      startTime: new Date()
+    });
+
+    // Initialize batting scorecard with playing XI
+    const firstInningsBattingTeam = match.toss?.winner || match.team1;
+    const battingTeamOrder = battingOrder.find(b => b.team.toString() === firstInningsBattingTeam.toString());
+    
+    if (battingTeamOrder) {
+      battingTeamOrder.players.forEach(playerId => {
+        match.innings[0].battingScorecard.push({
+          batsman: playerId,
+          runs: 0,
+          balls: 0,
+          fours: 0,
+          sixes: 0,
+          strikeRate: 0,
+          howOut: 'not_out',
+          fielder: null,
+          bowler: null
+        });
+      });
+    }
+
+    match.status = MATCH_STATUS.LIVE;
+    await match.save();
+
+    return await Match.findById(matchId)
+      .populate('team1', 'name shortName')
+      .populate('team2', 'name shortName');
+  },
+
+  // Add a ball with full tracking
   addBall: async (matchId, ballData, userId) => {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
-
-    if (match.status !== MATCH_STATUS.LIVE) {
-      throw new ApiError(400, 'Match is not live');
-    }
-
-    const { batsman, bowler, runs, extras, wicket, wicketType, ballNumber, overNumber, innings } = ballData;
-
-    // Validate batsman and bowler
-    const batsmanPlayer = await Player.findById(batsman);
-    const bowlerPlayer = await Player.findById(bowler);
+    if (match.status !== MATCH_STATUS.LIVE) throw new ApiError(400, 'Match is not live');
     
-    if (!batsmanPlayer) throw new ApiError(404, 'Batsman not found');
-    if (!bowlerPlayer) throw new ApiError(404, 'Bowler not found');
+    const { 
+      overNumber, 
+      ballNumber, 
+      batsmanId, 
+      bowlerId, 
+      runs, 
+      isWicket, 
+      wicketType, 
+      fielderId,
+      isWide, 
+      isNoBall, 
+      isBye,
+      isLegBye,
+      comment 
+    } = ballData;
 
-    // Create the ball record
-    const ball = await Ball.create({
+    const currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match.currentInnings);
+    if (currentInningsIndex === -1) throw new ApiError(400, 'Innings not found');
+
+    const innings = match.innings[currentInningsIndex];
+
+    // Create ball record
+    const newBall = await Ball.create({
       match: matchId,
-      innings: innings || 1,
       overNumber,
       ballNumber,
-      batsman,
-      bowler,
+      innings: match.currentInnings,
+      battingTeam: innings.battingTeam,
+      bowlingTeam: innings.bowlingTeam,
+      batsman: batsmanId,
+      bowler: bowlerId,
       runs: runs || 0,
-      extras: extras || 0,
-      totalRuns: (runs || 0) + (extras || 0),
-      wicket: wicket || false,
-      wicketType,
+      extras: (isWide || isNoBall || isBye || isLegBye) ? 1 : 0,
+      wicket: isWicket || false,
+      wicketType: wicketType || null,
+      wicketFielder: fielderId || null,
+      isWide: isWide || false,
+      isNoBall: isNoBall || false,
+      isBye: isBye || false,
+      isLegBye: isLegBye || false,
+      comment: comment || '',
       scoredBy: userId
     });
 
-    // Update match innings data
-    const inningsIndex = match.innings.findIndex(i => i.team.toString() === ballData.battingTeam);
-    if (inningsIndex === -1) {
-      // Create new innings
-      match.innings.push({
-        team: ballData.battingTeam,
-        totalRuns: runs + extras,
-        totalWickets: wicket ? 1 : 0,
-        totalOvers: Math.floor(ballNumber / 6),
-        extras: {
-          wides: extras?.wides || 0,
-          noBalls: extras?.noBalls || 0,
-          byes: extras?.byes || 0,
-          legByes: extras?.legByes || 0
-        }
+    // Update innings scores
+    let totalRuns = runs || 0;
+    let extrasCount = 0;
+    
+    if (isWide) {
+      innings.extras.wides += 1;
+      extrasCount += 1;
+    }
+    if (isNoBall) {
+      innings.extras.noBalls += 1;
+      extrasCount += 1;
+    }
+    if (isBye) {
+      innings.extras.byes += 1;
+      extrasCount += 1;
+    }
+    if (isLegBye) {
+      innings.extras.legByes += 1;
+      extrasCount += 1;
+    }
+    
+    innings.extras.total += extrasCount;
+    innings.totalRuns += totalRuns + extrasCount;
+    innings.totalBalls += 1;
+
+    // Update over count (only if not wide or no-ball)
+    if (!isWide && !isNoBall) {
+      if (ballNumber === 6) {
+        innings.totalOvers += 1;
+      }
+    }
+
+    // Update batsman stats
+    const batsmanIndex = innings.battingScorecard.findIndex(b => 
+      b.batsman.toString() === batsmanId.toString()
+    );
+    
+    if (batsmanIndex !== -1 && !isWide && !isNoBall) {
+      innings.battingScorecard[batsmanIndex].runs += totalRuns;
+      innings.battingScorecard[batsmanIndex].balls += 1;
+      
+      if (totalRuns === 4) innings.battingScorecard[batsmanIndex].fours += 1;
+      if (totalRuns === 6) innings.battingScorecard[batsmanIndex].sixes += 1;
+      
+      // Calculate strike rate
+      if (innings.battingScorecard[batsmanIndex].balls > 0) {
+        innings.battingScorecard[batsmanIndex].strikeRate = 
+          (innings.battingScorecard[batsmanIndex].runs / innings.battingScorecard[batsmanIndex].balls) * 100;
+      }
+    }
+
+    // Update bowler stats
+    const bowlerIndex = innings.bowlingScorecard.findIndex(b => 
+      b.bowler.toString() === bowlerId.toString()
+    );
+    
+    if (bowlerIndex === -1) {
+      // Add new bowler
+      innings.bowlingScorecard.push({
+        bowler: bowlerId,
+        overs: 0,
+        maidens: 0,
+        runsConceded: totalRuns + extrasCount,
+        wickets: isWicket ? 1 : 0,
+        wide: isWide ? 1 : 0,
+        noBall: isNoBall ? 1 : 0,
+        economy: 0
       });
     } else {
-      // Update existing innings
-      match.innings[inningsIndex].totalRuns += (runs || 0) + (extras || 0);
-      if (wicket) match.innings[inningsIndex].totalWickets += 1;
-      match.innings[inningsIndex].totalOvers = Math.floor(ballNumber / 6) + (ballNumber % 6 > 0 ? 0.1 : 0);
+      innings.bowlingScorecard[bowlerIndex].runsConceded += totalRuns + extrasCount;
+      if (isWicket) innings.bowlingScorecard[bowlerIndex].wickets += 1;
+      if (isWide) innings.bowlingScorecard[bowlerIndex].wide += 1;
+      if (isNoBall) innings.bowlingScorecard[bowlerIndex].noBall += 1;
       
-      // Update extras
-      if (extras?.wides) match.innings[inningsIndex].extras.wides += extras.wides;
-      if (extras?.noBalls) match.innings[inningsIndex].extras.noBalls += extras.noBalls;
-      if (extras?.byes) match.innings[inningsIndex].extras.byes += extras.byes;
-      if (extras?.legByes) match.innings[inningsIndex].extras.legByes += extras.legByes;
+      // Calculate overs and economy
+      const totalBalls = (innings.bowlingScorecard[bowlerIndex].overs * 6) + 
+        innings.bowlingScorecard[bowlerIndex].wide + innings.bowlingScorecard[bowlerIndex].noBall;
+      innings.bowlingScorecard[bowlerIndex].overs = Math.floor(totalBalls / 6);
+      innings.bowlingScorecard[bowlerIndex].economy = 
+        innings.bowlingScorecard[bowlerIndex].runsConceded / innings.bowlingScorecard[bowlerIndex].overs || 0;
+    }
+
+    // Handle wicket
+    if (isWicket) {
+      innings.totalWickets += 1;
+      
+      if (batsmanIndex !== -1) {
+        innings.battingScorecard[batsmanIndex].howOut = wicketType || 'caught';
+        innings.battingScorecard[batsmanIndex].fielder = fielderId;
+        innings.battingScorecard[batsmanIndex].bowler = bowlerId;
+        
+        // Add fall of wicket
+        innings.fallOfWickets.push({
+          wicketNumber: innings.totalWickets,
+          batsman: batsmanId,
+          runs: innings.totalRuns,
+          overs: `${innings.totalOvers}.${innings.totalBalls}`,
+          partnership: 0 // Calculate this
+        });
+      }
+    }
+
+    // Update match score
+    if (match.currentInnings === 1) {
+      match.score.team1 = {
+        runs: innings.totalRuns,
+        wickets: innings.totalWickets,
+        overs: `${innings.totalOvers}.${innings.totalBalls}`,
+        innings: 1
+      };
+    } else {
+      match.score.team2 = {
+        runs: innings.totalRuns,
+        wickets: innings.totalWickets,
+        overs: `${innings.totalOvers}.${innings.totalBalls}`,
+        innings: 2
+      };
+    }
+
+    // Add commentary
+    match.commentary.push({
+      over: overNumber,
+      ball: ballNumber,
+      text: generateCommentary(ballData, innings.totalRuns),
+      batsmanRuns: runs || 0,
+      totalRuns: innings.totalRuns,
+      isWicket: isWicket || false,
+      timestamp: new Date()
+    });
+
+    // Update powerplay
+    if (overNumber <= 6) {
+      if (match.currentInnings === 1) {
+        match.powerplay.firstInnings.runs += totalRuns + extrasCount;
+        match.powerplay.firstInnings.wickets += isWicket ? 1 : 0;
+      } else {
+        match.powerplay.secondInnings.runs += totalRuns + extrasCount;
+        match.powerplay.secondInnings.wickets += isWicket ? 1 : 0;
+      }
     }
 
     await match.save();
 
-    // Update player stats
-    await scoringService.updatePlayerStats(batsman, bowler, ballData);
-
-    // Get live score
-    const liveScore = await scoringService.getLiveScore(matchId);
-    
-    // Emit socket event
-    emitToMatch(matchId, 'ballUpdate', { ball, liveScore });
-
-    return { ball, liveScore };
+    return {
+      ball: newBall,
+      innings,
+      score: match.score
+    };
   },
 
-  // Update player stats after a ball
-  updatePlayerStats: async (batsmanId, bowlerId, ballData) => {
-    const { runs, extras, wicket } = ballData;
-    
-    // Update batsman stats
-    if (runs > 0 || extras?.byes || extras?.legByes) {
-      await Player.findByIdAndUpdate(batsmanId, {
-        $inc: {
-          'battingStats.runs': runs + (extras?.byes || 0) + (extras?.legByes || 0),
-          'battingStats.balls': 1
-        }
-      });
-    } else if (!extras?.wides && !extras?.noBalls) {
-      await Player.findByIdAndUpdate(batsmanId, {
-        $inc: { 'battingStats.balls': 1 }
-      });
-    }
-
-    // Update bowler stats
-    const totalRuns = (runs || 0) + (extras?.wides || 0) + (extras?.noBalls || 0);
-    const wickets = wicket ? 1 : 0;
-    
-    await Player.findByIdAndUpdate(bowlerId, {
-      $inc: {
-        'bowlingStats.runsConceded': totalRuns,
-        'bowlingStats.wickets': wickets,
-        'bowlingStats.overs': 0.1
-      }
-    });
-
-    // Update fielding stats if wicket
-    if (wicket && ballData.fieldedBy) {
-      await Player.findByIdAndUpdate(ballData.fieldedBy, {
-        $inc: { 'fieldingStats.catches': 1 }
-      });
-    }
-  },
-
-  // Get match scoring (all balls)
+  // Get match scoring data with full details
   getMatchScoring: async (matchId) => {
+    const match = await Match.findById(matchId)
+      .populate('team1', 'name shortName logo')
+      .populate('team2', 'name shortName logo')
+      .populate('tournament', 'name');
+    
+    if (!match) throw new ApiError(404, 'Match not found');
+
+    const balls = await Ball.find({ match: matchId })
+      .populate('batsman', 'playerName jerseyNumber')
+      .populate('bowler', 'playerName jerseyNumber')
+      .populate('fielder', 'playerName')
+      .sort({ innings: 1, overNumber: 1, ballNumber: 1 });
+
+    return {
+      match,
+      balls,
+      innings: match.innings,
+      score: match.score
+    };
+  },
+
+  // Get live score with current state
+  getLiveScore: async (matchId) => {
+    const match = await Match.findById(matchId)
+      .populate('team1', 'name shortName logo')
+      .populate('team2', 'name shortName logo');
+    
+    if (!match) throw new ApiError(404, 'Match not found');
+
+    const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
+    
+    // Get last 6 balls
+    const recentBalls = await Ball.find({ 
+      match: matchId, 
+      innings: match.currentInnings 
+    })
+      .sort({ overNumber: -1, ballNumber: -1 })
+      .limit(6)
+      .reverse();
+
+    // Get current batsmen
+    const onStrike = currentInnings?.battingScorecard.find(b => b.howOut === 'not_out');
+    
+    // Get current bowler
+    const lastBall = await Ball.findOne({ match: matchId, innings: match.currentInnings })
+      .sort({ overNumber: -1, ballNumber: -1 })
+      .populate('bowler', 'playerName jerseyNumber');
+
+    return {
+      match: {
+        _id: match._id,
+        team1: match.team1,
+        team2: match.team2,
+        status: match.status,
+        currentInnings: match.currentInnings,
+        overs: match.overs
+      },
+      score: match.score,
+      currentInnings: {
+        runs: currentInnings?.totalRuns || 0,
+        wickets: currentInnings?.totalWickets || 0,
+        overs: `${currentInnings?.totalOvers || 0}.${currentInnings?.totalBalls || 0}`,
+        extras: currentInnings?.extras,
+        battingScorecard: currentInnings?.battingScorecard.filter(b => b.howOut === 'not_out'),
+        bowlingScorecard: currentInnings?.bowlingScorecard
+      },
+      recentBalls,
+      currentBowler: lastBall?.bowler,
+      target: match.result?.target,
+      requiredRuns: match.result?.requiredRuns,
+      powerplay: match.currentInnings === 1 ? match.powerplay.firstInnings : match.powerplay.secondInnings
+    };
+  },
+
+  // Get full scorecard
+  getFullScorecard: async (matchId) => {
+    const match = await Match.findById(matchId)
+      .populate('team1', 'name shortName logo captain')
+      .populate('team2', 'name shortName logo captain')
+      .populate('tournament', 'name format')
+      .populate('result.playerOfMatch', 'playerName jerseyNumber');
+    
+    if (!match) throw new ApiError(404, 'Match not found');
+
     const balls = await Ball.find({ match: matchId })
       .populate('batsman', 'playerName jerseyNumber')
       .populate('bowler', 'playerName jerseyNumber')
       .sort({ innings: 1, overNumber: 1, ballNumber: 1 });
-    return balls;
-  },
 
-  // Get live score for a match
-  getLiveScore: async (matchId) => {
-    const match = await Match.findById(matchId)
-      .populate('team1', 'name shortName')
-      .populate('team2', 'name shortName');
-    
-    if (!match) throw new ApiError(404, 'Match not found');
+    // Build innings data
+    const inningsData = match.innings.map(innings => ({
+      inningsNumber: innings.inningsNumber,
+      battingTeam: innings.battingTeam,
+      bowlingTeam: innings.bowlingTeam,
+      totalRuns: innings.totalRuns,
+      totalWickets: innings.totalWickets,
+      overs: `${innings.totalOvers}.${innings.totalBalls}`,
+      extras: innings.extras,
+      battingScorecard: innings.battingScorecard.map(b => ({
+        ...b,
+        strikeRate: b.balls > 0 ? ((b.runs / b.balls) * 100).toFixed(2) : 0
+      })),
+      bowlingScorecard: innings.bowlingScorecard.map(b => ({
+        ...b,
+        economy: b.overs > 0 ? (b.runsConceded / b.overs).toFixed(2) : 0
+      })),
+      fallOfWickets: innings.fallOfWickets,
+      partnerships: innings.partnerships
+    }));
 
-    // Get all balls for innings 1 and 2
-    const balls1 = await Ball.find({ match: matchId, innings: 1 })
-      .sort({ overNumber: 1, ballNumber: 1 });
-    const balls2 = await Ball.find({ match: matchId, innings: 2 })
-      .sort({ overNumber: 1, ballNumber: 1 });
-
-    // Calculate innings 1 score
-    const innings1Score = scoringService.calculateInningsScore(balls1);
-    
-    // Calculate innings 2 score
-    const innings2Score = scoringService.calculateInningsScore(balls2);
-
-    // Get current over details
-    const currentOver = balls1.length > 0 ? balls1[balls1.length - 1] : null;
-    const lastFiveOvers = scoringService.getLastFiveOvers(balls1);
+    // Calculate match stats
+    const matchStats = calculateMatchStats(balls, match);
 
     return {
-      match,
-      innings1: innings1Score,
-      innings2: innings2Score,
-      currentOver,
-      lastFiveOvers,
-      target: innings1Score.totalRuns + 1,
-      requiredRuns: innings2Score.totalRuns > 0 
-        ? (innings1Score.totalRuns + 1) - innings2Score.totalRuns 
-        : null,
-      requiredRunsRate: innings2Score.totalOvers > 0 
-        ? ((innings1Score.totalRuns + 1) - innings2Score.totalRuns) / (20 - innings2Score.totalOvers)
-        : null
+      match: {
+        _id: match._id,
+        team1: match.team1,
+        team2: match.team2,
+        venue: match.venue,
+        date: match.scheduledDate,
+        format: match.format,
+        result: match.result,
+        status: match.status
+      },
+      innings: inningsData,
+      powerplay: match.powerplay,
+      commentary: match.commentary,
+      stats: matchStats
     };
   },
 
-  // Calculate innings score from balls
-  calculateInningsScore: (balls) => {
-    let totalRuns = 0;
-    let totalWickets = 0;
-    let wides = 0;
-    let noBalls = 0;
-    let byes = 0;
-    let legByes = 0;
-    let fours = 0;
-    let sixes = 0;
+  // Start new innings
+  startInnings: async (matchId, inningsNumber) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
 
-    const batsmen = {};
-    const bowlers = {};
-    const partnerships = [];
-    const fallOfWickets = [];
-
-    let currentPartnership = { runs: 0, wickets: 0, batsmen: [] };
-
-    balls.forEach(ball => {
-      const runs = ball.runs || 0;
-      const extras = ball.extras || {};
-      const ballRuns = runs + (extras.wides || 0) + (extras.noBalls || 0);
-
-      totalRuns += ballRuns;
-      
-      if (extras.wides) wides += extras.wides;
-      if (extras.noBalls) noBalls += extras.noBalls;
-      if (extras.byes) byes += extras.byes;
-      if (extras.legByes) legByes += extras.legByes;
-
-      // Count fours and sixes (excluding extras)
-      if (runs === 4) fours++;
-      if (runs === 6) sixes++;
-
-      // Track batsman runs
-      const batsmanKey = ball.batsman.toString();
-      if (!batsmen[batsmanKey]) {
-        batsmen[batsmanKey] = { runs: 0, balls: 0, dismissal: null };
+    // Check if previous innings is completed
+    if (inningsNumber > 1) {
+      const prevInnings = match.innings.find(i => i.inningsNumber === inningsNumber - 1);
+      if (prevInnings && !prevInnings.isCompleted) {
+        throw new ApiError(400, 'Complete previous innings first');
       }
-      if (extras?.wides || extras?.noBalls) {
-        // No ball/wide - no ball count for batsman
-      } else {
-        batsmen[batsmanKey].runs += runs;
-        batsmen[batsmanKey].balls += 1;
-      }
+    }
 
-      // Track bowler stats
-      const bowlerKey = ball.bowler.toString();
-      if (!bowlers[bowlerKey]) {
-        bowlers[bowlerKey] = { runs: 0, wickets: 0, overs: 0 };
-      }
-      bowlers[bowlerKey].runs += ballRuns;
-      bowlers[bowlerKey].overs += 0.1;
-
-      // Handle wicket
-      if (ball.wicket) {
-        totalWickets++;
-        
-        // End partnership
-        currentPartnership.runs += runs;
-        currentPartnership.wickets++;
-        partnerships.push({ ...currentPartnership });
-        currentPartnership = { runs: 0, wickets: 0, batsmen: [] };
-
-        // Record fall of wicket
-        fallOfWickets.push({
-          wicket: totalWickets,
-          runs: totalRuns,
-          over: `${ball.overNumber}.${ball.ballNumber}`,
-          batsman: ball.batsman
-        });
-
-        batsmen[batsmanKey].dismissal = ball.wicketType;
-      } else {
-        // Add to current partnership
-        if (!currentPartnership.batsmen.includes(batsmanKey)) {
-          currentPartnership.batsmen.push(batsmanKey);
+    // Determine batting and bowling teams
+    let battingTeam, bowlingTeam;
+    if (inningsNumber === 1) {
+      if (match.toss?.winner) {
+        if (match.toss.decision === 'BAT') {
+          battingTeam = match.toss.winner;
+          bowlingTeam = match.toss.winner.toString() === match.team1.toString() ? match.team2 : match.team1;
+        } else {
+          bowlingTeam = match.toss.winner;
+          battingTeam = match.toss.winner.toString() === match.team1.toString() ? match.team2 : match.team1;
         }
-        currentPartnership.runs += runs;
+      } else {
+        battingTeam = match.team1;
+        bowlingTeam = match.team2;
       }
-    });
-
-    // Add remaining partnership
-    if (currentPartnership.runs > 0 || currentPartnership.wickets > 0) {
-      partnerships.push(currentPartnership);
+    } else {
+      // Second innings - teams swap
+      const firstInningsBatting = match.innings[0].battingTeam;
+      battingTeam = firstInningsBatting.toString() === match.team1.toString() ? match.team2 : match.team1;
+      bowlingTeam = firstInningsBatting.toString() === match.team1.toString() ? match.team1 : match.team2;
     }
 
-    return {
-      totalRuns,
-      totalWickets,
-      overs: Math.floor(balls.length / 6),
-      balls: balls.length % 6,
-      extras: { wides, noBalls, byes, legByes },
-      fours,
-      sixes,
-      runRate: balls.length > 0 ? (totalRuns / (balls.length / 6)).toFixed(2) : 0,
-      batsmen: Object.values(batsmen),
-      bowlers: Object.values(bowlers),
-      partnerships,
-      fallOfWickets
-    };
-  },
-
-  // Get last 5 overs
-  getLastFiveOvers: (balls) => {
-    const overNumbers = [...new Set(balls.map(b => b.overNumber))];
-    const lastFiveOvers = overNumbers.slice(-5);
-    
-    let lastFiveRuns = 0;
-    let lastFiveWickets = 0;
-    
-    balls.forEach(ball => {
-      if (lastFiveOvers.includes(ball.overNumber)) {
-        lastFiveRuns += ball.runs + (ball.extras?.wides || 0) + (ball.extras?.noBalls || 0);
-        if (ball.wicket) lastFiveWickets++;
-      }
-    });
-
-    return {
-      runs: lastFiveRuns,
-      wickets: lastFiveWickets,
-      runRate: (lastFiveRuns / 5).toFixed(2)
-    };
-  },
-
-  // Update over (complete over)
-  updateOver: async (matchId, overData) => {
-    const match = await Match.findById(matchId);
-    if (!match) throw new ApiError(404, 'Match not found');
-
-    if (match.status !== MATCH_STATUS.LIVE) {
-      throw new ApiError(400, 'Match is not live');
+    // Check if target is chaseable for second innings
+    if (inningsNumber === 2 && match.innings[0]) {
+      const target = match.innings[0].totalRuns + 1;
+      match.result = {
+        ...match.result,
+        target
+      };
     }
 
-    const { overNumber, bowler, nextBatsman } = overData;
-
-    // Validate bowler
-    const bowlerPlayer = await Player.findById(bowler);
-    if (!bowlerPlayer) throw new ApiError(404, 'Bowler not found');
-
-    // Get all balls in this over
-    const overBalls = await Ball.find({ match: matchId, overNumber })
-      .sort({ ballNumber: 1 });
-
-    // Calculate over stats
-    let overRuns = 0;
-    let overWickets = 0;
-    overBalls.forEach(ball => {
-      overRuns += ball.runs + (ball.extras?.wides || 0) + (ball.extras?.noBalls || 0);
-      if (ball.wicket) overWickets++;
-    });
-
-    const overStats = {
-      overNumber,
-      bowler: bowler,
-      runs: overRuns,
-      wickets: overWickets,
-      balls: overBalls.length,
-      maidens: overRuns === 0 ? 1 : 0
-    };
-
-    emitToMatch(matchId, 'overComplete', overStats);
-
-    return overStats;
-  },
-
-  // Start innings
-  startInnings: async (matchId, inningsData) => {
-    const match = await Match.findById(matchId);
-    if (!match) throw new ApiError(404, 'Match not found');
-
-    const { inningsNumber, battingTeam, bowlingTeam, striker, nonStriker, bowler } = inningsData;
-
-    if (match.status !== MATCH_STATUS.SCHEDULED && match.status !== MATCH_STATUS.READY) {
-      throw new ApiError(400, 'Cannot start innings in current match status');
-    }
-
-    // Update match status
-    match.status = MATCH_STATUS.LIVE;
-
-    // Initialize innings
-    const innings = {
-      team: battingTeam,
+    // Create new innings
+    const newInnings = {
+      inningsNumber,
+      battingTeam,
+      bowlingTeam,
       totalRuns: 0,
       totalWickets: 0,
       totalOvers: 0,
-      extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0 },
-      currentBatsmen: [
-        { batsman: striker, runs: 0, balls: 0, isOnStrike: true },
-        { batsman: nonStriker, runs: 0, balls: 0, isOnStrike: false }
-      ],
-      currentBowler: bowler,
-      isCompleted: false
+      totalBalls: 0,
+      extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, total: 0 },
+      fallOfWickets: [],
+      battingScorecard: [],
+      bowlingScorecard: [],
+      partnerships: [],
+      currentBatsmen: [],
+      lastOverBalls: [],
+      isCompleted: false,
+      startTime: new Date()
     };
 
-    // Remove existing innings if any
-    const existingInningsIndex = match.innings.findIndex(i => i.team.toString() === battingTeam);
-    if (existingInningsIndex === -1) {
-      match.innings.push(innings);
-    } else {
-      match.innings[existingInningsIndex] = innings;
+    // Add batting order for this innings
+    const battingTeamOrder = match.battingOrder.find(b => b.team.toString() === battingTeam.toString());
+    if (battingTeamOrder) {
+      battingTeamOrder.players.forEach(playerId => {
+        newInnings.battingScorecard.push({
+          batsman: playerId,
+          runs: 0,
+          balls: 0,
+          fours: 0,
+          sixes: 0,
+          strikeRate: 0,
+          howOut: 'not_out',
+          fielder: null,
+          bowler: null
+        });
+      });
     }
 
+    match.innings.push(newInnings);
+    match.currentInnings = inningsNumber;
     await match.save();
-
-    emitToMatch(matchId, 'inningsStart', { inningsNumber, battingTeam });
 
     return await Match.findById(matchId)
       .populate('team1', 'name shortName')
@@ -384,134 +492,304 @@ export const scoringService = {
   },
 
   // End innings
-  endInnings: async (matchId, inningsData) => {
+  endInnings: async (matchId, userId) => {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
 
-    const { inningsNumber, totalRuns, totalWickets } = inningsData;
+    const currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match.currentInnings);
+    if (currentInningsIndex === -1) throw new ApiError(400, 'Innings not found');
 
-    // Find and update the innings
-    const inningsIndex = match.innings.findIndex((_, i) => i + 1 === inningsNumber);
-    if (inningsIndex !== -1) {
-      match.innings[inningsIndex].isCompleted = true;
-      match.innings[inningsIndex].totalRuns = totalRuns;
-      match.innings[inningsIndex].totalWickets = totalWickets;
-    }
+    match.innings[currentInningsIndex].isCompleted = true;
+    match.innings[currentInningsIndex].endTime = new Date();
 
-    // If it's second innings, complete the match
-    if (inningsNumber === 2) {
-      match.status = MATCH_STATUS.COMPLETED;
-      match.completedAt = new Date();
+    // Check if match is over
+    if (match.currentInnings === 1) {
+      // First innings completed, start second innings
+      await scoringService.startInnings(matchId, 2);
     } else {
-      // First innings complete, ready for second
-      match.status = MATCH_STATUS.PAUSED;
+      // Match completed
+      match.status = MATCH_STATUS.COMPLETED;
+      
+      // Determine winner
+      const firstInningsRuns = match.innings[0].totalRuns;
+      const secondInningsRuns = match.innings[1].totalRuns;
+      
+      if (secondInningsRuns > firstInningsRuns) {
+        const winner = match.innings[1].battingTeam;
+        match.result = {
+          winner,
+          margin: `${secondInningsRuns - firstInningsRuns} runs`,
+          method: 'by runs'
+        };
+      } else if (secondInningsRuns === firstInningsRuns) {
+        match.result = {
+          margin: 'Tie',
+          method: 'tie'
+        };
+      }
     }
 
     await match.save();
-
-    emitToMatch(matchId, 'inningsEnd', { inningsNumber, totalRuns, totalWickets });
-
     return await Match.findById(matchId)
       .populate('team1', 'name shortName')
       .populate('team2', 'name shortName');
   },
 
-  // Get full scorecard
-  getFullScorecard: async (matchId) => {
+  // Set striker
+  setStriker: async (matchId, batsmanId) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+
+    const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
+    if (!currentInnings) throw new ApiError(400, 'Innings not found');
+
+    // Update current batsmen
+    currentInnings.currentBatsmen = currentInnings.currentBatsmen.map(b => ({
+      ...b,
+      isOnStrike: b.batsman.toString() === batsmanId.toString()
+    }));
+
+    await match.save();
+    return currentInnings.currentBatsmen;
+  },
+
+  // Set non-striker
+  setNonStriker: async (matchId, batsmanId) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+
+    const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
+    if (!currentInnings) throw new ApiError(400, 'Innings not found');
+
+    currentInnings.currentBatsmen = currentInnings.currentBatsmen.map(b => ({
+      ...b,
+      isOnStrike: b.batsman.toString() !== batsmanId.toString()
+    }));
+
+    await match.save();
+    return currentInnings.currentBatsmen;
+  },
+
+  // Set bowler
+  setBowler: async (matchId, bowlerId) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+
+    const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
+    if (!currentInnings) throw new ApiError(400, 'Innings not found');
+
+    // Check if bowler already bowled
+    const existingBowler = currentInnings.bowlingScorecard.find(b => 
+      b.bowler.toString() === bowlerId.toString()
+    );
+
+    if (!existingBowler) {
+      currentInnings.bowlingScorecard.push({
+        bowler: bowlerId,
+        overs: 0,
+        maidens: 0,
+        runsConceded: 0,
+        wickets: 0,
+        wide: 0,
+        noBall: 0,
+        economy: 0
+      });
+    }
+
+    currentInnings.currentBowler = bowlerId;
+    await match.save();
+    return currentInnings;
+  },
+
+  // Get partnership details
+  getPartnership: async (matchId) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+
+    const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
+    if (!currentInnings) return null;
+
+    // Calculate current partnership
+    const onStrike = currentInnings.currentBatsmen.find(b => b.isOnStrike);
+    const offStrike = currentInnings.currentBatsmen.find(b => !b.isOnStrike);
+
+    if (!onStrike || !offStrike) return null;
+
+    // Find runs between these two
+    const partnership = currentInnings.partnerships.find(p =>
+      (p.batsman1.toString() === onStrike.batsman.toString() && p.batsman2.toString() === offStrike.batsman.toString()) ||
+      (p.batsman1.toString() === offStrike.batsman.toString() && p.batsman2.toString() === onStrike.batsman.toString())
+    );
+
+    return partnership || {
+      batsman1: onStrike.batsman,
+      batsman2: offStrike.batsman,
+      runs: onStrike.runs + offStrike.runs,
+      balls: onStrike.balls + offStrike.balls
+    };
+  },
+
+  // Get fall of wickets
+  getFallOfWickets: async (matchId) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+
+    const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
+    if (!currentInnings) return [];
+
+    return await Promise.all(
+      currentInnings.fallOfWickets.map(async (fow) => {
+        const batsman = await Player.findById(fow.batsman);
+        return {
+          ...fow,
+          batsmanName: batsman?.playerName
+        };
+      })
+    );
+  },
+
+  // Update match result
+  updateResult: async (matchId, resultData) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+
+    match.result = {
+      winner: resultData.winner,
+      margin: resultData.margin,
+      method: resultData.method,
+      playerOfMatch: resultData.playerOfMatch,
+      target: resultData.target,
+      requiredRuns: resultData.requiredRuns,
+      requiredBalls: resultData.requiredBalls
+    };
+
+    match.status = MATCH_STATUS.COMPLETED;
+    await match.save();
+
+    return await Match.findById(matchId)
+      .populate('team1', 'name shortName')
+      .populate('team2', 'name shortName')
+      .populate('result.playerOfMatch', 'playerName');
+  },
+
+  // Get over summary
+  getOverSummary: async (matchId, overNumber) => {
+    const balls = await Ball.find({ 
+      match: matchId,
+      overNumber
+    }).sort({ ballNumber: 1 });
+
+    return {
+      overNumber,
+      balls,
+      totalRuns: balls.reduce((sum, b) => sum + (b.runs || 0) + (b.extras || 0), 0),
+      wickets: balls.filter(b => b.wicket).length
+    };
+  },
+
+  // Get match timeline
+  getMatchTimeline: async (matchId) => {
     const match = await Match.findById(matchId)
-      .populate('team1', 'name shortName logo')
-      .populate('team2', 'name shortName logo')
-      .populate('result.playerOfMatch', 'playerName jerseyNumber');
+      .populate('team1', 'name shortName')
+      .populate('team2', 'name shortName');
     
     if (!match) throw new ApiError(404, 'Match not found');
 
-    // Get all balls grouped by innings
-    const ballsInnings1 = await Ball.find({ match: matchId, innings: 1 })
-      .populate('batsman', 'playerName jerseyNumber role')
-      .populate('bowler', 'playerName jerseyNumber role')
-      .sort({ overNumber: 1, ballNumber: 1 });
-
-    const ballsInnings2 = await Ball.find({ match: matchId, innings: 2 })
-      .populate('batsman', 'playerName jerseyNumber role')
-      .populate('bowler', 'playerName jerseyNumber role')
-      .sort({ overNumber: 1, ballNumber: 1 });
-
-    // Calculate scores
-    const innings1Score = scoringService.calculateInningsScore(ballsInnings1);
-    const innings2Score = scoringService.calculateInningsScore(ballsInnings2);
-
-    // Build scorecard
-    const scorecard = {
-      match: {
-        _id: match._id,
-        team1: match.team1,
-        team2: match.team2,
-        venue: match.venue,
-        date: match.scheduledDate,
-        result: match.result,
-        status: match.status
-      },
-      innings1: {
-        team: match.team1,
-        ...innings1Score
-      },
-      innings2: {
-        team: match.team2,
-        ...innings2Score
-      },
-      balls: {
-        innings1: ballsInnings1,
-        innings2: ballsInnings2
-      }
-    };
-
-    return scorecard;
-  },
-
-  // Change strike
-  changeStrike: async (matchId, batsmanId) => {
-    const match = await Match.findById(matchId);
-    if (!match) throw new ApiError(404, 'Match not found');
-
-    if (match.status !== MATCH_STATUS.LIVE) {
-      throw new ApiError(400, 'Match is not live');
-    }
-
-    // Find current innings
-    const currentInnings = match.innings[match.innings.length - 1];
-    if (!currentInnings) throw new ApiError(400, 'No innings in progress');
-
-    // Swap strike
-    currentInnings.currentBatsmen.forEach(batsman => {
-      batsman.isOnStrike = !batsman.isOnStrike;
-    });
-
-    await match.save();
-
     return {
-      currentBatsmen: currentInnings.currentBatsmen
-    };
-  },
-
-  // Change bowler
-  changeBowler: async (matchId, newBowlerId) => {
-    const match = await Match.findById(matchId);
-    if (!match) throw new ApiError(404, 'Match not found');
-
-    const newBowler = await Player.findById(newBowlerId);
-    if (!newBowler) throw new ApiError(404, 'Bowler not found');
-
-    // Find current innings and update bowler
-    const currentInnings = match.innings[match.innings.length - 1];
-    if (!currentInnings) throw new ApiError(400, 'No innings in progress');
-
-    currentInnings.currentBowler = newBowlerId;
-    await match.save();
-
-    return {
-      currentBowler: await Player.findById(newBowlerId).select('playerName jerseyNumber')
+      matchId: match._id,
+      status: match.status,
+      scheduledDate: match.scheduledDate,
+      toss: match.toss,
+      innings: match.innings.map(i => ({
+        inningsNumber: i.inningsNumber,
+        battingTeam: i.battingTeam,
+        bowlingTeam: i.bowlingTeam,
+        totalRuns: i.totalRuns,
+        totalWickets: i.totalWickets,
+        isCompleted: i.isCompleted,
+        startTime: i.startTime,
+        endTime: i.endTime
+      })),
+      score: match.score,
+      result: match.result,
+      createdAt: match.createdAt,
+      updatedAt: match.updatedAt
     };
   }
 };
+
+// Helper function to generate commentary
+function generateCommentary(ballData, totalRuns) {
+  const { runs, isWicket, isWide, isNoBall, isFour, isSix, wicketType } = ballData;
+  
+  if (isWicket) {
+    return `${wicketType || 'out'}!`;
+  }
+  if (isSix) {
+    return 'SIX!';
+  }
+  if (isFour) {
+    return 'FOUR!';
+  }
+  if (isWide) {
+    return `Wide ball${runs > 0 ? ` - ${runs} runs` : ''}`;
+  }
+  if (isNoBall) {
+    return `No ball${runs > 0 ? ` - ${runs} runs` : ''}`;
+  }
+  if (runs === 0) {
+    return 'Dot ball';
+  }
+  return `${runs} run${runs > 1 ? 's' : ''}`;
+}
+
+// Helper function to calculate match statistics
+function calculateMatchStats(balls, match) {
+  const stats = {
+    highestIndividualScore: { runs: 0, player: null },
+    bestBowling: { wickets: 0, runs: 0, player: null },
+    highestPartnership: { runs: 0, players: [] },
+    mostSixes: { count: 0, player: null },
+    mostFours: { count: 0, player: null },
+    totalSixes: 0,
+    totalFours: 0,
+    totalExtras: 0
+  };
+
+  // Group balls by batsman
+  const batsmanScores = {};
+  balls.forEach(ball => {
+    const batsmanId = ball.batsman.toString();
+    if (!batsmanScores[batsmanId]) {
+      batsmanScores[batsmanId] = { runs: 0, balls: 0, fours: 0, sixes: 0 };
+    }
+    
+    if (!ball.isWide && !ball.isNoBall) {
+      batsmanScores[batsmanId].runs += ball.runs || 0;
+      batsmanScores[batsmanId].balls += 1;
+      if (ball.runs === 4) batsmanScores[batsmanId].fours += 1;
+      if (ball.runs === 6) batsmanScores[batsmanId].sixes += 1;
+    }
+    
+    if (ball.isFour) stats.totalFours += 1;
+    if (ball.isSix) stats.totalSixes += 1;
+    if (ball.extras > 0) stats.totalExtras += ball.extras;
+  });
+
+  // Find highest score
+  Object.entries(batsmanScores).forEach(([playerId, scores]) => {
+    if (scores.runs > stats.highestIndividualScore.runs) {
+      stats.highestIndividualScore = { runs: scores.runs, player: playerId };
+    }
+    if (scores.fours > stats.mostFours.count) {
+      stats.mostFours = { count: scores.fours, player: playerId };
+    }
+    if (scores.sixes > stats.mostSixes.count) {
+      stats.mostSixes = { count: scores.sixes, player: playerId };
+    }
+  });
+
+  return stats;
+}
 
 export default scoringService;

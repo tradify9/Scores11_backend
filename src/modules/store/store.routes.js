@@ -1,0 +1,28 @@
+import express from 'express';
+import { storeController } from './store.controller.js';
+import { authenticate } from '../../middleware/auth.middleware.js';
+import { authorize } from '../../middleware/role.middleware.js';
+import { ROLES } from '../../constants/roles.js';
+
+const router = express.Router();
+
+// Public routes
+router.get('/', storeController.getAllProducts);
+router.get('/featured', storeController.getFeaturedProducts);
+router.get('/:id', storeController.getProductById);
+
+// Protected routes - Orders
+router.post('/orders', authenticate, storeController.placeOrder);
+router.get('/orders/my', authenticate, storeController.getMyOrders);
+router.get('/orders/:id', authenticate, storeController.getOrderById);
+router.post('/orders/:id/cancel', authenticate, storeController.cancelOrder);
+
+// Admin routes - Products
+router.post('/products', authenticate, authorize(ROLES.ADMIN), storeController.createProduct);
+router.put('/products/:id', authenticate, authorize(ROLES.ADMIN), storeController.updateProduct);
+router.delete('/products/:id', authenticate, authorize(ROLES.ADMIN), storeController.deleteProduct);
+
+// Admin routes - Orders
+router.patch('/orders/:id/status', authenticate, authorize(ROLES.ADMIN), storeController.updateOrderStatus);
+
+export default router;
