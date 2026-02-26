@@ -34,14 +34,23 @@ export const paginatedResults = (model, page, limit) => {
   return results;
 };
 
-export const getPagination = (page = 1, limit = 10) => {
-  const parsedPage = parseInt(page, 10) || 1;
-  const parsedLimit = parseInt(limit, 10) || 10;
+export const getPagination = (query) => {
+  // Handle both cases: when query is passed as object or as separate params
+  const queryObj = typeof query === 'object' ? query : {};
+  
+  const page = parseInt(queryObj.page, 10) || 1;
+  const limit = parseInt(queryObj.limit, 10) || 10;
+  
+  // Get sortBy and sortOrder from query, with defaults
+  const sortBy = queryObj.sortBy || 'createdAt';
+  const sortOrder = queryObj.sortOrder || -1;
   
   return {
-    page: parsedPage,
-    limit: parsedLimit,
-    skip: (parsedPage - 1) * parsedLimit
+    page,
+    limit,
+    skip: (page - 1) * limit,
+    sortBy,
+    sortOrder
   };
 };
 

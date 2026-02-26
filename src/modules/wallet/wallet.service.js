@@ -37,11 +37,13 @@ export const walletService = {
     const { amount, paymentMethod, transactionId, bonusCode } = depositData;
 
     // Validate amount
-    if (amount < config.wallet.minDeposit) {
-      throw new ApiError(400, `Minimum deposit amount is ${config.wallet.minDeposit}`);
+    const minDeposit = config.wallet?.minDeposit || 100;
+    const maxDeposit = config.wallet?.maxDeposit || 100000;
+    if (amount < minDeposit) {
+      throw new ApiError(400, `Minimum deposit amount is ${minDeposit}`);
     }
-    if (amount > config.wallet.maxDeposit) {
-      throw new ApiError(400, `Maximum deposit amount is ${config.wallet.maxDeposit}`);
+    if (amount > maxDeposit) {
+      throw new ApiError(400, `Maximum deposit amount is ${maxDeposit}`);
     }
 
     let wallet = await Wallet.findOne({ user: userId });
@@ -61,17 +63,21 @@ export const walletService = {
       bonusAmount = walletService.calculateBonus(amount, bonusCode);
     }
 
+    const balanceBefore = wallet.balance;
+
     // Create transaction
     const transaction = await Transaction.create({
       user: userId,
-      type: 'DEPOSIT',
+      wallet: wallet._id,
+      type: 'deposit',
       amount,
-      status: 'COMPLETED',
+      status: 'completed',
       paymentMethod,
       reference: transactionId || `DEP-${Date.now()}`,
       description: 'Wallet deposit',
       bonusAmount,
-      finalAmount: amount + bonusAmount
+      balanceBefore,
+      balanceAfter: balanceBefore + amount + bonusAmount
     });
 
     // Update wallet
@@ -86,32 +92,25 @@ export const walletService = {
 
   // Calculate bonus based on promo code
   calculateBonus: (amount, bonusCode) => {
-    // Example bonus codes - can be moved to database
-    const bonusCodes = {
-      'WELCOME10': { type: 'percentage', value: 10, maxBonus: 500 },
-      'WELCOME20': { type: 'percentage', value: 20, maxBonus: 1000 },
-      'DEPOSIT50': { type: 'flat', value: 50 },
-      'DEPOSIT100': { type: 'flat', value: 100 }
+    // Simple bonus calculation - in production this would check against a promo code database
+    const promoCodes = {
+      'WELCOME10': 0.10,
+      'FIRST20': 0.20,
+      'DEPO50': 0.50
     };
-
-    const code = bonusCodes[bonusCode.toUpperCase()];
-    if (!code) return 0;
-
-    if (code.type === 'percentage') {
-      const bonus = (amount * code.value) / 100;
-      return Math.min(bonus, code.maxBonus);
-    } else {
-      return code.value;
-    }
+    
+    const bonusPercentage = promoCodes[bonusCode.toUpperCase()] || 0;
+    return Math.floor(amount * bonusPercentage);
   },
 
   // Withdraw money
   withdraw: async (userId, withdrawData) => {
-    const { amount, accountDetails, ifscCode, bankName, upiId } = withdrawData;
+    const { amount, paymentMethod, accountDetails } = withdrawData;
 
     // Validate amount
-    if (amount < config.wallet.minWithdrawal) {
-      throw new ApiError(400, `Minimum withdrawal amount is ${config.wallet.minWithdrawal}`);
+    const minWithdrawal = config.wallet?.minWithdrawal || 200;
+    if (amount < minWithdrawal) {
+      throw new ApiError(400, `Minimum withdrawal amount is ${minWithdrawal}`);
     }
 
     let wallet = await Wallet.findOne({ user: userId });
@@ -119,85 +118,84 @@ export const walletService = {
       throw new ApiError(400, 'Wallet not found');
     }
 
-    // Check balance (can only withdraw from winning balance + balance, not bonus)
-    const availableBalance = wallet.balance - wallet.bonusBalance;
-    if (availableBalance < amount) {
-      throw new ApiError(400, 'Insufficient balance. Bonus balance cannot be withdrawn.');
+    // Check balance (can only withdraw from winning balance first, then main balance)
+    const totalAvailable = wallet.balance;
+    if (totalAvailable < amount) {
+      throw new ApiError(400, 'Insufficient balance');
     }
 
-    // Create pending transaction
+    const balanceBefore = wallet.balance;
+
+    // Create transaction (pending until approved)
     const transaction = await Transaction.create({
       user: userId,
-      type: 'WITHDRAWAL',
+      wallet: wallet._id,
+      type: 'withdrawal',
       amount,
-      status: 'PENDING',
-      reference: `WTH-${Date.now()}`,
-      description: 'Wallet withdrawal',
-      accountDetails: {
-        bankName,
-        accountNumber: accountDetails,
-        ifscCode,
-        upiId
-      }
+      status: 'pending',
+      paymentMethod,
+      reference: `WD-${Date.now()}`,
+      description: 'Withdrawal request',
+      balanceBefore,
+      balanceAfter: balanceBefore - amount,
+      metadata: accountDetails
     });
 
-    // Deduct from wallet
+    // Update wallet
     wallet.balance -= amount;
-    // Deduct proportionally from winning balance first, then from balance
-    if (wallet.winningBalance >= amount) {
-      wallet.winningBalance -= amount;
-    } else {
-      const remaining = amount - wallet.winningBalance;
-      wallet.winningBalance = 0;
-      wallet.balance -= remaining;
-    }
     await wallet.save();
 
     return { wallet, transaction };
   },
 
-  // Enter contest (deduct entry fee)
-  enterContest: async (userId, contestId, entryFee, useBonus = false) => {
+  // Enter contest
+  enterContest: async (userId, contestId, entryFee, useBonus = true) => {
     let wallet = await Wallet.findOne({ user: userId });
     if (!wallet) {
       throw new ApiError(400, 'Wallet not found');
     }
 
-    // Calculate how much from bonus and real balance
+    // Calculate how much to use from bonus vs real balance
     let bonusUsed = 0;
-    let realAmountUsed = entryFee;
+    let realBalanceUsed = entryFee;
 
     if (useBonus && wallet.bonusBalance > 0) {
       bonusUsed = Math.min(wallet.bonusBalance, entryFee);
-      realAmountUsed = entryFee - bonusUsed;
+      realBalanceUsed = entryFee - bonusUsed;
     }
 
     // Check if user has enough balance
-    if (wallet.balance < entryFee) {
+    if (wallet.balance < realBalanceUsed) {
       throw new ApiError(400, 'Insufficient balance');
     }
+
+    const balanceBefore = wallet.balance;
 
     // Create transaction
     const transaction = await Transaction.create({
       user: userId,
-      type: 'DEBIT',
+      wallet: wallet._id,
+      type: 'bet',
       amount: entryFee,
-      status: 'COMPLETED',
-      reference: `CONTEST-${contestId}-${Date.now()}`,
+      status: 'completed',
+      reference: `CONT-${contestId}-${Date.now()}`,
       description: `Contest entry fee`,
-      bonusAmount: bonusUsed,
-      relatedContest: contestId
+      balanceBefore,
+      balanceAfter: balanceBefore - realBalanceUsed,
+      metadata: { contestId, bonusUsed }
     });
 
     // Update wallet
-    wallet.balance -= entryFee;
-    wallet.bonusBalance -= bonusUsed;
+    if (bonusUsed > 0) {
+      wallet.bonusBalance -= bonusUsed;
+    }
+    wallet.balance -= realBalanceUsed;
     await wallet.save();
 
     return { wallet, transaction };
   },
 
-  // Win contest (credit prize money)
+  // Credit prize money
   creditPrize: async (userId, contestId, prizeAmount, rank) => {
     let wallet = await Wallet.findOne({ user: userId });
     if (!wallet) {
@@ -210,17 +208,23 @@ export const walletService = {
       });
     }
 
-    // Winnings go to winning balance (can be withdrawn)
+    const balanceBefore = wallet.balance;
+
+    // Create transaction
     const transaction = await Transaction.create({
       user: userId,
-      type: 'CREDIT',
+      wallet: wallet._id,
+      type: 'win',
       amount: prizeAmount,
-      status: 'COMPLETED',
-      reference: `PRIZE-${contestId}-${Date.now()}`,
-      description: `Contest prize - Rank #${rank}`,
-      relatedContest: contestId
+      status: 'completed',
+      reference: `PRIZE-${contestId}-R${rank}-${Date.now()}`,
+      description: `Contest prize for rank #${rank}`,
+      balanceBefore,
+      balanceAfter: balanceBefore + prizeAmount,
+      metadata: { contestId, rank }
     });
 
+    // Update wallet - prize goes to winning balance
     wallet.balance += prizeAmount;
     wallet.winningBalance += prizeAmount;
     await wallet.save();
@@ -228,90 +232,84 @@ export const walletService = {
     return { wallet, transaction };
   },
 
-  // Refund contest entry
-  refundEntry: async (userId, contestId, entryFee) => {
-    let wallet = await Wallet.findOne({ user: userId });
-    if (!wallet) {
-      throw new ApiError(400, 'Wallet not found');
-    }
-
-    const transaction = await Transaction.create({
-      user: userId,
-      type: 'CREDIT',
-      amount: entryFee,
-      status: 'COMPLETED',
-      reference: `REFUND-${contestId}-${Date.now()}`,
-      description: 'Contest entry refunded',
-      relatedContest: contestId
-    });
-
-    wallet.balance += entryFee;
-    await wallet.save();
-
-    return { wallet, transaction };
-  },
-
   // Transfer between users
   transfer: async (fromUserId, toUserId, amount, description) => {
+    if (fromUserId === toUserId) {
+      throw new ApiError(400, 'Cannot transfer to yourself');
+    }
+
+    if (amount < 100) {
+      throw new ApiError(400, 'Minimum transfer amount is 100');
+    }
+
     const fromWallet = await Wallet.findOne({ user: fromUserId });
     if (!fromWallet || fromWallet.balance < amount) {
       throw new ApiError(400, 'Insufficient balance');
     }
 
-    const toWallet = await Wallet.findOne({ user: toUserId });
+    let toWallet = await Wallet.findOne({ user: toUserId });
     if (!toWallet) {
-      throw new ApiError(400, 'Recipient wallet not found');
+      toWallet = await Wallet.create({ 
+        user: toUserId, 
+        balance: 0, 
+        currency: 'INR',
+        bonusBalance: 0,
+        winningBalance: 0
+      });
     }
 
-    // Create transactions
+    // Debit from sender
+    const fromBalanceBefore = fromWallet.balance;
+    fromWallet.balance -= amount;
+    await fromWallet.save();
+
+    // Credit to receiver
+    const toBalanceBefore = toWallet.balance;
+    toWallet.balance += amount;
+    await toWallet.save();
+
+    // Create transactions for both
     const debitTransaction = await Transaction.create({
       user: fromUserId,
-      type: 'DEBIT',
+      wallet: fromWallet._id,
+      type: 'debit',
       amount,
-      status: 'COMPLETED',
+      status: 'completed',
       reference: `TRANS-${Date.now()}`,
-      description: description || 'Transfer to user',
-      relatedUser: toUserId
+      description: description || 'Wallet transfer',
+      balanceBefore: fromBalanceBefore,
+      balanceAfter: fromBalanceBefore - amount,
+      metadata: { toUserId }
     });
 
     const creditTransaction = await Transaction.create({
       user: toUserId,
-      type: 'CREDIT',
+      wallet: toWallet._id,
+      type: 'credit',
       amount,
-      status: 'COMPLETED',
+      status: 'completed',
       reference: `TRANS-${Date.now()}`,
-      description: description || 'Received from user',
-      relatedUser: fromUserId
+      description: description || 'Wallet transfer received',
+      balanceBefore: toBalanceBefore,
+      balanceAfter: toBalanceBefore + amount,
+      metadata: { fromUserId }
     });
 
-    // Update wallets
-    fromWallet.balance -= amount;
-    await fromWallet.save();
-
-    toWallet.balance += amount;
-    await toWallet.save();
-
     return { 
-      fromWallet, 
-      toWallet, 
       debitTransaction, 
-      creditTransaction 
+      creditTransaction,
+      fromWallet,
+      toWallet
     };
   },
 
-  // Get transaction history
+  // Get transactions
   getTransactions: async (userId, query) => {
     const { page, limit, skip } = getPagination(query);
     
     const filter = { user: userId };
     if (query.type) filter.type = query.type;
     if (query.status) filter.status = query.status;
-    if (query.startDate && query.endDate) {
-      filter.createdAt = {
-        $gte: new Date(query.startDate),
-        $lte: new Date(query.endDate)
-      };
-    }
 
     const [transactions, total] = await Promise.all([
       Transaction.find(filter)
@@ -329,21 +327,65 @@ export const walletService = {
 
   // Get transaction by ID
   getTransactionById: async (transactionId, userId) => {
-    const transaction = await Transaction.findOne({ _id: transactionId, user: userId });
-    if (!transaction) throw new ApiError(404, 'Transaction not found');
+    const transaction = await Transaction.findOne({ 
+      _id: transactionId, 
+      user: userId 
+    });
+    
+    if (!transaction) {
+      throw new ApiError(404, 'Transaction not found');
+    }
+    
     return transaction;
   },
 
-  // Get transactions by contest
+  // Get contest transactions
   getContestTransactions: async (userId, contestId) => {
-    const transactions = await Transaction.find({ 
-      user: userId, 
-      relatedContest: contestId 
+    const transactions = await Transaction.find({
+      user: userId,
+      'metadata.contestId': contestId
     }).sort({ createdAt: -1 });
+
     return transactions;
   },
 
-  // Internal credit (for system use)
+  // Get wallet statement
+  getWalletStatement: async (userId, startDate, endDate) => {
+    const query = { user: userId };
+    
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) query.createdAt.$lte = new Date(endDate);
+    }
+
+    const transactions = await Transaction.find(query).sort({ createdAt: -1 });
+
+    let totalCredits = 0;
+    let totalDebits = 0;
+
+    transactions.forEach(t => {
+      if (['deposit', 'win', 'credit', 'refund', 'bonus'].includes(t.type)) {
+        if (t.status === 'completed') {
+          totalCredits += t.amount;
+        }
+      } else {
+        totalDebits += t.amount;
+      }
+    });
+
+    return {
+      transactions,
+      summary: {
+        totalCredits,
+        totalDebits,
+        netChange: totalCredits - totalDebits,
+        transactionCount: transactions.length
+      }
+    };
+  },
+
+  // Credit (internal use)
   credit: async (userId, amount, description, reference) => {
     let wallet = await Wallet.findOne({ user: userId });
     if (!wallet) {
@@ -358,11 +400,14 @@ export const walletService = {
 
     const transaction = await Transaction.create({
       user: userId,
-      type: 'CREDIT',
+      wallet: wallet._id,
+      type: 'credit',
       amount,
-      status: 'COMPLETED',
+      status: 'completed',
       reference: reference || `SYS-${Date.now()}`,
-      description
+      description,
+      balanceBefore: wallet.balance,
+      balanceAfter: wallet.balance + amount
     });
 
     wallet.balance += amount;
@@ -371,7 +416,7 @@ export const walletService = {
     return { wallet, transaction };
   },
 
-  // Internal debit (for system use)
+  // Debit (internal use)
   debit: async (userId, amount, description, reference) => {
     let wallet = await Wallet.findOne({ user: userId });
     if (!wallet || wallet.balance < amount) {
@@ -380,11 +425,14 @@ export const walletService = {
 
     const transaction = await Transaction.create({
       user: userId,
-      type: 'DEBIT',
+      wallet: wallet._id,
+      type: 'debit',
       amount,
-      status: 'COMPLETED',
+      status: 'completed',
       reference: reference || `SYS-${Date.now()}`,
-      description
+      description,
+      balanceBefore: wallet.balance,
+      balanceAfter: wallet.balance - amount
     });
 
     wallet.balance -= amount;
@@ -408,12 +456,14 @@ export const walletService = {
 
     const transaction = await Transaction.create({
       user: userId,
-      type: 'CREDIT',
+      wallet: wallet._id,
+      type: 'bonus',
       amount: bonusAmount,
-      status: 'COMPLETED',
+      status: 'completed',
       reference: `BONUS-${Date.now()}`,
       description: description || 'Bonus credit',
-      bonusAmount
+      balanceBefore: wallet.balance,
+      balanceAfter: wallet.balance + bonusAmount
     });
 
     wallet.balance += bonusAmount;
@@ -423,36 +473,29 @@ export const walletService = {
     return { wallet, transaction };
   },
 
-  // Get wallet statement
-  getWalletStatement: async (userId, startDate, endDate) => {
-    const transactions = await Transaction.find({
-      user: userId,
-      createdAt: {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      }
-    }).sort({ createdAt: -1 });
-
-    let totalCredits = 0;
-    let totalDebits = 0;
-
-    transactions.forEach(t => {
-      if (t.type === 'CREDIT' || (t.type === 'DEPOSIT' && t.status === 'COMPLETED')) {
-        totalCredits += t.amount;
-      } else {
-        totalDebits += t.amount;
-      }
-    });
-
-    return {
-      transactions,
-      summary: {
-        totalCredits,
-        totalDebits,
-        netChange: totalCredits - totalDebits,
-        transactionCount: transactions.length
-      }
-    };
+  // Get admin overview for dashboard
+  getAdminOverview: async () => {
+    try {
+      const totalBalance = await Wallet.aggregate([
+        { $group: { _id: null, total: { $sum: '$balance' } } }
+      ]);
+      const transactionStats = await Transaction.aggregate([
+        { $group: { _id: '$type', count: { $sum: 1 }, total: { $sum: '$amount' } } }
+      ]);
+      const recentTransactions = await Transaction.find()
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate('user', 'name email');
+      const deposits = transactionStats.find(t => t._id === 'deposit') || { total: 0 };
+      return {
+        totalRevenue: totalBalance[0]?.total || 0,
+        totalDeposits: deposits.total,
+        transactionCount: transactionStats.reduce((acc, t) => acc + t.count, 0),
+        recentTransactions
+      };
+    } catch (error) {
+      return { totalRevenue: 0, totalDeposits: 0, transactionCount: 0, recentTransactions: [] };
+    }
   }
 };
 

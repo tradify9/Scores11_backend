@@ -8,26 +8,117 @@ import { getPagination } from '../../utils/pagination.js';
 
 export const adminService = {
   getDashboard: async () => {
+    // Get current date and 6 months ago for chart data
+    const now = new Date();
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
     const [
       totalUsers,
       totalTournaments,
       totalMatches,
       totalTeams,
       recentUsers,
-      recentTournaments
+      recentTournaments,
+      recentMatches,
+      matchStatusCounts,
+      monthlyStats,
+      totalRevenue,
+      activeTournaments,
+      liveMatches
     ] = await Promise.all([
       User.countDocuments(),
       Tournament.countDocuments(),
       Match.countDocuments(),
       Team.countDocuments(),
       User.find().sort({ createdAt: -1 }).limit(5),
-      Tournament.find().sort({ createdAt: -1 }).limit(5)
+      Tournament.find().sort({ createdAt: -1 }).limit(5),
+      Match.find().sort({ createdAt: -1 }).limit(5)
+        .populate('team1', 'name shortName')
+        .populate('team2', 'name shortName'),
+      Match.aggregate([
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]),
+      // Monthly stats for the last 6 months
+      User.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: sixMonthsAgo }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$createdAt' },
+              month: { $month: '$createdAt' }
+            },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } }
+      ]),
+      Wallet.aggregate([
+        { $group: { _id: null, total: { $sum: '$balance' } } }
+      ]),
+      Tournament.countDocuments({ status: 'ongoing' }),
+      Match.countDocuments({ status: 'live' })
     ]);
 
+    // Process monthly data for charts
+    const monthlyData = monthlyStats.map(item => ({
+      month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
+      users: item.count,
+      matches: 0 // Will be filled from matches
+    }));
+
+    // Get monthly match counts
+    const monthlyMatchStats = await Match.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: sixMonthsAgo }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+
+    // Merge monthly data
+    monthlyMatchStats.forEach(item => {
+      const key = `${item._id.year}-${String(item._id.month).padStart(2, '0')}`;
+      const existing = monthlyData.find(m => m.month === key);
+      if (existing) {
+        existing.matches = item.count;
+      }
+    });
+
+    // Process match status for pie chart
+    const matchStatusData = matchStatusCounts.map(item => ({
+      name: item._id || 'Unknown',
+      value: item.count
+    }));
+
     return {
-      stats: { totalUsers, totalTournaments, totalMatches, totalTeams },
+      stats: { 
+        totalUsers, 
+        totalTournaments, 
+        totalMatches, 
+        totalTeams,
+        totalRevenue: totalRevenue[0]?.total || 0,
+        activeTournaments,
+        liveMatches
+      },
       recentUsers,
-      recentTournaments
+      recentTournaments,
+      recentMatches,
+      monthlyData,
+      matchStatusData
     };
   },
 

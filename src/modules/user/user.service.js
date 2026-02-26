@@ -4,6 +4,32 @@ import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
 
 export const userService = {
+  getUserByEmail: async (email) => {
+    const user = await User.findOne({ email });
+    return user;
+  },
+
+  createUser: async (userData) => {
+    const { name, email, password, phone } = userData;
+    
+    // Hash password
+    const bcrypt = await import('bcryptjs');
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const user = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+      phone,
+      role: 'user',
+      isActive: true
+    });
+    
+    // Remove password from response
+    user.password = undefined;
+    return user;
+  },
+
   getUserById: async (userId) => {
     const user = await User.findById(userId);
     if (!user) {

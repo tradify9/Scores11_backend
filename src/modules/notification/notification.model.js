@@ -18,7 +18,7 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['match', 'tournament', 'wallet', 'system', 'promotion'],
+    enum: ['match', 'tournament', 'wallet', 'system', 'promotion', 'blog', 'fantasy', 'contest'],
     default: 'system'
   },
   data: {

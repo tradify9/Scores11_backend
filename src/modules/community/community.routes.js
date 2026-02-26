@@ -7,8 +7,12 @@ import { ROLES } from '../../constants/roles.js';
 const router = express.Router();
 
 // Public routes
-router.get('/', communityController.getAllPosts);
+router.get('/posts', communityController.getAllPosts);
 router.get('/my-posts', authenticate, communityController.getMyPosts);
+router.get('/posts/:id', communityController.getPostById);
+
+// For backwards compatibility
+router.get('/', communityController.getAllPosts);
 router.get('/:id', communityController.getPostById);
 
 // Protected routes

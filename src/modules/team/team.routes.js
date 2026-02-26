@@ -11,6 +11,7 @@ const router = express.Router();
 router.get('/search', teamController.searchTeams);
 router.get('/rankings', teamController.getTeamRankings);
 router.get('/public/:id', teamController.getTeamByIdPublic);
+router.get('/list', teamController.getAllTeams);
 
 // Protected routes - require authentication
 router.post('/', authenticate, teamController.createTeam);

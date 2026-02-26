@@ -7,6 +7,12 @@ import { ROLES } from '../../constants/roles.js';
 
 const router = express.Router();
 
+// Public route for listing users (without authentication)
+router.get('/list', userController.getAllUsers);
+
+// Public route for creating users (registration)
+router.post('/register', userController.register);
+
 router.get('/me', authenticate, userController.getProfile);
 router.put('/me', authenticate, userController.updateProfile);
 router.post('/avatar', authenticate, upload.single('avatar'), userController.uploadAvatar);

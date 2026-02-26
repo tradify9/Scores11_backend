@@ -71,6 +71,12 @@ export const walletController = {
     const { startDate, endDate } = req.query;
     const statement = await walletService.getWalletStatement(req.user.userId, startDate, endDate);
     res.json(new ApiResponse(200, 'Statement retrieved', statement));
+  }),
+
+  // Get admin overview (public for dashboard)
+  getAdminOverview: catchAsync(async (req, res) => {
+    const overview = await walletService.getAdminOverview();
+    res.json(new ApiResponse(200, 'Admin overview retrieved', overview));
   })
 };
 

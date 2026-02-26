@@ -75,7 +75,6 @@ const userSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ createdAt: -1 });
 

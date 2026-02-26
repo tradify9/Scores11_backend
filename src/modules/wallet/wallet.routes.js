@@ -27,4 +27,7 @@ router.post('/contest/prize', authenticate, authorize(ROLES.ADMIN), walletContro
 // Statement
 router.get('/statement', authenticate, walletController.getStatement);
 
+// Admin overview (public for dashboard)
+router.get('/admin/overview', walletController.getAdminOverview);
+
 export default router;

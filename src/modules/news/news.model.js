@@ -104,7 +104,6 @@ newsSchema.pre('save', function(next) {
 });
 
 // Indexes
-newsSchema.index({ slug: 1 });
 newsSchema.index({ category: 1 });
 newsSchema.index({ region: 1 });
 newsSchema.index({ publishedAt: -1 });

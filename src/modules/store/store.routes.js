@@ -7,6 +7,11 @@ import { ROLES } from '../../constants/roles.js';
 const router = express.Router();
 
 // Public routes
+router.get('/products', storeController.getAllProducts);
+router.get('/products/featured', storeController.getFeaturedProducts);
+router.get('/products/:id', storeController.getProductById);
+
+// For backwards compatibility
 router.get('/', storeController.getAllProducts);
 router.get('/featured', storeController.getFeaturedProducts);
 router.get('/:id', storeController.getProductById);

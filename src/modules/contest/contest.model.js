@@ -77,7 +77,7 @@ const contestSchema = new mongoose.Schema({
   // Contest category
   category: {
     type: String,
-    enum: ['PAID', 'FREE', ' PRACTICE', 'VIP'],
+    enum: ['PAID', 'FREE', 'PRACTICE', 'VIP'],
     default: 'FREE'
   },
   // Featured contest

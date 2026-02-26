@@ -12,6 +12,7 @@ router.get('/upcoming', matchController.getUpcomingMatches);
 router.get('/completed', matchController.getCompletedMatches);
 router.get('/search', matchController.searchMatches);
 router.get('/public/:id', matchController.getMatchByIdPublic);
+router.get('/list', matchController.getAllMatches);
 
 // Protected routes - require authentication
 router.post('/', authenticate, authorize(ROLES.ADMIN), matchController.createMatch);

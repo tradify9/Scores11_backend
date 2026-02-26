@@ -1,8 +1,24 @@
 import { userService } from './user.service.js';
 import ApiResponse from '../../utils/ApiResponse.js';
 import catchAsync from '../../utils/catchAsync.js';
+import ApiError from '../../utils/ApiError.js';
 
 export const userController = {
+  register: catchAsync(async (req, res) => {
+    const { name, email, password, phone } = req.body;
+    
+    // Check if user already exists
+    const existingUser = await userService.getUserByEmail(email);
+    if (existingUser) {
+      throw new ApiError(400, 'Email already registered');
+    }
+    
+    // Create user
+    const user = await userService.createUser({ name, email, password, phone });
+    
+    res.status(201).json(new ApiResponse(201, 'User registered successfully', user));
+  }),
+
   getProfile: catchAsync(async (req, res) => {
     const user = await userService.getUserById(req.user.userId);
     res.json(new ApiResponse(200, 'User profile retrieved', user));

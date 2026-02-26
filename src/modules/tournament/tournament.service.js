@@ -5,6 +5,7 @@ import Match from '../match/match.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
 import { TOURNAMENT_STATUS } from '../../constants/tournamentStatus.js';
+import { MATCH_STATUS } from '../../constants/matchStatus.js';
 
 export const tournamentService = {
   // Create a new tournament
@@ -74,27 +75,28 @@ export const tournamentService = {
   updateTournament: async (tournamentId, updateData, userId) => {
     const tournament = await Tournament.findById(tournamentId);
     if (!tournament) throw new ApiError(404, 'Tournament not found');
-    
-    // Only organizer can update
+
     if (tournament.organizer.toString() !== userId) {
       throw new ApiError(403, 'Not authorized to update this tournament');
     }
 
-    // Can't update if tournament has started
-    if (tournament.status !== TOURNAMENT_STATUS.DRAFT && tournament.status !== TOURNAMENT_STATUS.REGISTRATION) {
-      throw new ApiError(400, 'Cannot update tournament after it has started');
+    // Can't update certain fields if tournament is in progress
+    if (tournament.status === TOURNAMENT_STATUS.IN_PROGRESS) {
+      delete updateData.maxTeams;
+      delete updateData.entryFee;
+      delete updateData.startDate;
     }
 
-    const updated = await Tournament.findByIdAndUpdate(
+    const updatedTournament = await Tournament.findByIdAndUpdate(
       tournamentId,
       updateData,
       { new: true, runValidators: true }
     ).populate('organizer', 'name email');
 
-    return updated;
+    return updatedTournament;
   },
 
-  // Get all tournaments
+  // Get all tournaments with filters
   getAllTournaments: async (query) => {
     const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
     
@@ -102,10 +104,18 @@ export const tournamentService = {
     if (query.status) filter.status = query.status;
     if (query.type) filter.type = query.type;
     if (query.format) filter.format = query.format;
+    
+    if (query.search) {
+      filter.$or = [
+        { name: { $regex: query.search, $options: 'i' } },
+        { shortName: { $regex: query.search, $options: 'i' } }
+      ];
+    }
 
     const [tournaments, total] = await Promise.all([
       Tournament.find(filter)
         .populate('organizer', 'name')
+        .populate('teams', 'name shortName')
         .sort({ [sortBy]: sortOrder })
         .skip(skip)
         .limit(limit),
@@ -147,20 +157,22 @@ export const tournamentService = {
   // Get upcoming tournaments
   getUpcomingTournaments: async (query) => {
     const { page, limit, skip } = getPagination(query);
+    const now = new Date();
     
     const [tournaments, total] = await Promise.all([
       Tournament.find({ 
-        status: { $in: [TOURNAMENT_STATUS.DRAFT, TOURNAMENT_STATUS.REGISTRATION] },
-        startDate: { $gte: new Date() },
+        status: { $in: [TOURNAMENT_STATUS.DRAFT, TOURNAMENT_STATUS.PUBLISHED] },
+        startDate: { $gte: now },
         isActive: true 
       })
         .populate('organizer', 'name')
+        .populate('teams', 'name shortName')
         .sort({ startDate: 1 })
         .skip(skip)
         .limit(limit),
       Tournament.countDocuments({ 
-        status: { $in: [TOURNAMENT_STATUS.DRAFT, TOURNAMENT_STATUS.REGISTRATION] },
-        startDate: { $gte: new Date() },
+        status: { $in: [TOURNAMENT_STATUS.DRAFT, TOURNAMENT_STATUS.PUBLISHED] },
+        startDate: { $gte: now },
         isActive: true 
       })
     ]);
@@ -176,17 +188,13 @@ export const tournamentService = {
     const tournament = await Tournament.findById(tournamentId);
     if (!tournament) throw new ApiError(404, 'Tournament not found');
 
-    // Check if tournament is open for registration
-    if (tournament.status !== TOURNAMENT_STATUS.REGISTRATION && tournament.status !== TOURNAMENT_STATUS.DRAFT) {
-      throw new ApiError(400, 'Tournament is not open for registration');
+    // Check if tournament is accepting registrations
+    if (tournament.status !== TOURNAMENT_STATUS.DRAFT && 
+        tournament.status !== TOURNAMENT_STATUS.PUBLISHED) {
+      throw new ApiError(400, 'Tournament is not accepting registrations');
     }
 
-    // Check if tournament is full
-    if (tournament.teams.length >= tournament.maxTeams) {
-      throw new ApiError(400, 'Tournament is full');
-    }
-
-    // Verify team
+    // Check if team exists
     const team = await Team.findById(teamId);
     if (!team) throw new ApiError(404, 'Team not found');
 
@@ -195,32 +203,32 @@ export const tournamentService = {
       throw new ApiError(400, 'Team already registered');
     }
 
-    // Check if user owns the team
-    if (team.owner.toString() !== userId) {
-      throw new ApiError(403, 'You do not own this team');
+    // Check max teams limit
+    if (tournament.teams.length >= tournament.maxTeams) {
+      throw new ApiError(400, 'Maximum teams limit reached');
     }
 
-    // Add team to tournament
     tournament.teams.push(teamId);
     await tournament.save();
 
-    // Add team to points table
+    // Update points table
     const pointsTable = await PointsTable.findById(tournament.pointsTable);
-    pointsTable.teams.push({
-      team: teamId,
-      matchesPlayed: 0,
-      matchesWon: 0,
-      matchesLost: 0,
-      matchesTied: 0,
-      points: 0,
-      netRunRate: 0,
-      runsFor: 0,
-      runsAgainst: 0
-    });
-    await pointsTable.save();
+    if (pointsTable) {
+      pointsTable.teams.push({
+        team: teamId,
+        played: 0,
+        won: 0,
+        lost: 0,
+        tied: 0,
+        noResult: 0,
+        points: 0,
+        netRunRate: 0
+      });
+      await pointsTable.save();
+    }
 
     return await Tournament.findById(tournamentId)
-      .populate('teams', 'name shortName');
+      .populate('teams', 'name shortName logo');
   },
 
   // Unregister team from tournament
@@ -228,29 +236,29 @@ export const tournamentService = {
     const tournament = await Tournament.findById(tournamentId);
     if (!tournament) throw new ApiError(404, 'Tournament not found');
 
-    if (tournament.status !== TOURNAMENT_STATUS.REGISTRATION && tournament.status !== TOURNAMENT_STATUS.DRAFT) {
-      throw new ApiError(400, 'Cannot unregister after tournament has started');
+    // Check if tournament is accepting registrations
+    if (tournament.status !== TOURNAMENT_STATUS.DRAFT && 
+        tournament.status !== TOURNAMENT_STATUS.PUBLISHED) {
+      throw new ApiError(400, 'Cannot unregister at this stage');
     }
 
-    const team = await Team.findById(teamId);
-    if (!team) throw new ApiError(404, 'Team not found');
-
-    if (team.owner.toString() !== userId) {
-      throw new ApiError(403, 'You do not own this team');
+    // Check if team is registered
+    if (!tournament.teams.includes(teamId)) {
+      throw new ApiError(400, 'Team not registered in this tournament');
     }
 
-    // Remove team from tournament
     tournament.teams = tournament.teams.filter(t => t.toString() !== teamId);
     await tournament.save();
 
-    // Remove team from points table
-    await PointsTable.findOneAndUpdate(
-      { tournament: tournamentId },
-      { $pull: { teams: { team: teamId } } }
-    );
+    // Update points table
+    const pointsTable = await PointsTable.findById(tournament.pointsTable);
+    if (pointsTable) {
+      pointsTable.teams = pointsTable.teams.filter(t => t.team.toString() !== teamId);
+      await pointsTable.save();
+    }
 
     return await Tournament.findById(tournamentId)
-      .populate('teams', 'name shortName');
+      .populate('teams', 'name shortName logo');
   },
 
   // Update tournament status
@@ -260,21 +268,24 @@ export const tournamentService = {
 
     // Validate status transitions
     const validTransitions = {
-      [TOURNAMENT_STATUS.DRAFT]: [TOURNAMENT_STATUS.REGISTRATION],
-      [TOURNAMENT_STATUS.REGISTRATION]: [TOURNAMENT_STATUS.IN_PROGRESS, TOURNAMENT_STATUS.CANCELLED],
+      [TOURNAMENT_STATUS.DRAFT]: [TOURNAMENT_STATUS.PUBLISHED, TOURNAMENT_STATUS.CANCELLED],
+      [TOURNAMENT_STATUS.PUBLISHED]: [TOURNAMENT_STATUS.IN_PROGRESS, TOURNAMENT_STATUS.CANCELLED],
       [TOURNAMENT_STATUS.IN_PROGRESS]: [TOURNAMENT_STATUS.COMPLETED, TOURNAMENT_STATUS.CANCELLED]
     };
 
-    if (!validTransitions[tournament.status] || !validTransitions[tournament.status].includes(status)) {
+    if (validTransitions[tournament.status] && 
+        !validTransitions[tournament.status].includes(status)) {
       throw new ApiError(400, `Cannot transition from ${tournament.status} to ${status}`);
     }
 
-    // Check minimum teams for starting
-    if (status === TOURNAMENT_STATUS.IN_PROGRESS && tournament.teams.length < 2) {
-      throw new ApiError(400, 'At least 2 teams required to start tournament');
-    }
-
     tournament.status = status;
+    
+    if (status === TOURNAMENT_STATUS.IN_PROGRESS) {
+      tournament.startedAt = new Date();
+    } else if (status === TOURNAMENT_STATUS.COMPLETED) {
+      tournament.completedAt = new Date();
+    }
+    
     await tournament.save();
 
     return await Tournament.findById(tournamentId)
@@ -289,75 +300,37 @@ export const tournamentService = {
     const pointsTable = await PointsTable.findById(tournament.pointsTable)
       .populate('teams.team', 'name shortName logo');
 
+    if (!pointsTable) {
+      throw new ApiError(404, 'Points table not found');
+    }
+
     // Sort by points, then net run rate
     pointsTable.teams.sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
       return b.netRunRate - a.netRunRate;
     });
 
-    // Add rank
-    pointsTable.teams.forEach((team, index) => {
-      team.rank = index + 1;
-    });
-
-    return pointsTable;
+    return {
+      tournament: {
+        _id: tournament._id,
+        name: tournament.name,
+        format: tournament.format
+      },
+      points: pointsTable.teams.map((team, index) => ({
+        position: index + 1,
+        team: team.team,
+        played: team.played,
+        won: team.won,
+        lost: team.lost,
+        tied: team.tied,
+        noResult: team.noResult,
+        points: team.points,
+        netRunRate: team.netRunRate.toFixed(4)
+      }))
+    };
   },
 
-  // Update points table after match
-  updatePointsTable: async (tournamentId, matchResult) => {
-    const { matchId, winnerId, loserId, tied, winnerRuns, loserRuns, winnerOvers, loserOvers } = matchResult;
-
-    const tournament = await Tournament.findById(tournamentId);
-    if (!tournament) throw new ApiError(404, 'Tournament not found');
-
-    const pointsTable = await PointsTable.findOne({ tournament: tournamentId });
-    if (!pointsTable) throw new ApiError(404, 'Points table not found');
-
-    // Update winner
-    const winnerIndex = pointsTable.teams.findIndex(t => t.team.toString() === winnerId);
-    if (winnerIndex !== -1) {
-      pointsTable.teams[winnerIndex].matchesPlayed += 1;
-      pointsTable.teams[winnerIndex].matchesWon += 1;
-      pointsTable.teams[winnerIndex].points += 2;
-      pointsTable.teams[winnerIndex].runsFor += winnerRuns;
-      pointsTable.teams[winnerIndex].runsAgainst += loserRuns;
-      
-      // Calculate NRR
-      const runRateFor = winnerRuns / winnerOvers;
-      const runRateAgainst = loserRuns / loserOvers;
-      pointsTable.teams[winnerIndex].netRunRate += (runRateFor - runRateAgainst);
-    }
-
-    // Update loser
-    if (loserId) {
-      const loserIndex = pointsTable.teams.findIndex(t => t.team.toString() === loserId);
-      if (loserIndex !== -1) {
-        pointsTable.teams[loserIndex].matchesPlayed += 1;
-        pointsTable.teams[loserIndex].matchesLost += 1;
-        pointsTable.teams[loserIndex].points += 0;
-        pointsTable.teams[loserIndex].runsFor += loserRuns;
-        pointsTable.teams[loserIndex].runsAgainst += winnerRuns;
-        
-        const runRateFor = loserRuns / loserOvers;
-        const runRateAgainst = winnerRuns / winnerOvers;
-        pointsTable.teams[loserIndex].netRunRate += (runRateFor - runRateAgainst);
-      }
-    }
-
-    // Handle tie
-    if (tied && winnerId) {
-      const winnerIdx = pointsTable.teams.findIndex(t => t.team.toString() === winnerId);
-      if (winnerIdx !== -1) {
-        pointsTable.teams[winnerIdx].matchesTied += 1;
-        pointsTable.teams[winnerIdx].points += 1;
-      }
-    }
-
-    await pointsTable.save();
-    return pointsTable;
-  },
-
-  // Generate matches for league format
+  // Generate league matches
   generateLeagueMatches: async (tournamentId, userId) => {
     const tournament = await Tournament.findById(tournamentId);
     if (!tournament) throw new ApiError(404, 'Tournament not found');
@@ -366,61 +339,49 @@ export const tournamentService = {
       throw new ApiError(403, 'Not authorized');
     }
 
-    if (tournament.type !== 'LEAGUE') {
-      throw new ApiError(400, 'This method is only for league tournaments');
+    if (tournament.teams.length < tournament.minTeams) {
+      throw new ApiError(400, `Minimum ${tournament.minTeams} teams required`);
     }
 
-    const teams = tournament.teams;
+    // Clear existing matches
+    await Match.deleteMany({ tournament: tournamentId });
+    tournament.matches = [];
+    await tournament.save();
+
+    const teams = [...tournament.teams];
     const matches = [];
+    let matchNumber = 1;
+    let currentDate = new Date(tournament.startDate);
 
-    // Round robin - every team plays every other team twice
-    const isDoubleLeague = true; // Can be configurable
-
+    // Generate round-robin matches
     for (let i = 0; i < teams.length; i++) {
       for (let j = i + 1; j < teams.length; j++) {
-        // First leg
-        let matchNumber = matches.length + 1;
-        let scheduledDate = new Date(tournament.startDate);
-        scheduledDate.setDate(scheduledDate.getDate() + (matchNumber - 1) * 2);
-
-        const match1 = await Match.create({
+        const match = await Match.create({
           tournament: tournamentId,
           team1: teams[i],
           team2: teams[j],
           matchNumber,
+          matchType: 'LEAGUE',
           format: tournament.format,
           overs: tournament.overs || 20,
-          scheduledDate,
-          status: 'SCHEDULED'
+          scheduledDate: currentDate,
+          status: MATCH_STATUS.SCHEDULED
         });
-        matches.push(match1);
-
-        // Second leg (if double league)
-        if (isDoubleLeague) {
-          matchNumber = matches.length + 1;
-          scheduledDate = new Date(tournament.startDate);
-          scheduledDate.setDate(scheduledDate.getDate() + (matchNumber - 1) * 2);
-
-          const match2 = await Match.create({
-            tournament: tournamentId,
-            team1: teams[j],
-            team2: teams[i],
-            matchNumber,
-            format: tournament.format,
-            overs: tournament.overs || 20,
-            scheduledDate,
-            status: 'SCHEDULED'
-          });
-          matches.push(match2);
-        }
+        
+        matches.push(match);
+        tournament.matches.push(match._id);
+        matchNumber++;
+        
+        // Move to next day
+        currentDate.setDate(currentDate.getDate() + 1);
       }
     }
 
-    // Save matches to tournament
-    tournament.matches = matches.map(m => m._id);
     await tournament.save();
 
-    return matches;
+    return await Match.find({ tournament: tournamentId })
+      .populate('team1', 'name shortName')
+      .populate('team2', 'name shortName');
   },
 
   // Generate knockout matches
@@ -432,13 +393,17 @@ export const tournamentService = {
       throw new ApiError(403, 'Not authorized');
     }
 
-    const teams = tournament.teams;
-    const numTeams = teams.length;
+    const teams = [...tournament.teams];
     
-    // Find nearest power of 2
-    let knockoutRounds = Math.ceil(Math.log2(numTeams));
-    let matchesInFinal = Math.pow(2, knockoutRounds - 1);
-    let byes = Math.pow(2, knockoutRounds) - numTeams;
+    // Check if teams count is power of 2
+    const numTeams = teams.length;
+    const knockoutRounds = Math.ceil(Math.log2(numTeams));
+    const fullRoundsTeams = Math.pow(2, knockoutRounds);
+
+    // Add byes if needed
+    while (teams.length < fullRoundsTeams) {
+      teams.push(null); // null means bye
+    }
 
     const matches = [];
     let matchNumber = 1;
@@ -451,7 +416,7 @@ export const tournamentService = {
       for (let i = 0; i < numMatches; i++) {
         const match = await Match.create({
           tournament: tournamentId,
-          team1: teams[i] || null, // Will be null if bye
+          team1: teams[i] || null,
           team2: teams[numMatches + i] || null,
           matchNumber,
           matchType: round === knockoutRounds ? 'FINAL' : 'KNOCKOUT',
@@ -500,8 +465,8 @@ export const tournamentService = {
     if (!tournament) throw new ApiError(404, 'Tournament not found');
 
     const matches = await Match.find({ tournament: tournamentId });
-    const completedMatches = matches.filter(m => m.status === 'COMPLETED');
-    const upcomingMatches = matches.filter(m => m.status === 'SCHEDULED');
+    const completedMatches = matches.filter(m => m.status === MATCH_STATUS.COMPLETED);
+    const upcomingMatches = matches.filter(m => m.status === MATCH_STATUS.SCHEDULED);
 
     const stats = {
       totalMatches: matches.length,

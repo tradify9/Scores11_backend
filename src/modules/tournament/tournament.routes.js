@@ -10,6 +10,7 @@ const router = express.Router();
 router.get('/ongoing', tournamentController.getOngoingTournaments);
 router.get('/upcoming', tournamentController.getUpcomingTournaments);
 router.get('/public/:id', tournamentController.getTournamentByIdPublic);
+router.get('/list', tournamentController.getAllTournaments);
 
 // Protected routes
 router.post('/', authenticate, tournamentController.createTournament);
