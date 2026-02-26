@@ -69,10 +69,14 @@ export const matchService = {
   // Get match by ID with full details
   getMatchById: async (matchId) => {
     const match = await Match.findById(matchId)
-      .populate('team1', 'name shortName logo captain')
-      .populate('team2', 'name shortName logo captain')
+      .populate('team1', 'name shortName logo captain players')
+      .populate('team2', 'name shortName logo captain players')
       .populate('tournament', 'name format')
-      .populate('result.playerOfMatch', 'playerName jerseyNumber');
+      .populate('result.playerOfMatch', 'playerName jerseyNumber')
+      .populate('innings.battingScorecard.batsman', 'playerName')
+      .populate('innings.battingScorecard.bowler', 'playerName')
+      .populate('innings.currentBowler', 'playerName')
+      .populate('innings.currentBatsmen.batsman', 'playerName');
     
     if (!match) throw new ApiError(404, 'Match not found');
     return match;
