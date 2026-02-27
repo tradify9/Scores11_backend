@@ -27,7 +27,7 @@ router.delete('/roles/:id', authenticate, authorize(ROLES.ADMIN), adminControlle
 // System Logs
 router.get('/logs', authenticate, authorize(ROLES.ADMIN), adminController.getSystemLogs);
 router.get('/logs/export', authenticate, authorize(ROLES.ADMIN), adminController.exportLogs);
-router.delete('/logs/clear', authenticate, authorize(ROLES.ADMIN), adminController.clearOldLogs);
+router.post('/logs/clear', authenticate, authorize(ROLES.ADMIN), adminController.clearOldLogs);
 
 // Backup & Restore
 router.get('/backups', authenticate, authorize(ROLES.ADMIN), adminController.getBackups);
@@ -41,7 +41,7 @@ router.get('/email-templates', authenticate, authorize(ROLES.ADMIN), adminContro
 router.post('/email-templates', authenticate, authorize(ROLES.ADMIN), adminController.createEmailTemplate);
 router.put('/email-templates/:id', authenticate, authorize(ROLES.ADMIN), adminController.updateEmailTemplate);
 router.delete('/email-templates/:id', authenticate, authorize(ROLES.ADMIN), adminController.deleteEmailTemplate);
-router.post('/email-templates/:id/send-test', authenticate, authorize(ROLES.ADMIN), adminController.sendTestEmail);
+router.post('/email-templates/:id/test', authenticate, authorize(ROLES.ADMIN), adminController.sendTestEmail);
 
 // Content Moderation
 router.get('/moderation', authenticate, authorize(ROLES.ADMIN), adminController.getModerationQueue);
@@ -49,8 +49,8 @@ router.post('/moderation/:id', authenticate, authorize(ROLES.ADMIN), adminContro
 router.delete('/moderation/:id', authenticate, authorize(ROLES.ADMIN), adminController.deleteContent);
 
 // Financial Overview
-router.get('/finance', authenticate, authorize(ROLES.ADMIN), adminController.getFinancialOverview);
-router.get('/finance/export', authenticate, authorize(ROLES.ADMIN), adminController.exportFinancialData);
+router.get('/financial', authenticate, authorize(ROLES.ADMIN), adminController.getFinancialOverview);
+router.get('/financial/export', authenticate, authorize(ROLES.ADMIN), adminController.exportFinancialData);
 
 // User Verifications
 router.get('/verifications', authenticate, authorize(ROLES.ADMIN), adminController.getVerifications);
@@ -62,7 +62,6 @@ router.get('/api-keys', authenticate, authorize(ROLES.ADMIN), adminController.ge
 router.post('/api-keys', authenticate, authorize(ROLES.ADMIN), adminController.createAPIKey);
 router.delete('/api-keys/:id', authenticate, authorize(ROLES.ADMIN), adminController.deleteAPIKey);
 router.post('/api-keys/:id/regenerate', authenticate, authorize(ROLES.ADMIN), adminController.regenerateAPIKey);
-
 router.get('/webhooks', authenticate, authorize(ROLES.ADMIN), adminController.getWebhooks);
 router.post('/webhooks', authenticate, authorize(ROLES.ADMIN), adminController.createWebhook);
 router.delete('/webhooks/:id', authenticate, authorize(ROLES.ADMIN), adminController.deleteWebhook);
@@ -70,5 +69,34 @@ router.delete('/webhooks/:id', authenticate, authorize(ROLES.ADMIN), adminContro
 // Tournaments & Matches
 router.get('/tournaments', authenticate, authorize(ROLES.ADMIN), adminController.getAllTournaments);
 router.get('/matches', authenticate, authorize(ROLES.ADMIN), adminController.getAllMatches);
+
+// Mobile App Management
+router.get('/app/banners', authenticate, authorize(ROLES.ADMIN), adminController.getAppBanners);
+router.post('/app/banners', authenticate, authorize(ROLES.ADMIN), adminController.createAppBanner);
+router.put('/app/banners/:id', authenticate, authorize(ROLES.ADMIN), adminController.updateAppBanner);
+router.delete('/app/banners/:id', authenticate, authorize(ROLES.ADMIN), adminController.deleteAppBanner);
+router.get('/app/text', authenticate, authorize(ROLES.ADMIN), adminController.getAppText);
+router.put('/app/text/:key', authenticate, authorize(ROLES.ADMIN), adminController.updateAppText);
+router.get('/app/config', authenticate, authorize(ROLES.ADMIN), adminController.getAppConfig);
+router.put('/app/config', authenticate, authorize(ROLES.ADMIN), adminController.updateAppConfig);
+router.get('/app/notifications', authenticate, authorize(ROLES.ADMIN), adminController.getAppNotifications);
+router.post('/app/notifications/send', authenticate, authorize(ROLES.ADMIN), adminController.sendPushNotification);
+
+// Store Management
+router.get('/store', authenticate, authorize(ROLES.ADMIN), adminController.getStoreData);
+router.get('/store/products', authenticate, authorize(ROLES.ADMIN), adminController.getStoreProducts);
+router.post('/store/products', authenticate, authorize(ROLES.ADMIN), adminController.createStoreProduct);
+router.put('/store/products/:id', authenticate, authorize(ROLES.ADMIN), adminController.updateStoreProduct);
+router.delete('/store/products/:id', authenticate, authorize(ROLES.ADMIN), adminController.deleteStoreProduct);
+router.put('/store/orders/:id', authenticate, authorize(ROLES.ADMIN), adminController.updateOrderStatus);
+
+// Contest Management
+router.get('/contests', authenticate, authorize(ROLES.ADMIN), adminController.getContests);
+router.post('/contests', authenticate, authorize(ROLES.ADMIN), adminController.createContest);
+router.put('/contests/:id', authenticate, authorize(ROLES.ADMIN), adminController.updateContest);
+router.delete('/contests/:id', authenticate, authorize(ROLES.ADMIN), adminController.deleteContest);
+router.patch('/contests/:id/status', authenticate, authorize(ROLES.ADMIN), adminController.updateContestStatus);
+router.get('/contests/prize-pools', authenticate, authorize(ROLES.ADMIN), adminController.getPrizePools);
+router.get('/contests/stats', authenticate, authorize(ROLES.ADMIN), adminController.getContestStats);
 
 export default router;

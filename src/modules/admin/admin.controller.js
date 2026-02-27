@@ -230,6 +230,124 @@ export const adminController = {
   getAllMatches: catchAsync(async (req, res) => {
     const { matches, pagination } = await adminService.getAllMatches(req.query);
     res.json(new ApiResponse(200, 'Matches retrieved', matches, pagination));
+  }),
+
+  // Mobile App Management
+  getAppBanners: catchAsync(async (req, res) => {
+    const banners = await adminService.getAppBanners();
+    res.json(new ApiResponse(200, 'App banners retrieved', banners));
+  }),
+
+  createAppBanner: catchAsync(async (req, res) => {
+    const banner = await adminService.createAppBanner(req.body);
+    res.json(new ApiResponse(201, 'App banner created', banner));
+  }),
+
+  updateAppBanner: catchAsync(async (req, res) => {
+    const banner = await adminService.updateAppBanner(req.params.id, req.body);
+    res.json(new ApiResponse(200, 'App banner updated', banner));
+  }),
+
+  deleteAppBanner: catchAsync(async (req, res) => {
+    await adminService.deleteAppBanner(req.params.id);
+    res.json(new ApiResponse(200, 'App banner deleted'));
+  }),
+
+  getAppText: catchAsync(async (req, res) => {
+    const texts = await adminService.getAppText();
+    res.json(new ApiResponse(200, 'App texts retrieved', texts));
+  }),
+
+  updateAppText: catchAsync(async (req, res) => {
+    const text = await adminService.updateAppText(req.params.key, req.body);
+    res.json(new ApiResponse(200, 'App text updated', text));
+  }),
+
+  getAppConfig: catchAsync(async (req, res) => {
+    const config = await adminService.getAppConfig();
+    res.json(new ApiResponse(200, 'App config retrieved', config));
+  }),
+
+  updateAppConfig: catchAsync(async (req, res) => {
+    const config = await adminService.updateAppConfig(req.body);
+    res.json(new ApiResponse(200, 'App config updated', config));
+  }),
+
+  getAppNotifications: catchAsync(async (req, res) => {
+    const notifications = await adminService.getAppNotifications();
+    res.json(new ApiResponse(200, 'App notifications retrieved', notifications));
+  }),
+
+  sendPushNotification: catchAsync(async (req, res) => {
+    await adminService.sendPushNotification(req.body);
+    res.json(new ApiResponse(200, 'Push notification sent'));
+  }),
+
+  // Store Management
+  getStoreData: catchAsync(async (req, res) => {
+    const data = await adminService.getStoreData(req.query);
+    res.json(new ApiResponse(200, 'Store data retrieved', data));
+  }),
+
+  getStoreProducts: catchAsync(async (req, res) => {
+    const products = await adminService.getStoreProducts(req.query);
+    res.json(new ApiResponse(200, 'Store products retrieved', products));
+  }),
+
+  createStoreProduct: catchAsync(async (req, res) => {
+    const product = await adminService.createStoreProduct(req.body);
+    res.json(new ApiResponse(201, 'Store product created', product));
+  }),
+
+  updateStoreProduct: catchAsync(async (req, res) => {
+    const product = await adminService.updateStoreProduct(req.params.id, req.body);
+    res.json(new ApiResponse(200, 'Store product updated', product));
+  }),
+
+  deleteStoreProduct: catchAsync(async (req, res) => {
+    await adminService.deleteStoreProduct(req.params.id);
+    res.json(new ApiResponse(200, 'Store product deleted'));
+  }),
+
+  updateOrderStatus: catchAsync(async (req, res) => {
+    const order = await adminService.updateOrderStatus(req.params.id, req.body);
+    res.json(new ApiResponse(200, 'Order status updated', order));
+  }),
+
+  // Contest Management
+  getContests: catchAsync(async (req, res) => {
+    const data = await adminService.getContests(req.query);
+    res.json(new ApiResponse(200, 'Contests retrieved', data));
+  }),
+
+  createContest: catchAsync(async (req, res) => {
+    const contest = await adminService.createContest(req.body);
+    res.json(new ApiResponse(201, 'Contest created', contest));
+  }),
+
+  updateContest: catchAsync(async (req, res) => {
+    const contest = await adminService.updateContest(req.params.id, req.body);
+    res.json(new ApiResponse(200, 'Contest updated', contest));
+  }),
+
+  deleteContest: catchAsync(async (req, res) => {
+    await adminService.deleteContest(req.params.id);
+    res.json(new ApiResponse(200, 'Contest deleted'));
+  }),
+
+  updateContestStatus: catchAsync(async (req, res) => {
+    const contest = await adminService.updateContestStatus(req.params.id, req.body.status);
+    res.json(new ApiResponse(200, 'Contest status updated', contest));
+  }),
+
+  getPrizePools: catchAsync(async (req, res) => {
+    const pools = await adminService.getPrizePools();
+    res.json(new ApiResponse(200, 'Prize pools retrieved', pools));
+  }),
+
+  getContestStats: catchAsync(async (req, res) => {
+    const stats = await adminService.getContestStats();
+    res.json(new ApiResponse(200, 'Contest stats retrieved', stats));
   })
 };
 

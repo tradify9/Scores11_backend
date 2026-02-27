@@ -619,6 +619,323 @@ export const adminService = {
     // Simplified CSV export
     return 'Date,Metric,Value\n' + 
       analytics.userGrowth.map(u => `${u._id},New Users,${u.count}`).join('\n');
+  },
+
+  // Mobile App Management
+  getAppBanners: async () => {
+    return [
+      {
+        _id: '1',
+        title: 'Welcome to Crick11',
+        subtitle: 'Play Fantasy Cricket & Win Big',
+        image: 'https://via.placeholder.com/800x400/10B981/FFFFFF?text=Welcome',
+        actionType: 'screen',
+        actionValue: 'contests',
+        priority: 1,
+        isActive: true,
+        startDate: new Date(),
+        endDate: null
+      },
+      {
+        _id: '2',
+        title: 'IPL 2024 Special',
+        subtitle: 'Mega Contests with 1 Crore Prize Pool',
+        image: 'https://via.placeholder.com/800x400/8B5CF6/FFFFFF?text=IPL+2024',
+        actionType: 'url',
+        actionValue: '/contests/ipl-special',
+        priority: 2,
+        isActive: true,
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      }
+    ];
+  },
+
+  createAppBanner: async (data) => {
+    return {
+      _id: Date.now().toString(),
+      ...data,
+      createdAt: new Date()
+    };
+  },
+
+  updateAppBanner: async (id, data) => {
+    return {
+      _id: id,
+      ...data,
+      updatedAt: new Date()
+    };
+  },
+
+  deleteAppBanner: async (id) => {
+    return { deleted: true };
+  },
+
+  getAppText: async () => {
+    return {
+      app_name: 'Crick11',
+      welcome_title: 'Welcome to Crick11',
+      welcome_subtitle: 'India\'s #1 Fantasy Cricket Platform',
+      home_header: 'Live Matches',
+      contest_title: 'Join Contests',
+      wallet_title: 'My Wallet',
+      profile_title: 'My Profile',
+      login_title: 'Login to Continue',
+      signup_title: 'Create Your Account',
+      footer_text: '© 2024 Crick11. All rights reserved.',
+      terms_text: 'By using this app, you agree to our Terms & Conditions.',
+      privacy_text: 'Your privacy is important to us.'
+    };
+  },
+
+  updateAppText: async (key, data) => {
+    return { key, value: data.value, updatedAt: new Date() };
+  },
+
+  getAppConfig: async () => {
+    return {
+      version: '2.1.0',
+      minVersion: '2.0.0',
+      maintenanceMode: false,
+      enableContests: true,
+      enableWallet: true,
+      enableStore: true,
+      enableLiveScores: true,
+      enablePredictions: true,
+      enableReferral: true
+    };
+  },
+
+  updateAppConfig: async (data) => {
+    return { ...data, updatedAt: new Date() };
+  },
+
+  getAppNotifications: async () => {
+    return [
+      {
+        _id: '1',
+        title: 'Match Starting Soon',
+        body: 'India vs Australia match starts in 30 minutes!',
+        status: 'sent',
+        targetAudience: 'All users',
+        createdAt: new Date()
+      },
+      {
+        _id: '2',
+        title: 'New Contest Available',
+        body: 'Join the Mega Contest with 10 Lakh prize pool',
+        status: 'scheduled',
+        targetAudience: 'Active users',
+        createdAt: new Date()
+      }
+    ];
+  },
+
+  sendPushNotification: async (data) => {
+    return { sent: true, recipients: 15000 };
+  },
+
+  // Store Management
+  getStoreData: async (query) => {
+    const { tab, status, startDate, endDate } = query;
+    
+    // Mock store data
+    const orders = [
+      {
+        _id: 'order1',
+        orderId: 'ORD-001',
+        customer: { name: 'John Doe', email: 'john@example.com', phone: '+91 9876543210', _id: 'user1' },
+        items: [
+          { name: 'Crick11 Jersey', quantity: 2, price: 999, image: 'https://via.placeholder.com/100' }
+        ],
+        total: 1998,
+        subtotal: 1998,
+        shipping: 0,
+        tax: 0,
+        status: 'delivered',
+        shippingAddress: { street: '123 Main St', city: 'Mumbai', state: 'MH', zip: '400001', country: 'India' },
+        createdAt: new Date()
+      },
+      {
+        _id: 'order2',
+        orderId: 'ORD-002',
+        customer: { name: 'Jane Smith', email: 'jane@example.com', phone: '+91 9876543211', _id: 'user2' },
+        items: [
+          { name: 'Cricket Bat', quantity: 1, price: 4999, image: 'https://via.placeholder.com/100' }
+        ],
+        total: 4999,
+        subtotal: 4999,
+        shipping: 100,
+        tax: 250,
+        status: 'shipped',
+        shippingAddress: { street: '456 Park Ave', city: 'Delhi', state: 'DL', zip: '110001', country: 'India' },
+        createdAt: new Date()
+      }
+    ];
+
+    const products = [
+      {
+        _id: 'prod1',
+        name: 'Crick11 Jersey',
+        category: 'Apparel',
+        price: 999,
+        stock: 150,
+        image: 'https://via.placeholder.com/300x200/10B981/FFFFFF?text=Jersey'
+      },
+      {
+        _id: 'prod2',
+        name: 'Cricket Bat',
+        category: 'Equipment',
+        price: 4999,
+        stock: 45,
+        image: 'https://via.placeholder.com/300x200/8B5CF6/FFFFFF?text=Bat'
+      },
+      {
+        _id: 'prod3',
+        name: 'Cricket Ball Set',
+        category: 'Equipment',
+        price: 599,
+        stock: 8,
+        image: 'https://via.placeholder.com/300x200/F59E0B/FFFFFF?text=Balls'
+      }
+    ];
+
+    return {
+      overview: {
+        totalRevenue: 125000,
+        totalOrders: 450,
+        productsSold: 890,
+        activeCustomers: 320
+      },
+      orders: status && status !== 'all' ? orders.filter(o => o.status === status) : orders,
+      products,
+      categories: [
+        { name: 'Apparel', sales: 45000 },
+        { name: 'Equipment', sales: 65000 },
+        { name: 'Accessories', sales: 15000 }
+      ],
+      revenue: [
+        { date: '2024-01-01', amount: 5000 },
+        { date: '2024-01-02', amount: 7200 },
+        { date: '2024-01-03', amount: 6800 },
+        { date: '2024-01-04', amount: 9100 },
+        { date: '2024-01-05', amount: 8500 }
+      ],
+      topProducts: [
+        { name: 'Crick11 Jersey', category: 'Apparel', revenue: 45000, sold: 45, image: 'https://via.placeholder.com/100' },
+        { name: 'Cricket Bat Premium', category: 'Equipment', revenue: 38000, sold: 8, image: 'https://via.placeholder.com/100' },
+        { name: 'Team Cap', category: 'Accessories', revenue: 12000, sold: 120, image: 'https://via.placeholder.com/100' }
+      ]
+    };
+  },
+
+  getStoreProducts: async (query) => {
+    return [
+      { _id: '1', name: 'Crick11 Jersey', category: 'Apparel', price: 999, stock: 150, image: 'https://via.placeholder.com/300' },
+      { _id: '2', name: 'Cricket Bat', category: 'Equipment', price: 4999, stock: 45, image: 'https://via.placeholder.com/300' }
+    ];
+  },
+
+  createStoreProduct: async (data) => {
+    return { _id: Date.now().toString(), ...data, createdAt: new Date() };
+  },
+
+  updateStoreProduct: async (id, data) => {
+    return { _id: id, ...data, updatedAt: new Date() };
+  },
+
+  deleteStoreProduct: async (id) => {
+    return { deleted: true };
+  },
+
+  updateOrderStatus: async (id, data) => {
+    return { _id: id, status: data.status, updatedAt: new Date() };
+  },
+
+  // Contest Management
+  getContests: async (query) => {
+    const { status } = query;
+    const contests = [
+      {
+        _id: 'contest1',
+        name: 'Mega Contest',
+        match: { name: 'India vs Australia', _id: 'match1' },
+        entryFee: 49,
+        prizePool: 100000,
+        maxEntries: 10000,
+        currentEntries: 7500,
+        status: 'live',
+        startTime: new Date(),
+        endTime: new Date(Date.now() + 3 * 60 * 60 * 1000),
+        isGuaranteed: true,
+        isMultiEntry: true
+      },
+      {
+        _id: 'contest2',
+        name: 'Head to Head',
+        match: { name: 'England vs Pakistan', _id: 'match2' },
+        entryFee: 199,
+        prizePool: 10000,
+        maxEntries: 50,
+        currentEntries: 32,
+        status: 'upcoming',
+        startTime: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        endTime: new Date(Date.now() + 28 * 60 * 60 * 1000),
+        isGuaranteed: false,
+        isMultiEntry: false
+      }
+    ];
+    
+    return {
+      contests: status && status !== 'all' ? contests.filter(c => c.status === status) : contests
+    };
+  },
+
+  createContest: async (data) => {
+    return { _id: Date.now().toString(), ...data, createdAt: new Date() };
+  },
+
+  updateContest: async (id, data) => {
+    return { _id: id, ...data, updatedAt: new Date() };
+  },
+
+  deleteContest: async (id) => {
+    return { deleted: true };
+  },
+
+  updateContestStatus: async (id, status) => {
+    return { _id: id, status, updatedAt: new Date() };
+  },
+
+  getPrizePools: async () => {
+    return [
+      { _id: '1', name: 'Standard Pool', contestCount: 45, totalPrize: 500000, winnerPercentage: 40, firstPrize: 50000 },
+      { _id: '2', name: 'Mega Pool', contestCount: 12, totalPrize: 2000000, winnerPercentage: 30, firstPrize: 200000 },
+      { _id: '3', name: 'Mini Pool', contestCount: 120, totalPrize: 100000, winnerPercentage: 50, firstPrize: 10000 }
+    ];
+  },
+
+  getContestStats: async () => {
+    return {
+      totalContests: 450,
+      liveContests: 12,
+      totalEntries: 125000,
+      totalPrizeDistributed: 5000000,
+      participationTrend: [
+        { date: '2024-01-01', entries: 5000 },
+        { date: '2024-01-02', entries: 7200 },
+        { date: '2024-01-03', entries: 6800 },
+        { date: '2024-01-04', entries: 9100 },
+        { date: '2024-01-05', entries: 8500 }
+      ],
+      entryFeeDistribution: [
+        { fee: 'Free', count: 15000 },
+        { fee: '₹10-50', count: 45000 },
+        { fee: '₹51-100', count: 35000 },
+        { fee: '₹101-500', count: 20000 },
+        { fee: '₹500+', count: 10000 }
+      ]
+    };
   }
 };
 
