@@ -4,21 +4,17 @@ import catchAsync from '../../utils/catchAsync.js';
 import ApiError from '../../utils/ApiError.js';
 
 export const userController = {
+  // Registration
   register: catchAsync(async (req, res) => {
-    const { name, email, password, phone } = req.body;
+    const user = await userService.createUser(req.body);
     
-    // Check if user already exists
-    const existingUser = await userService.getUserByEmail(email);
-    if (existingUser) {
-      throw new ApiError(400, 'Email already registered');
-    }
-    
-    // Create user
-    const user = await userService.createUser({ name, email, password, phone });
-    
-    res.status(201).json(new ApiResponse(201, 'User registered successfully', user));
+    res.status(201).json(new ApiResponse(201, 'User registered successfully', {
+      user,
+      message: 'Please verify your email and phone to complete registration'
+    }));
   }),
 
+  // Profile
   getProfile: catchAsync(async (req, res) => {
     const user = await userService.getUserById(req.user.userId);
     res.json(new ApiResponse(200, 'User profile retrieved', user));
@@ -29,11 +25,53 @@ export const userController = {
     res.json(new ApiResponse(200, 'Profile updated successfully', user));
   }),
 
+  getProfileByUsername: catchAsync(async (req, res) => {
+    const user = await userService.getUserByUsername(req.params.username);
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+    res.json(new ApiResponse(200, 'User profile retrieved', user));
+  }),
+
+  // Media Upload
   uploadAvatar: catchAsync(async (req, res) => {
     const user = await userService.uploadAvatar(req.user.userId, req.file);
     res.json(new ApiResponse(200, 'Avatar uploaded successfully', user));
   }),
 
+  uploadCoverPhoto: catchAsync(async (req, res) => {
+    const user = await userService.uploadCoverPhoto(req.user.userId, req.file);
+    res.json(new ApiResponse(200, 'Cover photo uploaded successfully', user));
+  }),
+
+  // Social Features
+  followUser: catchAsync(async (req, res) => {
+    const result = await userService.followUser(req.user.userId, req.params.userId);
+    res.json(new ApiResponse(200, 'User followed successfully', result));
+  }),
+
+  unfollowUser: catchAsync(async (req, res) => {
+    const result = await userService.unfollowUser(req.user.userId, req.params.userId);
+    res.json(new ApiResponse(200, 'User unfollowed successfully', result));
+  }),
+
+  getFollowers: catchAsync(async (req, res) => {
+    const { followers, pagination } = await userService.getFollowers(
+      req.params.userId || req.user.userId,
+      req.query
+    );
+    res.json(new ApiResponse(200, 'Followers retrieved', followers, pagination));
+  }),
+
+  getFollowing: catchAsync(async (req, res) => {
+    const { following, pagination } = await userService.getFollowing(
+      req.params.userId || req.user.userId,
+      req.query
+    );
+    res.json(new ApiResponse(200, 'Following retrieved', following, pagination));
+  }),
+
+  // Search & List
   getAllUsers: catchAsync(async (req, res) => {
     const { users, pagination } = await userService.getAllUsers(req.query);
     res.json(new ApiResponse(200, 'Users retrieved', users, pagination));
@@ -44,6 +82,42 @@ export const userController = {
     res.json(new ApiResponse(200, 'User retrieved', user));
   }),
 
+  // Statistics
+  getUserStats: catchAsync(async (req, res) => {
+    const stats = await userService.getUserStats(req.params.id || req.user.userId);
+    res.json(new ApiResponse(200, 'User statistics retrieved', stats));
+  }),
+
+  getLeaderboard: catchAsync(async (req, res) => {
+    const { users, pagination } = await userService.getLeaderboard(req.query);
+    res.json(new ApiResponse(200, 'Leaderboard retrieved', users, pagination));
+  }),
+
+  // Device Management
+  addFCMToken: catchAsync(async (req, res) => {
+    const { token, deviceType } = req.body;
+    const result = await userService.addFCMToken(req.user.userId, token, deviceType);
+    res.json(new ApiResponse(200, 'FCM token added', result));
+  }),
+
+  removeFCMToken: catchAsync(async (req, res) => {
+    const { token } = req.body;
+    const result = await userService.removeFCMToken(req.user.userId, token);
+    res.json(new ApiResponse(200, 'FCM token removed', result));
+  }),
+
+  // Verification
+  verifyEmail: catchAsync(async (req, res) => {
+    const user = await userService.verifyEmail(req.params.token);
+    res.json(new ApiResponse(200, 'Email verified successfully', user));
+  }),
+
+  verifyPhone: catchAsync(async (req, res) => {
+    const user = await userService.verifyPhone(req.user.userId, req.body.code);
+    res.json(new ApiResponse(200, 'Phone verified successfully', user));
+  }),
+
+  // Admin Operations
   updateUser: catchAsync(async (req, res) => {
     const user = await userService.updateUser(req.params.id, req.body);
     res.json(new ApiResponse(200, 'User updated successfully', user));
