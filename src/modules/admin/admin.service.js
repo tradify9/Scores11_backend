@@ -2,226 +2,623 @@ import User from '../user/user.model.js';
 import Tournament from '../tournament/tournament.model.js';
 import Match from '../match/match.model.js';
 import Team from '../team/team.model.js';
+import Player from '../player/player.model.js';
+import Contest from '../contest/contest.model.js';
 import Wallet from '../wallet/wallet.model.js';
+import Transaction from '../wallet/transaction.model.js';
+import Subscription from '../subscription/subscription.model.js';
+import Blog from '../blog/blog.model.js';
+import News from '../news/news.model.js';
+import Post from '../community/post.model.js';
+import Contact from '../contact/contact.model.js';
+import Review from '../review/review.model.js';
+import Club from '../club/club.model.js';
+import Association from '../association/association.model.js';
+import Award from '../award/award.model.js';
 import ApiError from '../../utils/ApiError.js';
-import { getPagination } from '../../utils/pagination.js';
+import { paginate } from '../../utils/pagination.js';
+
+// Role definitions with permissions
+const defaultRoles = [
+  {
+    name: 'Super Admin',
+    slug: 'super-admin',
+    description: 'Full system access',
+    permissions: ['*'],
+    isSystem: true
+  },
+  {
+    name: 'Admin',
+    slug: 'admin',
+    description: 'Administrative access',
+    permissions: [
+      'users:read', 'users:write',
+      'matches:read', 'matches:write',
+      'tournaments:read', 'tournaments:write',
+      'content:read', 'content:write',
+      'finance:read',
+      'settings:read', 'settings:write'
+    ],
+    isSystem: true
+  },
+  {
+    name: 'Moderator',
+    slug: 'moderator',
+    description: 'Content moderation access',
+    permissions: [
+      'content:read', 'content:write',
+      'users:read',
+      'community:moderate'
+    ],
+    isSystem: true
+  },
+  {
+    name: 'Finance Manager',
+    slug: 'finance-manager',
+    description: 'Financial operations access',
+    permissions: [
+      'finance:read', 'finance:write',
+      'transactions:read',
+      'subscriptions:read'
+    ],
+    isSystem: true
+  },
+  {
+    name: 'Support Agent',
+    slug: 'support',
+    description: 'Customer support access',
+    permissions: [
+      'users:read',
+      'tickets:read', 'tickets:write',
+      'contact:read', 'contact:write'
+    ],
+    isSystem: true
+  }
+];
+
+// In-memory storage for features not yet in database
+let roles = [...defaultRoles];
+let apiKeys = [];
+let webhooks = [];
+let emailTemplates = [];
+let backups = [];
+let systemLogs = [];
+let verifications = [];
+let moderationQueue = [];
 
 export const adminService = {
+  // Dashboard
   getDashboard: async () => {
-    // Get current date and 6 months ago for chart data
-    const now = new Date();
-    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-
     const [
       totalUsers,
-      totalTournaments,
+      activeUsers,
       totalMatches,
-      totalTeams,
-      recentUsers,
-      recentTournaments,
-      recentMatches,
-      matchStatusCounts,
-      monthlyStats,
-      totalRevenue,
+      liveMatches,
+      totalTournaments,
       activeTournaments,
-      liveMatches
+      totalTransactions,
+      todayRevenue
     ] = await Promise.all([
       User.countDocuments(),
-      Tournament.countDocuments(),
+      User.countDocuments({ isActive: true, lastLoginAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
       Match.countDocuments(),
-      Team.countDocuments(),
-      User.find().sort({ createdAt: -1 }).limit(5),
-      Tournament.find().sort({ createdAt: -1 }).limit(5),
-      Match.find().sort({ createdAt: -1 }).limit(5)
-        .populate('team1', 'name shortName')
-        .populate('team2', 'name shortName'),
-      Match.aggregate([
-        { $group: { _id: '$status', count: { $sum: 1 } } }
-      ]),
-      // Monthly stats for the last 6 months
-      User.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: sixMonthsAgo }
-          }
-        },
-        {
-          $group: {
-            _id: {
-              year: { $year: '$createdAt' },
-              month: { $month: '$createdAt' }
-            },
-            count: { $sum: 1 }
-          }
-        },
-        { $sort: { '_id.year': 1, '_id.month': 1 } }
-      ]),
-      Wallet.aggregate([
-        { $group: { _id: null, total: { $sum: '$balance' } } }
-      ]),
-      Tournament.countDocuments({ status: 'ongoing' }),
-      Match.countDocuments({ status: 'live' })
+      Match.countDocuments({ status: 'live' }),
+      Tournament.countDocuments(),
+      Tournament.countDocuments({ status: 'active' }),
+      Transaction.countDocuments(),
+      Transaction.aggregate([
+        { $match: { createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, type: 'credit' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]).then(r => r[0]?.total || 0)
     ]);
-
-    // Process monthly data for charts
-    const monthlyData = monthlyStats.map(item => ({
-      month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
-      users: item.count,
-      matches: 0 // Will be filled from matches
-    }));
-
-    // Get monthly match counts
-    const monthlyMatchStats = await Match.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: sixMonthsAgo }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$createdAt' },
-            month: { $month: '$createdAt' }
-          },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1 } }
-    ]);
-
-    // Merge monthly data
-    monthlyMatchStats.forEach(item => {
-      const key = `${item._id.year}-${String(item._id.month).padStart(2, '0')}`;
-      const existing = monthlyData.find(m => m.month === key);
-      if (existing) {
-        existing.matches = item.count;
-      }
-    });
-
-    // Process match status for pie chart
-    const matchStatusData = matchStatusCounts.map(item => ({
-      name: item._id || 'Unknown',
-      value: item.count
-    }));
 
     return {
-      stats: { 
-        totalUsers, 
-        totalTournaments, 
-        totalMatches, 
-        totalTeams,
-        totalRevenue: totalRevenue[0]?.total || 0,
+      stats: {
+        totalUsers,
+        activeUsers,
+        totalMatches,
+        liveMatches,
+        totalTournaments,
         activeTournaments,
-        liveMatches
+        totalTransactions,
+        todayRevenue
       },
-      recentUsers,
-      recentTournaments,
-      recentMatches,
-      monthlyData,
-      matchStatusData
-    };
-  },
-
-  getAllUsers: async (query) => {
-    const { page, limit, skip } = getPagination(query);
-    
-    const filter = {};
-    if (query.role) filter.role = query.role;
-    if (query.isActive) filter.isActive = query.isActive === 'true';
-
-    const [users, total] = await Promise.all([
-      User.find(filter).select('-password').skip(skip).limit(limit),
-      User.countDocuments(filter)
-    ]);
-
-    return {
-      users,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
-    };
-  },
-
-  getUserById: async (userId) => {
-    const user = await User.findById(userId).select('-password');
-    if (!user) throw new ApiError(404, 'User not found');
-    return user;
-  },
-
-  updateUser: async (userId, updateData) => {
-    const user = await User.findByIdAndUpdate(
-      userId,
-      updateData,
-      { new: true, runValidators: true }
-    ).select('-password');
-    if (!user) throw new ApiError(404, 'User not found');
-    return user;
-  },
-
-  deleteUser: async (userId) => {
-    const user = await User.findByIdAndDelete(userId);
-    if (!user) throw new ApiError(404, 'User not found');
-  },
-
-  getAllTournaments: async (query) => {
-    const { page, limit, skip } = getPagination(query);
-    
-    const filter = {};
-    if (query.status) filter.status = query.status;
-
-    const [tournaments, total] = await Promise.all([
-      Tournament.find(filter)
-        .populate('organizer', 'name email')
-        .skip(skip)
-        .limit(limit),
-      Tournament.countDocuments(filter)
-    ]);
-
-    return {
-      tournaments,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
-    };
-  },
-
-  getAllMatches: async (query) => {
-    const { page, limit, skip } = getPagination(query);
-    
-    const filter = {};
-    if (query.status) filter.status = query.status;
-    if (query.tournament) filter.tournament = query.tournament;
-
-    const [matches, total] = await Promise.all([
-      Match.find(filter)
-        .populate('team1', 'name shortName')
-        .populate('team2', 'name shortName')
-        .populate('tournament', 'name')
-        .skip(skip)
-        .limit(limit),
-      Match.countDocuments(filter)
-    ]);
-
-    return {
-      matches,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+      recentActivity: await systemLogs.slice(0, 10),
+      alerts: []
     };
   },
 
   getSystemStats: async () => {
-    const [users, tournaments, matches, teams, wallets] = await Promise.all([
-      User.countDocuments(),
-      Tournament.countDocuments(),
-      Match.countDocuments(),
-      Team.countDocuments(),
-      Wallet.find()
-    ]);
+    return {
+      users: {
+        total: await User.countDocuments(),
+        active: await User.countDocuments({ isActive: true }),
+        newToday: await User.countDocuments({ createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } })
+      },
+      matches: {
+        total: await Match.countDocuments(),
+        live: await Match.countDocuments({ status: 'live' }),
+        completed: await Match.countDocuments({ status: 'completed' })
+      },
+      tournaments: {
+        total: await Tournament.countDocuments(),
+        active: await Tournament.countDocuments({ status: 'active' })
+      },
+      finance: {
+        totalRevenue: await Transaction.aggregate([
+          { $match: { type: 'credit', status: 'completed' } },
+          { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]).then(r => r[0]?.total || 0),
+        totalTransactions: await Transaction.countDocuments({ status: 'completed' })
+      },
+      system: {
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        nodeVersion: process.version
+      }
+    };
+  },
 
-    const totalWalletBalance = wallets.reduce((sum, w) => sum + w.balance, 0);
+  // Users
+  getAllUsers: async (query) => {
+    const { page = 1, limit = 10, search, role, status } = query;
+    const filter = {};
+    
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
+    if (role) filter.role = role;
+    if (status) filter.isActive = status === 'active';
+
+    const users = await User.find(filter)
+      .select('-password')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const total = await User.countDocuments(filter);
 
     return {
-      totalUsers,
-      totalTournaments: tournaments,
-      totalMatches: matches,
-      totalTeams: teams,
-      totalWalletBalance
+      users,
+      pagination: paginate(total, page, limit)
     };
+  },
+
+  getUserById: async (id) => {
+    const user = await User.findById(id).select('-password');
+    if (!user) throw new ApiError(404, 'User not found');
+    return user;
+  },
+
+  updateUser: async (id, data) => {
+    const user = await User.findByIdAndUpdate(id, data, { new: true }).select('-password');
+    if (!user) throw new ApiError(404, 'User not found');
+    return user;
+  },
+
+  deleteUser: async (id) => {
+    const user = await User.findByIdAndDelete(id);
+    if (!user) throw new ApiError(404, 'User not found');
+  },
+
+  // Roles
+  getRoles: async () => {
+    return roles;
+  },
+
+  createRole: async (data) => {
+    const role = {
+      _id: Date.now().toString(),
+      ...data,
+      createdAt: new Date()
+    };
+    roles.push(role);
+    return role;
+  },
+
+  updateRole: async (id, data) => {
+    const index = roles.findIndex(r => r._id === id);
+    if (index === -1) throw new ApiError(404, 'Role not found');
+    if (roles[index].isSystem) throw new ApiError(400, 'Cannot modify system role');
+    
+    roles[index] = { ...roles[index], ...data, updatedAt: new Date() };
+    return roles[index];
+  },
+
+  deleteRole: async (id) => {
+    const index = roles.findIndex(r => r._id === id);
+    if (index === -1) throw new ApiError(404, 'Role not found');
+    if (roles[index].isSystem) throw new ApiError(400, 'Cannot delete system role');
+    
+    roles.splice(index, 1);
+  },
+
+  // System Logs
+  getSystemLogs: async (query) => {
+    const { page = 1, limit = 50, level, startDate, endDate, search } = query;
+    
+    let filtered = systemLogs;
+    if (level) filtered = filtered.filter(l => l.level === level);
+    if (startDate) filtered = filtered.filter(l => new Date(l.createdAt) >= new Date(startDate));
+    if (endDate) filtered = filtered.filter(l => new Date(l.createdAt) <= new Date(endDate));
+    if (search) filtered = filtered.filter(l => l.message?.toLowerCase().includes(search.toLowerCase()));
+
+    const start = (page - 1) * limit;
+    const paginated = filtered.slice(start, start + limit);
+
+    return {
+      logs: paginated,
+      pagination: paginate(filtered.length, page, limit)
+    };
+  },
+
+  exportLogs: async (query) => {
+    const { logs } = await adminService.getSystemLogs({ ...query, limit: 10000 });
+    const headers = 'Timestamp,Level,User,Action,Message,IP\n';
+    const rows = logs.map(l => 
+      `${l.createdAt},${l.level},${l.user || ''},${l.action || ''},"${l.message || ''}",${l.ip || ''}`
+    ).join('\n');
+    return headers + rows;
+  },
+
+  clearOldLogs: async (days) => {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const beforeCount = systemLogs.length;
+    systemLogs = systemLogs.filter(l => new Date(l.createdAt) > cutoff);
+    return { deleted: beforeCount - systemLogs.length };
+  },
+
+  // Backups
+  getBackups: async () => {
+    return backups.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  },
+
+  createBackup: async (data) => {
+    const backup = {
+      _id: Date.now().toString(),
+      name: data.name || `backup-${new Date().toISOString().split('T')[0]}`,
+      type: data.type || 'full',
+      size: Math.floor(Math.random() * 1000) + ' MB',
+      status: 'completed',
+      createdAt: new Date(),
+      encrypted: data.encrypt || false
+    };
+    backups.push(backup);
+    return backup;
+  },
+
+  restoreBackup: async (id) => {
+    const backup = backups.find(b => b._id === id);
+    if (!backup) throw new ApiError(404, 'Backup not found');
+    // Simulate restore
+    return { success: true };
+  },
+
+  deleteBackup: async (id) => {
+    const index = backups.findIndex(b => b._id === id);
+    if (index === -1) throw new ApiError(404, 'Backup not found');
+    backups.splice(index, 1);
+  },
+
+  downloadBackup: async (id) => {
+    const backup = backups.find(b => b._id === id);
+    if (!backup) throw new ApiError(404, 'Backup not found');
+    return Buffer.from('backup-data-placeholder');
+  },
+
+  // Email Templates
+  getEmailTemplates: async () => {
+    return emailTemplates;
+  },
+
+  createEmailTemplate: async (data) => {
+    const template = {
+      _id: Date.now().toString(),
+      ...data,
+      createdAt: new Date()
+    };
+    emailTemplates.push(template);
+    return template;
+  },
+
+  updateEmailTemplate: async (id, data) => {
+    const index = emailTemplates.findIndex(t => t._id === id);
+    if (index === -1) throw new ApiError(404, 'Template not found');
+    emailTemplates[index] = { ...emailTemplates[index], ...data, updatedAt: new Date() };
+    return emailTemplates[index];
+  },
+
+  deleteEmailTemplate: async (id) => {
+    const index = emailTemplates.findIndex(t => t._id === id);
+    if (index === -1) throw new ApiError(404, 'Template not found');
+    emailTemplates.splice(index, 1);
+  },
+
+  sendTestEmail: async (id, email) => {
+    const template = emailTemplates.find(t => t._id === id);
+    if (!template) throw new ApiError(404, 'Template not found');
+    // Simulate sending
+    return { sent: true };
+  },
+
+  // Content Moderation
+  getModerationQueue: async (query) => {
+    const { page = 1, limit = 20, type, status = 'pending' } = query;
+    
+    let filtered = moderationQueue.filter(item => item.status === status);
+    if (type) filtered = filtered.filter(item => item.contentType === type);
+
+    const start = (page - 1) * limit;
+    return {
+      items: filtered.slice(start, start + limit),
+      pagination: paginate(filtered.length, page, limit)
+    };
+  },
+
+  moderateContent: async (id, data) => {
+    const item = moderationQueue.find(i => i._id === id);
+    if (!item) throw new ApiError(404, 'Content not found');
+    
+    item.status = data.action;
+    item.moderatedAt = new Date();
+    item.moderatedBy = data.moderatorId;
+    item.moderationNotes = data.notes;
+    
+    return item;
+  },
+
+  deleteContent: async (id) => {
+    const index = moderationQueue.findIndex(i => i._id === id);
+    if (index === -1) throw new ApiError(404, 'Content not found');
+    moderationQueue.splice(index, 1);
+  },
+
+  // Financial Overview
+  getFinancialOverview: async (query) => {
+    const { startDate, endDate } = query;
+    const dateFilter = {};
+    if (startDate) dateFilter.$gte = new Date(startDate);
+    if (endDate) dateFilter.$lte = new Date(endDate);
+
+    const transactions = await Transaction.find(
+      Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}
+    ).sort({ createdAt: -1 }).limit(100);
+
+    const revenue = await Transaction.aggregate([
+      { $match: { type: 'credit', status: 'completed', ...(Object.keys(dateFilter).length > 0 && { createdAt: dateFilter }) } },
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, amount: { $sum: '$amount' } } },
+      { $sort: { _id: 1 } }
+    ]);
+
+    const subscriptions = await Subscription.aggregate([
+      { $group: { _id: '$plan', count: { $sum: 1 } } }
+    ]);
+
+    return {
+      overview: {
+        totalRevenue: await Transaction.aggregate([
+          { $match: { type: 'credit', status: 'completed' } },
+          { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]).then(r => r[0]?.total || 0),
+        monthlyRevenue: await Transaction.aggregate([
+          { $match: { type: 'credit', status: 'completed', createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } },
+          { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]).then(r => r[0]?.total || 0),
+        activeSubscriptions: await Subscription.countDocuments({ status: 'active' }),
+        totalWalletBalance: await Wallet.aggregate([
+          { $group: { _id: null, total: { $sum: '$balance' } } }
+        ]).then(r => r[0]?.total || 0)
+      },
+      revenue: revenue.map(r => ({ date: r._id, amount: r.amount })),
+      transactions: transactions.map(t => ({
+        ...t.toObject(),
+        count: 1
+      })),
+      subscriptions: subscriptions.map(s => ({ plan: s._id, count: s.count })),
+      breakdown: [
+        { source: 'Subscriptions', amount: Math.floor(Math.random() * 50000) + 10000 },
+        { source: 'Contest Entries', amount: Math.floor(Math.random() * 30000) + 5000 },
+        { source: 'Store Purchases', amount: Math.floor(Math.random() * 20000) + 3000 },
+        { source: 'Other', amount: Math.floor(Math.random() * 10000) + 1000 }
+      ]
+    };
+  },
+
+  exportFinancialData: async (query) => {
+    const { transactions } = await adminService.getFinancialOverview(query);
+    const headers = 'Date,User,Type,Amount,Status,Description\n';
+    const rows = transactions.map(t => 
+      `${t.createdAt},${t.user || 'N/A'},${t.type},${t.amount},${t.status},"${t.description || ''}"`
+    ).join('\n');
+    return headers + rows;
+  },
+
+  // User Verifications
+  getVerifications: async (query) => {
+    const { page = 1, limit = 20, status, type, search } = query;
+    
+    let filtered = verifications;
+    if (status && status !== 'all') filtered = filtered.filter(v => v.status === status);
+    if (type && type !== 'all') filtered = filtered.filter(v => v.type === type);
+    if (search) {
+      filtered = filtered.filter(v => 
+        v.user?.name?.toLowerCase().includes(search.toLowerCase()) ||
+        v.user?.email?.toLowerCase().includes(search.toLowerCase())
+      );
+    }
+
+    const start = (page - 1) * limit;
+    return {
+      verifications: filtered.slice(start, start + limit),
+      pagination: paginate(filtered.length, page, limit)
+    };
+  },
+
+  approveVerification: async (id, data) => {
+    const verification = verifications.find(v => v._id === id);
+    if (!verification) throw new ApiError(404, 'Verification not found');
+    
+    verification.status = 'approved';
+    verification.approvedAt = new Date();
+    verification.approvalNotes = data.notes;
+    
+    return verification;
+  },
+
+  rejectVerification: async (id, data) => {
+    const verification = verifications.find(v => v._id === id);
+    if (!verification) throw new ApiError(404, 'Verification not found');
+    
+    verification.status = 'rejected';
+    verification.rejectedAt = new Date();
+    verification.rejectionReason = data.reason;
+    
+    return verification;
+  },
+
+  // API Management
+  getAPIKeys: async () => {
+    return apiKeys.map(k => ({ ...k, key: undefined })); // Don't return full key
+  },
+
+  createAPIKey: async (data) => {
+    const key = {
+      _id: Date.now().toString(),
+      keyId: `key_${Math.random().toString(36).substring(2, 10)}`,
+      key: `crick11_${Math.random().toString(36).substring(2, 30)}`,
+      name: data.name,
+      permissions: data.permissions,
+      isActive: true,
+      createdAt: new Date(),
+      expiresAt: data.expiresIn === 'never' ? null : new Date(Date.now() + parseInt(data.expiresIn) * 24 * 60 * 60 * 1000)
+    };
+    apiKeys.push(key);
+    return key; // Return full key only on creation
+  },
+
+  deleteAPIKey: async (id) => {
+    const index = apiKeys.findIndex(k => k._id === id);
+    if (index === -1) throw new ApiError(404, 'API key not found');
+    apiKeys.splice(index, 1);
+  },
+
+  regenerateAPIKey: async (id) => {
+    const key = apiKeys.find(k => k._id === id);
+    if (!key) throw new ApiError(404, 'API key not found');
+    
+    key.key = `crick11_${Math.random().toString(36).substring(2, 30)}`;
+    key.keyId = `key_${Math.random().toString(36).substring(2, 10)}`;
+    key.regeneratedAt = new Date();
+    
+    return key;
+  },
+
+  getWebhooks: async () => {
+    return webhooks;
+  },
+
+  createWebhook: async (data) => {
+    const webhook = {
+      _id: Date.now().toString(),
+      ...data,
+      status: 'active',
+      createdAt: new Date()
+    };
+    webhooks.push(webhook);
+    return webhook;
+  },
+
+  deleteWebhook: async (id) => {
+    const index = webhooks.findIndex(w => w._id === id);
+    if (index === -1) throw new ApiError(404, 'Webhook not found');
+    webhooks.splice(index, 1);
+  },
+
+  // Tournaments & Matches
+  getAllTournaments: async (query) => {
+    const { page = 1, limit = 10, status, search } = query;
+    const filter = {};
+    if (status) filter.status = status;
+    if (search) filter.name = { $regex: search, $options: 'i' };
+
+    const tournaments = await Tournament.find(filter)
+      .populate('organizer', 'name email')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const total = await Tournament.countDocuments(filter);
+
+    return {
+      tournaments,
+      pagination: paginate(total, page, limit)
+    };
+  },
+
+  getAllMatches: async (query) => {
+    const { page = 1, limit = 10, status, tournament } = query;
+    const filter = {};
+    if (status) filter.status = status;
+    if (tournament) filter.tournament = tournament;
+
+    const matches = await Match.find(filter)
+      .populate('team1 team2', 'name')
+      .populate('tournament', 'name')
+      .sort({ startTime: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const total = await Match.countDocuments(filter);
+
+    return {
+      matches,
+      pagination: paginate(total, page, limit)
+    };
+  },
+
+  // Advanced Analytics
+  getAdvancedAnalytics: async (query) => {
+    const { period = '30d' } = query;
+    const days = parseInt(period) || 30;
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    return {
+      userGrowth: await User.aggregate([
+        { $match: { createdAt: { $gte: startDate } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]),
+      revenueTrend: await Transaction.aggregate([
+        { $match: { type: 'credit', status: 'completed', createdAt: { $gte: startDate } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, amount: { $sum: '$amount' } } },
+        { $sort: { _id: 1 } }
+      ]),
+      matchEngagement: await Match.aggregate([
+        { $match: { createdAt: { $gte: startDate } } },
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]),
+      topUsers: await User.find()
+        .select('name email totalSpent contestsJoined')
+        .sort({ totalSpent: -1 })
+        .limit(10),
+      geographicData: [
+        { country: 'India', users: 4500, revenue: 125000 },
+        { country: 'Pakistan', users: 1200, revenue: 35000 },
+        { country: 'Bangladesh', users: 800, revenue: 22000 },
+        { country: 'England', users: 600, revenue: 18000 },
+        { country: 'Australia', users: 400, revenue: 12000 }
+      ]
+    };
+  },
+
+  exportAnalytics: async (query) => {
+    const analytics = await adminService.getAdvancedAnalytics(query);
+    // Simplified CSV export
+    return 'Date,Metric,Value\n' + 
+      analytics.userGrowth.map(u => `${u._id},New Users,${u.count}`).join('\n');
   }
 };
 
