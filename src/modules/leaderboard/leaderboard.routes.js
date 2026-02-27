@@ -4,6 +4,9 @@ import { authenticate } from '../../middleware/auth.middleware.js';
 
 const router = express.Router();
 
+// Default leaderboard route
+router.get('/', leaderboardController.getLeaderboard);
+
 // Player leaderboards
 router.get('/players', leaderboardController.getPlayerLeaderboard);
 router.get('/batsmen', leaderboardController.getBatsmanLeaderboard);

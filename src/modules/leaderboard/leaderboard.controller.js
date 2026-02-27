@@ -3,6 +3,12 @@ import ApiResponse from '../../utils/ApiResponse.js';
 import catchAsync from '../../utils/catchAsync.js';
 
 export const leaderboardController = {
+  // Get default leaderboard (all players)
+  getLeaderboard: catchAsync(async (req, res) => {
+    const { players, pagination } = await leaderboardService.getPlayerLeaderboard(req.query);
+    res.json(new ApiResponse(200, 'Leaderboard retrieved', players, pagination));
+  }),
+
   // Get player leaderboard
   getPlayerLeaderboard: catchAsync(async (req, res) => {
     const { players, pagination } = await leaderboardService.getPlayerLeaderboard(req.query);
