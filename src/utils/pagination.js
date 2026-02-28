@@ -1,3 +1,16 @@
+// Paginate function for admin service - takes total count, page, limit
+export const paginate = (total, page, limit) => {
+  const totalPages = Math.ceil(total / limit);
+  return {
+    page,
+    limit,
+    totalResults: total,
+    totalPages,
+    hasNextPage: page < totalPages,
+    hasPrevPage: page > 1
+  };
+};
+
 export const pagination = (model, query) => {
   const page = parseInt(query.page, 10) || 1;
   const limit = parseInt(query.limit, 10) || 10;
@@ -54,4 +67,4 @@ export const getPagination = (query) => {
   };
 };
 
-export default pagination;
+export default paginate;
