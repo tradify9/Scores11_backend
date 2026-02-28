@@ -4,21 +4,46 @@ import { hashPassword, comparePassword } from '../../utils/passwordHasher.js';
 import { generateTokenPair, verifyRefreshToken } from '../../utils/generateToken.js';
 import ApiError from '../../utils/ApiError.js';
 
+// Generate 6-digit OTP
+const generateOTP = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+// OTP expiry time (10 minutes)
+const OTP_EXPIRY = 10 * 60 * 1000;
+
 export const authService = {
+  // Register new user
   register: async (userData) => {
     const { email, password, name, phone, role } = userData;
 
-    const existingUser = await User.findOne({ email });
+    // Check if user exists with email or phone
+    const existingUser = await User.findOne({
+      $or: [
+        { email: email?.toLowerCase() },
+        { phone }
+      ]
+    });
+    
     if (existingUser) {
-      throw new ApiError(400, 'User already exists with this email');
+      if (existingUser.email === email?.toLowerCase()) {
+        throw new ApiError(400, 'User already exists with this email');
+      }
+      if (existingUser.phone === phone) {
+        throw new ApiError(400, 'User already exists with this phone number');
+      }
     }
 
     const hashedPassword = await hashPassword(password);
     
+    // Generate username from name
+    const username = name.toLowerCase().replace(/\s+/g, '_') + '_' + Math.random().toString(36).substring(2, 6);
+    
     const user = await User.create({
-      email,
+      email: email?.toLowerCase(),
       password: hashedPassword,
-      name,
+      fullName: name,
+      username,
       phone,
       role: role || 'user'
     });
@@ -41,21 +66,29 @@ export const authService = {
     };
   },
 
+  // Login with email or phone
   login: async (loginData) => {
-    const { email, password } = loginData;
+    const { identifier, password } = loginData;
 
-    const user = await User.findOne({ email }).select('+password');
+    // Find user by email or phone
+    const user = await User.findOne({
+      $or: [
+        { email: identifier?.toLowerCase() },
+        { phone: identifier }
+      ]
+    }).select('+password');
+
     if (!user) {
-      throw new ApiError(401, 'Invalid email or password');
+      throw new ApiError(401, 'Invalid credentials');
     }
 
     const isPasswordValid = await comparePassword(password, user.password);
     if (!isPasswordValid) {
-      throw new ApiError(401, 'Invalid email or password');
+      throw new ApiError(401, 'Invalid credentials');
     }
 
     if (!user.isActive) {
-      throw new ApiError(403, 'Account is deactivated');
+      throw new ApiError(403, 'Your account has been blocked. Please contact support.');
     }
 
     const { accessToken, refreshToken } = generateTokenPair(user._id, user.role);
@@ -72,6 +105,135 @@ export const authService = {
       accessToken,
       refreshToken
     };
+  },
+
+  // Send OTP for phone verification
+  sendOTP: async (identifier) => {
+    const user = await User.findOne({
+      $or: [
+        { email: identifier?.toLowerCase() },
+        { phone: identifier }
+      ]
+    });
+
+    if (!user) {
+      throw new ApiError(404, 'User not found with this identifier');
+    }
+
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + OTP_EXPIRY);
+
+    await User.findByIdAndUpdate(user._id, {
+      phoneVerificationCode: otp,
+      phoneVerificationExpire: otpExpiry
+    });
+
+    // In production, send OTP via SMS
+    // For development, log the OTP
+    console.log(`OTP for ${identifier}: ${otp}`);
+
+    return {
+      message: 'OTP sent successfully',
+      // Remove this in production
+      otp: otp
+    };
+  },
+
+  // Verify OTP
+  verifyOTP: async (identifier, otp) => {
+    const user = await User.findOne({
+      $or: [
+        { email: identifier?.toLowerCase() },
+        { phone: identifier }
+      ]
+    });
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    if (!user.phoneVerificationCode || user.phoneVerificationCode !== otp) {
+      throw new ApiError(400, 'Invalid OTP');
+    }
+
+    if (user.phoneVerificationExpire && new Date() > user.phoneVerificationExpire) {
+      throw new ApiError(400, 'OTP has expired');
+    }
+
+    // Mark phone as verified
+    await User.findByIdAndUpdate(user._id, {
+      isPhoneVerified: true,
+      phoneVerificationCode: null,
+      phoneVerificationExpire: null
+    });
+
+    return {
+      message: 'Phone verified successfully'
+    };
+  },
+
+  // Forgot password - send OTP
+  forgotPassword: async (identifier) => {
+    const user = await User.findOne({
+      $or: [
+        { email: identifier?.toLowerCase() },
+        { phone: identifier }
+      ]
+    });
+
+    if (!user) {
+      // Don't reveal if user exists
+      return { message: 'If the account exists, an OTP will be sent' };
+    }
+
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + OTP_EXPIRY);
+
+    await User.findByIdAndUpdate(user._id, {
+      phoneVerificationCode: otp,
+      phoneVerificationExpire: otpExpiry
+    });
+
+    // In production, send OTP via SMS
+    console.log(`Reset OTP for ${identifier}: ${otp}`);
+
+    return {
+      message: 'If the account exists, an OTP will be sent',
+      // Remove this in production
+      otp: otp
+    };
+  },
+
+  // Reset password with OTP
+  resetPassword: async (identifier, otp, newPassword) => {
+    const user = await User.findOne({
+      $or: [
+        { email: identifier?.toLowerCase() },
+        { phone: identifier }
+      ]
+    });
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    if (!user.phoneVerificationCode || user.phoneVerificationCode !== otp) {
+      throw new ApiError(400, 'Invalid OTP');
+    }
+
+    if (user.phoneVerificationExpire && new Date() > user.phoneVerificationExpire) {
+      throw new ApiError(400, 'OTP has expired');
+    }
+
+    const hashedPassword = await hashPassword(newPassword);
+
+    await User.findByIdAndUpdate(user._id, {
+      password: hashedPassword,
+      phoneVerificationCode: null,
+      phoneVerificationExpire: null
+    });
+
+    return { message: 'Password reset successfully' };
   },
 
   logout: async (userId) => {

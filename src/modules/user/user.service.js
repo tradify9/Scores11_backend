@@ -526,6 +526,237 @@ export const userService = {
         pages: Math.ceil(total / limit)
       }
     };
+  },
+
+  // Profile Enhancement Features
+  updateLocation: async (userId, locationData) => {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        location: {
+          city: locationData.city,
+          state: locationData.state,
+          country: locationData.country,
+          coordinates: {
+            type: 'Point',
+            coordinates: [locationData.longitude, locationData.latitude]
+          }
+        }
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return user;
+  },
+
+  getQRCode: async (userId) => {
+    const user = await User.findById(userId);
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    // Generate QR code data - this could be a URL to the user's profile
+    const qrCodeData = {
+      userId: user._id,
+      username: user.username,
+      referralCode: user.referralCode,
+      url: `https://scores11.com/profile/${user.username}`
+    };
+
+    return qrCodeData;
+  },
+
+  getProfileViews: async (userId) => {
+    const user = await User.findById(userId).select('profileViews');
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return {
+      totalViews: user.profileViews?.length || 0,
+      views: user.profileViews || []
+    };
+  },
+
+  updatePlayingStyle: async (userId, playingStyleData) => {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        cricketProfile: {
+          ...playingStyleData
+        }
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return user;
+  },
+
+  getEquipment: async (userId) => {
+    const user = await User.findById(userId).select('equipment');
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return user.equipment || [];
+  },
+
+  updateEquipment: async (userId, equipmentData) => {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { equipment: equipmentData },
+      { new: true }
+    );
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return user.equipment;
+  },
+
+  updateNotificationPreferences: async (userId, preferences) => {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { notificationPreferences: preferences },
+      { new: true }
+    );
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return user.notificationPreferences;
+  },
+
+  updateLanguage: async (userId, language) => {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { preferredLanguage: language },
+      { new: true }
+    );
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return user;
+  },
+
+  getPurchaseHistory: async (userId, query) => {
+    const { page, limit, skip } = getPagination(query);
+    
+    // This would need to integrate with subscription module
+    // For now, return empty array as placeholder
+    return {
+      purchases: [],
+      pagination: {
+        page,
+        limit,
+        total: 0,
+        pages: 0
+      }
+    };
+  },
+
+  clearUserData: async (userId) => {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        loginHistory: [],
+        fcmTokens: [],
+        deviceTokens: [],
+        notifications: [],
+        activityLog: []
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return { message: 'User data cleared successfully' };
+  },
+
+  deleteAccount: async (userId) => {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        isActive: false,
+        email: `deleted_${Date.now()}@deleted.com`,
+        phone: null,
+        isDeleted: true,
+        deletedAt: new Date()
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return { message: 'Account deleted successfully' };
+  },
+
+  resendEmailVerification: async (userId) => {
+    const user = await User.findById(userId).select('+emailVerificationToken +emailVerificationExpire');
+    
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    if (user.isEmailVerified) {
+      throw new ApiError(400, 'Email already verified');
+    }
+
+    // Generate new verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    user.emailVerificationToken = verificationToken;
+    user.emailVerificationExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    await user.save();
+
+    // In production, send email here
+    // await sendVerificationEmail(user.email, verificationToken);
+
+    return { message: 'Verification email sent' };
+  },
+
+  getCricketStats: async (userId) => {
+    const user = await User.findById(userId).select('cricketProfile stats');
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    // Return cricket profile stats - this would need to aggregate from matches
+    return {
+      cricketProfile: user.cricketProfile,
+      stats: user.stats || {
+        totalMatches: 0,
+        totalRuns: 0,
+        totalWickets: 0,
+        highestScore: 0,
+        bestBowling: '0/0'
+      }
+    };
+  },
+
+  getAchievements: async (userId) => {
+    const user = await User.findById(userId).select('achievements');
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    // Return achievements - this would be populated from various activities
+    return user.achievements || [];
   }
 };
 

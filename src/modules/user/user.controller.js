@@ -126,6 +126,77 @@ export const userController = {
   deleteUser: catchAsync(async (req, res) => {
     await userService.deleteUser(req.params.id);
     res.json(new ApiResponse(200, 'User deleted successfully'));
+  }),
+
+  // Profile Enhancement Features
+  updateLocation: catchAsync(async (req, res) => {
+    const user = await userService.updateLocation(req.user.userId, req.body);
+    res.json(new ApiResponse(200, 'Location updated successfully', user));
+  }),
+
+  getQRCode: catchAsync(async (req, res) => {
+    const qrCode = await userService.getQRCode(req.user.userId);
+    res.json(new ApiResponse(200, 'QR Code retrieved', qrCode));
+  }),
+
+  getProfileViews: catchAsync(async (req, res) => {
+    const views = await userService.getProfileViews(req.user.userId);
+    res.json(new ApiResponse(200, 'Profile views retrieved', views));
+  }),
+
+  updatePlayingStyle: catchAsync(async (req, res) => {
+    const user = await userService.updatePlayingStyle(req.user.userId, req.body);
+    res.json(new ApiResponse(200, 'Playing style updated successfully', user));
+  }),
+
+  getEquipment: catchAsync(async (req, res) => {
+    const equipment = await userService.getEquipment(req.user.userId);
+    res.json(new ApiResponse(200, 'Equipment retrieved', equipment));
+  }),
+
+  updateEquipment: catchAsync(async (req, res) => {
+    const equipment = await userService.updateEquipment(req.user.userId, req.body);
+    res.json(new ApiResponse(200, 'Equipment updated successfully', equipment));
+  }),
+
+  updateNotificationPreferences: catchAsync(async (req, res) => {
+    const user = await userService.updateNotificationPreferences(req.user.userId, req.body);
+    res.json(new ApiResponse(200, 'Notification preferences updated', user));
+  }),
+
+  updateLanguage: catchAsync(async (req, res) => {
+    const user = await userService.updateLanguage(req.user.userId, req.body.language);
+    res.json(new ApiResponse(200, 'Language updated successfully', user));
+  }),
+
+  getPurchaseHistory: catchAsync(async (req, res) => {
+    const purchases = await userService.getPurchaseHistory(req.user.userId, req.query);
+    res.json(new ApiResponse(200, 'Purchase history retrieved', purchases));
+  }),
+
+  clearUserData: catchAsync(async (req, res) => {
+    await userService.clearUserData(req.user.userId);
+    res.json(new ApiResponse(200, 'User data cleared successfully'));
+  }),
+
+  deleteAccount: catchAsync(async (req, res) => {
+    await userService.deleteAccount(req.user.userId);
+    res.json(new ApiResponse(200, 'Account deleted successfully'));
+  }),
+
+  resendEmailVerification: catchAsync(async (req, res) => {
+    await userService.resendEmailVerification(req.user.userId);
+    res.json(new ApiResponse(200, 'Verification email sent'));
+  }),
+
+  getCricketStats: catchAsync(async (req, res) => {
+    const stats = await userService.getCricketStats(req.user.userId);
+    res.json(new ApiResponse(200, 'Cricket stats retrieved', stats));
+  }),
+
+  getAchievements: catchAsync(async (req, res) => {
+    const achievements = await userService.getAchievements(req.user.userId);
+    res.json(new ApiResponse(200, 'Achievements retrieved', achievements));
   })
 };
 

@@ -24,6 +24,9 @@ import associationRoutes from './modules/association/association.routes.js';
 import awardRoutes from './modules/award/award.routes.js';
 import subscriptionRoutes from './modules/subscription/subscription.routes.js';
 import settingsRoutes from './modules/settings/settings.routes.js';
+import uploadRoutes from './modules/upload/upload.routes.js';
+import discoveryRoutes from './modules/discovery/discovery.routes.js';
+import liveStreamRoutes from './modules/liveStream/liveStream.routes.js';
 
 const router = express.Router();
 
@@ -52,10 +55,13 @@ router.use('/associations', associationRoutes);
 router.use('/awards', awardRoutes);
 router.use('/subscriptions', subscriptionRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/upload', uploadRoutes);
+router.use('/discovery', discoveryRoutes);
+router.use('/live-streams', liveStreamRoutes);
 
 router.get('/', (req, res) => {
   res.json({
-    message: 'Crick11 API',
+    message: 'Scores11 API',
     version: '1.0.0',
     documentation: '/api-docs'
   });

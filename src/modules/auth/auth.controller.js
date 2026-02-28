@@ -67,6 +67,34 @@ export const authController = {
   changePassword: catchAsync(async (req, res) => {
     await authService.changePassword(req.user.userId, req.body);
     res.json(new ApiResponse(200, 'Password changed successfully'));
+  }),
+
+  // Send OTP to phone/email
+  sendOTP: catchAsync(async (req, res) => {
+    const { identifier } = req.body;
+    const result = await authService.sendOTP(identifier);
+    res.json(new ApiResponse(200, result.message, { otp: result.otp }));
+  }),
+
+  // Verify OTP
+  verifyOTP: catchAsync(async (req, res) => {
+    const { identifier, otp } = req.body;
+    const result = await authService.verifyOTP(identifier, otp);
+    res.json(new ApiResponse(200, result.message));
+  }),
+
+  // Forgot password - send OTP
+  forgotPassword: catchAsync(async (req, res) => {
+    const { identifier } = req.body;
+    const result = await authService.forgotPassword(identifier);
+    res.json(new ApiResponse(200, result.message, { otp: result.otp }));
+  }),
+
+  // Reset password with OTP
+  resetPassword: catchAsync(async (req, res) => {
+    const { identifier, otp, newPassword } = req.body;
+    const result = await authService.resetPassword(identifier, otp, newPassword);
+    res.json(new ApiResponse(200, result.message));
   })
 };
 

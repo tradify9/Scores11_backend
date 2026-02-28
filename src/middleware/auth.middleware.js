@@ -3,7 +3,8 @@ import config from '../config/env.js';
 import User from '../modules/user/user.model.js';
 import ApiError from '../utils/ApiError.js';
 
-export const authenticate = async (req, res, next) => {
+// Named export for auth (used in routes)
+export const auth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -36,4 +37,7 @@ export const authenticate = async (req, res, next) => {
   }
 };
 
-export default authenticate;
+// Also keep authenticate for backward compatibility
+export const authenticate = auth;
+
+export default auth;

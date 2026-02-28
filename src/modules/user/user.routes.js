@@ -47,6 +47,22 @@ router.delete('/fcm-token', userController.removeFCMToken);
 // Verification
 router.post('/verify-phone', userController.verifyPhone);
 
+// Profile enhancement features
+router.put('/location', userController.updateLocation);
+router.get('/qr-code', userController.getQRCode);
+router.get('/profile-views', userController.getProfileViews);
+router.put('/playing-style', userController.updatePlayingStyle);
+router.get('/equipment', userController.getEquipment);
+router.put('/equipment', userController.updateEquipment);
+router.put('/notifications/preferences', userController.updateNotificationPreferences);
+router.put('/language', userController.updateLanguage);
+router.get('/purchases', userController.getPurchaseHistory);
+router.delete('/clear-data', userController.clearUserData);
+router.delete('/account', userController.deleteAccount);
+router.post('/verify-email', userController.resendEmailVerification);
+router.get('/cricket-stats', userController.getCricketStats);
+router.get('/achievements', userController.getAchievements);
+
 // Admin routes
 router.get('/', authorize(ROLES.ADMIN), userController.getAllUsers);
 router.get('/:id', authorize(ROLES.ADMIN), userController.getUserById);
