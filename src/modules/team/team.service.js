@@ -100,11 +100,9 @@ export const teamService = {
     const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
     
     const filter = { isActive: true };
+    // Use text search for better performance
     if (query.search) {
-      filter.$or = [
-        { name: { $regex: query.search, $options: 'i' } },
-        { shortName: { $regex: query.search, $options: 'i' } }
-      ];
+      filter.$text = { $search: query.search };
     }
     if (query.city) filter.city = { $regex: query.city, $options: 'i' };
     if (query.state) filter.state = { $regex: query.state, $options: 'i' };

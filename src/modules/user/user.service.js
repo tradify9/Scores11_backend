@@ -317,13 +317,10 @@ export const userService = {
     if (query.isActive !== undefined) filter.isActive = query.isActive === 'true';
     if (query.playerType) filter['cricketProfile.playerType'] = query.playerType;
     
-    // Search functionality
+    // Search functionality - Use text search for better performance
     if (query.search) {
-      filter.$or = [
-        { fullName: { $regex: query.search, $options: 'i' } },
-        { username: { $regex: query.search, $options: 'i' } },
-        { email: { $regex: query.search, $options: 'i' } }
-      ];
+      // Use text search with index, fallback to regex
+      filter.$text = { $search: query.search };
     }
     
     // Location based search

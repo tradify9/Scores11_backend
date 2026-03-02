@@ -338,6 +338,12 @@ userSchema.index({ 'location.coordinates': '2dsphere' });
 userSchema.index({ createdAt: -1 });
 userSchema.index({ experiencePoints: -1 });
 
+// Text index for fast search - weights determine relevance
+userSchema.index(
+  { fullName: 'text', username: 'text', email: 'text', phone: 'text', bio: 'text' },
+  { weights: { fullName: 10, username: 8, email: 5, phone: 3, bio: 1 }, name: 'search_index' }
+);
+
 // Pre-save middleware
 userSchema.pre('save', async function(next) {
   // Update level based on experience points

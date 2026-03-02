@@ -82,6 +82,12 @@ teamSchema.index({ name: 1 });
 teamSchema.index({ owner: 1 });
 teamSchema.index({ isActive: 1 });
 
+// Text index for fast search
+teamSchema.index(
+  { name: 'text', shortName: 'text', city: 'text', state: 'text', description: 'text' },
+  { weights: { name: 10, shortName: 8, city: 5, state: 3, description: 1 }, name: 'team_search_index' }
+);
+
 const Team = mongoose.model('Team', teamSchema);
 
 export default Team;

@@ -1,4 +1,4 @@
-import News from './news.model.js';
+ import News from './news.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
 
