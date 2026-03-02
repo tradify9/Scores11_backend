@@ -27,6 +27,7 @@ import settingsRoutes from './modules/settings/settings.routes.js';
 import uploadRoutes from './modules/upload/upload.routes.js';
 import discoveryRoutes from './modules/discovery/discovery.routes.js';
 import liveStreamRoutes from './modules/liveStream/liveStream.routes.js';
+import searchRoutes from './modules/search/search.routes.js';
 
 const router = express.Router();
 
@@ -58,6 +59,7 @@ router.use('/settings', settingsRoutes);
 router.use('/upload', uploadRoutes);
 router.use('/discovery', discoveryRoutes);
 router.use('/live-streams', liveStreamRoutes);
+router.use('/search', searchRoutes);
 
 router.get('/', (req, res) => {
   res.json({
