@@ -79,13 +79,21 @@ export const authService = {
 
   // Login with email or phone
   login: async (loginData) => {
-    const { identifier, password } = loginData;
+    // Accept both 'identifier' and 'email' fields for flexibility
+    const { identifier, email, password } = loginData;
+    
+    // Use identifier if provided, otherwise use email
+    const loginValue = identifier || email;
+
+    if (!loginValue) {
+      throw new ApiError(400, 'Email or identifier is required');
+    }
 
     // Find user by email or phone
     const user = await User.findOne({
       $or: [
-        { email: identifier?.toLowerCase() },
-        { phone: identifier }
+        { email: loginValue?.toLowerCase() },
+        { phone: loginValue }
       ]
     }).select('+password');
 
