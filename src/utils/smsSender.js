@@ -1,4 +1,3 @@
-import axios from 'axios';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -106,12 +105,14 @@ const sendViaFast2SMS = async (phone, message) => {
     numbers: phone,
   };
 
-  const response = await axios.get(url, { params });
+  const queryString = new URLSearchParams(params).toString();
+  const response = await fetch(`${url}?${queryString}`);
+  const data = await response.json();
   
-  if (response.data.return === true) {
-    return { success: true, messageId: response.data.message_id };
+  if (data.return === true) {
+    return { success: true, messageId: data.message_id };
   } else {
-    throw new Error(response.data.message || 'Failed to send SMS');
+    throw new Error(data.message || 'Failed to send SMS');
   }
 };
 
@@ -134,15 +135,19 @@ const sendViaTwilio = async (phone, message) => {
   formData.append('From', phoneNumber);
   formData.append('Body', message);
 
-  const response = await axios.post(twilioUrl, formData, {
+  const response = await fetch(twilioUrl, {
+    method: 'POST',
     headers: {
       'Authorization': `Basic ${auth}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
+    body: formData.toString(),
   });
 
-  if (response.data.sid) {
-    return { success: true, messageId: response.data.sid };
+  const data = await response.json();
+
+  if (data.sid) {
+    return { success: true, messageId: data.sid };
   } else {
     throw new Error('Failed to send SMS via Twilio');
   }
