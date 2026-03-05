@@ -2,6 +2,7 @@ import User from '../user/user.model.js';
 import Wallet from '../wallet/wallet.model.js';
 import { hashPassword, comparePassword } from '../../utils/passwordHasher.js';
 import { generateTokenPair, verifyRefreshToken } from '../../utils/generateToken.js';
+import { sendOTP, sendRegistrationSuccessSMS } from '../../utils/smsSender.js';
 import ApiError from '../../utils/ApiError.js';
 
 // Generate 6-digit OTP
@@ -56,6 +57,16 @@ export const authService = {
     const { accessToken, refreshToken } = generateTokenPair(user._id, user.role);
 
     await User.findByIdAndUpdate(user._id, { refreshToken });
+
+    // Send welcome SMS notification
+    if (phone) {
+      try {
+        await sendRegistrationSuccessSMS(phone, name);
+      } catch (smsError) {
+        // Don't fail registration if SMS fails
+        console.error('Welcome SMS failed:', smsError.message);
+      }
+    }
 
     const userResponse = user.toJSON();
     
