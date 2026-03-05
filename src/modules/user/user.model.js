@@ -328,9 +328,7 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for faster queries
-userSchema.index({ email: 1 });
-userSchema.index({ username: 1 });
+// Indexes for faster queries (unique fields already have indexes from unique: true)
 userSchema.index({ phone: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ level: 1 });

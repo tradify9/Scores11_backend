@@ -76,87 +76,94 @@ const seedAll = async () => {
     const adminUser = await User.create({
       email: 'admin@crick11.com',
       password: hashedPassword,
-      name: 'Admin User',
+      username: 'admin',
+      fullName: 'Admin User',
       phone: '+919999999999',
       role: ROLES.ADMIN,
       isEmailVerified: true,
       isActive: true,
       gender: 'male',
-      address: { city: 'Mumbai', state: 'Maharashtra', country: 'India' }
+      location: { city: 'Mumbai', state: 'Maharashtra', country: 'India' }
     });
 
     const organizerUser = await User.create({
       email: 'organizer@crick11.com',
       password: hashedPassword,
-      name: 'John Organizer',
+      username: 'organizer',
+      fullName: 'John Organizer',
       phone: '+919888888888',
       role: ROLES.ORGANIZER,
       isEmailVerified: true,
       isActive: true,
       gender: 'male',
-      address: { city: 'Delhi', state: 'Delhi', country: 'India' }
+      location: { city: 'Delhi', state: 'Delhi', country: 'India' }
     });
 
     const regularUsers = await User.insertMany([
       {
         email: 'rahul.sharma@crick11.com',
         password: hashedPassword,
-        name: 'Rahul Sharma',
+        username: 'rahul_sharma',
+        fullName: 'Rahul Sharma',
         phone: '+919977766655',
         role: ROLES.USER,
         isEmailVerified: true,
         isActive: true,
         gender: 'male',
         dateOfBirth: new Date('1995-03-15'),
-        address: { city: 'Mumbai', state: 'Maharashtra', country: 'India', pincode: '400001' }
+        location: { city: 'Mumbai', state: 'Maharashtra', country: 'India' }
       },
       {
         email: 'priya.patel@crick11.com',
         password: hashedPassword,
-        name: 'Priya Patel',
+        username: 'priya_patel',
+        fullName: 'Priya Patel',
         phone: '+919966655443',
         role: ROLES.USER,
         isEmailVerified: true,
         isActive: true,
         gender: 'female',
         dateOfBirth: new Date('1998-07-22'),
-        address: { city: 'Ahmedabad', state: 'Gujarat', country: 'India', pincode: '380001' }
+        location: { city: 'Ahmedabad', state: 'Gujarat', country: 'India' }
       },
       {
         email: 'vikram.singh@crick11.com',
         password: hashedPassword,
-        name: 'Vikram Singh',
+        username: 'vikram_singh',
+        fullName: 'Vikram Singh',
         phone: '+919955544332',
         role: ROLES.USER,
         isEmailVerified: true,
         isActive: true,
         gender: 'male',
         dateOfBirth: new Date('1992-11-08'),
-        address: { city: 'Jaipur', state: 'Rajasthan', country: 'India', pincode: '302001' }
+        location: { city: 'Jaipur', state: 'Rajasthan', country: 'India' }
       },
       {
         email: 'sneha.kumar@crick11.com',
         password: hashedPassword,
-        name: 'Sneha Kumar',
+        username: 'sneha_kumar',
+        fullName: 'Sneha Kumar',
         phone: '+919944433221',
         role: ROLES.USER,
         isEmailVerified: true,
         isActive: true,
         gender: 'female',
         dateOfBirth: new Date('1996-05-30'),
-        address: { city: 'Bangalore', state: 'Karnataka', country: 'India', pincode: '560001' }
+        location: { city: 'Bangalore', state: 'Karnataka', country: 'India' }
       },
       {
         email: 'amit.yadav@crick11.com',
         password: hashedPassword,
-        name: 'Amit Yadav',
+        username: 'amit_yadav',
+        fullName: 'Amit Yadav',
         phone: '+919933322110',
         role: ROLES.USER,
         isEmailVerified: true,
         isActive: true,
         gender: 'male',
         dateOfBirth: new Date('1994-09-12'),
-        address: { city: 'Lucknow', state: 'Uttar Pradesh', country: 'India', pincode: '226001' }
+        location: { city: 'Lucknow', state: 'Uttar Pradesh', country: 'India' }
       }
     ]);
 
