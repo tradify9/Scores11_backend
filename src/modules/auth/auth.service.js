@@ -7,7 +7,7 @@ import ApiError from '../../utils/ApiError.js';
 
 // Generate 6-digit OTP
 const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return Math.floor(100000 + Math.random() * 900000).toString(); // Ensure it's always 6 digits
 };
 
 // OTP expiry time (10 minutes)
