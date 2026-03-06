@@ -147,6 +147,16 @@ export const authService = {
       phoneVerificationExpire: otpExpiry
     });
 
+    // Send OTP via SMS
+    if (user.phone) {
+      try {
+        await sendOTP(user.phone, otp);
+      } catch (smsError) {
+        // Don't fail the flow if SMS fails - log for development
+        console.error('OTP SMS failed:', smsError.message);
+      }
+    }
+
     // In production, send OTP via SMS
     // For development, log the OTP
     console.log(`OTP for ${identifier}: ${otp}`);
@@ -212,6 +222,15 @@ export const authService = {
       phoneVerificationCode: otp,
       phoneVerificationExpire: otpExpiry
     });
+
+    // Send OTP via SMS for password reset
+    if (user.phone) {
+      try {
+        await sendOTP(user.phone, otp);
+      } catch (smsError) {
+        console.error('Password reset OTP SMS failed:', smsError.message);
+      }
+    }
 
     // In production, send OTP via SMS
     console.log(`Reset OTP for ${identifier}: ${otp}`);
