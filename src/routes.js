@@ -1,4 +1,5 @@
 import express from 'express';
+
 import authRoutes from './modules/auth/auth.routes.js';
 import userRoutes from './modules/user/user.routes.js';
 import teamRoutes from './modules/team/team.routes.js';
@@ -28,6 +29,8 @@ import uploadRoutes from './modules/upload/upload.routes.js';
 import discoveryRoutes from './modules/discovery/discovery.routes.js';
 import liveStreamRoutes from './modules/liveStream/liveStream.routes.js';
 import searchRoutes from './modules/search/search.routes.js';
+import bannerRoutes from './modules/banner/banner.routes.js';
+import featureToggleRoutes from './modules/featureToggle/featureToggle.routes.js';
 
 const router = express.Router();
 
@@ -60,10 +63,12 @@ router.use('/upload', uploadRoutes);
 router.use('/discovery', discoveryRoutes);
 router.use('/live-streams', liveStreamRoutes);
 router.use('/search', searchRoutes);
+router.use('/banners', bannerRoutes);
+router.use('/feature-toggles', featureToggleRoutes);
 
 router.get('/', (req, res) => {
   res.json({
-    message: 'Scores11 API',
+    message: 'Crick11 API',
     version: '1.0.0',
     documentation: '/api-docs'
   });

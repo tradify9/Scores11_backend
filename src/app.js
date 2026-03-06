@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
-import morgan from 'morgan';
 import mongoose from 'mongoose';
+import morgan from 'morgan';
 import config from './config/env.js';
 import { stream } from './config/logger.js';
 import setupSwagger from './config/swagger.js';
