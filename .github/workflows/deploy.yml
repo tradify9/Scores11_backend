@@ -10,9 +10,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -25,20 +22,19 @@ jobs:
 
             cd /var/www/Cric11_backend
 
-            # Fix git safe directory issue
             git config --global --add safe.directory /var/www/Cric11_backend
 
-            # Trust GitHub host
             ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-            echo "Pulling latest code..."
-            git pull origin main
+            git fetch origin
+            git reset --hard origin/main
 
             echo "Installing dependencies..."
             npm install
 
             echo "Restarting PM2..."
-            pm2 restart cric11-backend || pm2 start server.js --name cric11-backend
+
+            pm2 restart cric11-backend || pm2 start src/server.js --name cric11-backend
 
             pm2 save
 
