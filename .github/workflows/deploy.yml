@@ -1,4 +1,4 @@
-name: Deploy Backend
+name: Deploy Node Backend
 
 on:
   push:
@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -18,7 +21,25 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
           script: |
+            echo "Starting deployment..."
+
             cd /var/www/Cric11_backend
+
+            # Fix git safe directory issue
+            git config --global --add safe.directory /var/www/Cric11_backend
+
+            # Trust GitHub host
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+            echo "Pulling latest code..."
             git pull origin main
+
+            echo "Installing dependencies..."
             npm install
-            pm2 restart all
+
+            echo "Restarting PM2..."
+            pm2 restart cric11-backend || pm2 start server.js --name cric11-backend
+
+            pm2 save
+
+            echo "Deployment finished 🚀"
