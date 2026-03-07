@@ -23,6 +23,12 @@ export const notificationService = {
     };
   },
 
+  getNotificationById: async (notificationId, userId) => {
+    const notification = await Notification.findOne({ _id: notificationId, user: userId });
+    if (!notification) throw new ApiError(404, 'Notification not found');
+    return notification;
+  },
+
   getUnreadCount: async (userId) => {
     return Notification.countDocuments({ user: userId, isRead: false });
   },
@@ -47,6 +53,10 @@ export const notificationService = {
   deleteNotification: async (notificationId, userId) => {
     const notification = await Notification.findOneAndDelete({ _id: notificationId, user: userId });
     if (!notification) throw new ApiError(404, 'Notification not found');
+  },
+
+  deleteAllNotifications: async (userId) => {
+    await Notification.deleteMany({ user: userId });
   },
 
   sendNotification: async (notificationData) => {
@@ -91,7 +101,56 @@ export const notificationService = {
     });
 
     return notifications;
+  },
+
+  subscribeToTopic: async (userId, topic) => {
+    const user = await User.findById(userId);
+    if (!user) throw new ApiError(404, 'User not found');
+    
+    // Add topic to user's subscribed topics
+    if (!user.subscribedTopics) {
+      user.subscribedTopics = [];
+    }
+    if (!user.subscribedTopics.includes(topic)) {
+      user.subscribedTopics.push(topic);
+      await user.save();
+    }
+    return { success: true, topic };
+  },
+
+  unsubscribeFromTopic: async (userId, topic) => {
+    const user = await User.findById(userId);
+    if (!user) throw new ApiError(404, 'User not found');
+    
+    if (user.subscribedTopics) {
+      user.subscribedTopics = user.subscribedTopics.filter(t => t !== topic);
+      await user.save();
+    }
+    return { success: true, topic };
+  },
+
+  getSettings: async (userId) => {
+    const user = await User.findById(userId);
+    if (!user) throw new ApiError(404, 'User not found');
+    
+    return user.notificationSettings || {
+      pushEnabled: true,
+      emailEnabled: true,
+      matchUpdates: true,
+      tournamentUpdates: true,
+      promotional: true
+    };
+  },
+
+  updateSettings: async (userId, settings) => {
+    const user = await User.findById(userId);
+    if (!user) throw new ApiError(404, 'User not found');
+    
+    user.notificationSettings = settings;
+    await user.save();
+    return user.notificationSettings;
   }
 };
 
 export default notificationService;
+

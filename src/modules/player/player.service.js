@@ -41,6 +41,15 @@ export const playerService = {
     return player;
   },
 
+  getPlayerByIdPublic: async (playerId) => {
+    const player = await Player.findById(playerId)
+      .populate('user', 'name')
+      .populate('team', 'name shortName avatar');
+    
+    if (!player) throw new ApiError(404, 'Player not found');
+    return player;
+  },
+
   updatePlayer: async (playerId, updateData) => {
     const allowedUpdates = [
       'playerName', 'jerseyNumber', 'role', 'battingStyle', 
@@ -95,7 +104,64 @@ export const playerService = {
     const players = await Player.find({ team: teamId, isActive: true })
       .populate('user', 'name email');
     return players;
+  },
+
+  getTrendingPlayers: async (limit = 10) => {
+    const players = await Player.find({ isActive: true })
+      .populate('user', 'name')
+      .populate('team', 'name shortName')
+      .sort({ createdAt: -1 })
+      .limit(limit);
+    return players;
+  },
+
+  searchPlayers: async (query, limit = 10) => {
+    const players = await Player.find({
+      isActive: true,
+      playerName: { $regex: query, $options: 'i' }
+    })
+      .populate('user', 'name')
+      .populate('team', 'name shortName')
+      .limit(limit);
+    return players;
+  },
+
+  comparePlayers: async (player1Id, player2Id) => {
+    const [player1, player2] = await Promise.all([
+      Player.findById(player1Id)
+        .populate('user', 'name')
+        .populate('team', 'name shortName'),
+      Player.findById(player2Id)
+        .populate('user', 'name')
+        .populate('team', 'name shortName')
+    ]);
+
+    if (!player1) throw new ApiError(404, 'First player not found');
+    if (!player2) throw new ApiError(404, 'Second player not found');
+
+    return [player1, player2];
+  },
+
+  getPlayerStats: async (playerId) => {
+    const player = await Player.findById(playerId)
+      .populate('user', 'name')
+      .populate('team', 'name shortName');
+    
+    if (!player) throw new ApiError(404, 'Player not found');
+
+    // Return player with basic stats - actual stats would come from performance module
+    return {
+      player,
+      stats: {
+        matches: player.matches || 0,
+        runs: player.totalRuns || 0,
+        wickets: player.totalWickets || 0,
+        average: player.average || 0,
+        strikeRate: player.strikeRate || 0
+      }
+    };
   }
 };
 
 export default playerService;
+
