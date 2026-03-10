@@ -82,6 +82,9 @@ export const authService = {
 
     const userResponse = user.toJSON();
     
+    // Add 'name' field to response for Flutter compatibility
+    userResponse.name = user.fullName;
+    
     return {
       user: userResponse,
       accessToken,
@@ -130,6 +133,9 @@ export const authService = {
     });
 
     const userResponse = user.toJSON();
+    
+    // Add 'name' field to response for Flutter compatibility
+    userResponse.name = user.fullName;
     
     return {
       user: userResponse,

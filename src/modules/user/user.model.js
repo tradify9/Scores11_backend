@@ -344,6 +344,12 @@ userSchema.index(
 
 // Pre-save middleware
 userSchema.pre('save', async function(next) {
+  // Auto-generate username if not provided
+  if (!this.username && this.fullName) {
+    const baseUsername = this.fullName.toLowerCase().replace(/\s+/g, '_');
+    this.username = `${baseUsername}_${Math.random().toString(36).substring(2, 6)}`;
+  }
+  
   // Update level based on experience points
   if (this.isModified('experiencePoints')) {
     this.level = calculateLevel(this.experiencePoints);
