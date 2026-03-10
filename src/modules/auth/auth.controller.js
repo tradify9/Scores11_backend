@@ -15,7 +15,7 @@ export const authController = {
       .status(201)
       .cookie('refreshToken', refreshToken, { ...options, maxAge: 90 * 24 * 60 * 60 * 1000 })
       .cookie('accessToken', accessToken, { ...options, maxAge: 24 * 60 * 60 * 1000 })
-      .json(new ApiResponse(201, 'Registration successful', { user, accessToken }));
+      .json(new ApiResponse(201, 'Registration successful', { user, accessToken, refreshToken }));
   }),
 
   login: catchAsync(async (req, res) => {
@@ -30,7 +30,7 @@ export const authController = {
       .status(200)
       .cookie('refreshToken', refreshToken, { ...options, maxAge: 90 * 24 * 60 * 60 * 1000 })
       .cookie('accessToken', accessToken, { ...options, maxAge: 24 * 60 * 60 * 1000 })
-      .json(new ApiResponse(200, 'Login successful', { user, accessToken }));
+      .json(new ApiResponse(200, 'Login successful', { user, accessToken, refreshToken }));
   }),
 
   logout: catchAsync(async (req, res) => {
@@ -56,7 +56,7 @@ export const authController = {
       .status(200)
       .cookie('refreshToken', refreshToken, { ...options, maxAge: 90 * 24 * 60 * 60 * 1000 })
       .cookie('accessToken', accessToken, { ...options, maxAge: 24 * 60 * 60 * 1000 })
-      .json(new ApiResponse(200, 'Token refreshed', { user, accessToken }));
+      .json(new ApiResponse(200, 'Token refreshed', { user, accessToken, refreshToken }));
   }),
 
   getCurrentUser: catchAsync(async (req, res) => {
