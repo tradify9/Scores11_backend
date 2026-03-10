@@ -49,7 +49,8 @@ const featureToggleSchema = new mongoose.Schema({
   timestamps: true
 });
 
-featureToggleSchema.index({ key: 1 });
+// Note: key has unique: true which auto-creates index
+// Compound index for filtering
 featureToggleSchema.index({ category: 1, isEnabled: 1 });
 
 export default mongoose.model('FeatureToggle', featureToggleSchema);
