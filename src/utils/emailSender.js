@@ -14,7 +14,7 @@ const transporter = nodemailer.createTransport({
 export const sendEmail = async (to, subject, html) => {
   try {
     const info = await transporter.sendMail({
-      from: `"Crick11" <${config.email.smtp.user}>`,
+      from: `"Crick11" <${config.email.from}>`,
       to,
       subject,
       html
@@ -33,6 +33,25 @@ export const sendWelcomeEmail = async (email, name) => {
     <h1>Welcome to Crick11, ${name}!</h1>
     <p>Thank you for joining Crick11 - Your cricket scoring and tournament management platform.</p>
     <p>Get started by exploring tournaments and matches!</p>
+    <p>If you have any questions, feel free to reach out to our support team.</p>
+    <br/>
+    <p>Best regards,</p>
+    <p>The Crick11 Team</p>
+  `;
+  return sendEmail(email, subject, html);
+};
+
+export const sendPasswordResetEmail = async (email, otp) => {
+  const subject = 'Password Reset - Crick11';
+  const html = `
+    <h1>Password Reset Request</h1>
+    <p>You requested to reset your password for your Crick11 account.</p>
+    <p>Your OTP code is: <strong style="font-size: 24px; color: #1E88E5;">${otp}</strong></p>
+    <p>This code will expire in 10 minutes.</p>
+    <p>If you did not request this, please ignore this email and your password will remain unchanged.</p>
+    <br/>
+    <p>Best regards,</p>
+    <p>The Crick11 Team</p>
   `;
   return sendEmail(email, subject, html);
 };
@@ -52,5 +71,6 @@ export const sendMatchReminderEmail = async (email, matchDetails) => {
 export default {
   sendEmail,
   sendWelcomeEmail,
+  sendPasswordResetEmail,
   sendMatchReminderEmail
 };

@@ -3,6 +3,7 @@ import Wallet from '../wallet/wallet.model.js';
 import { hashPassword, comparePassword } from '../../utils/passwordHasher.js';
 import { generateTokenPair, verifyRefreshToken } from '../../utils/generateToken.js';
 import { sendOTP, sendRegistrationSuccessSMS } from '../../utils/smsSender.js';
+import { sendWelcomeEmail, sendPasswordResetEmail } from '../../utils/emailSender.js';
 import ApiError from '../../utils/ApiError.js';
 
 // Generate 6-digit OTP
@@ -65,6 +66,17 @@ export const authService = {
       } catch (smsError) {
         // Don't fail registration if SMS fails
         console.error('Welcome SMS failed:', smsError.message);
+      }
+    }
+
+    // Send welcome email
+    if (email) {
+      try {
+        await sendWelcomeEmail(email, name);
+        console.log(`Welcome email sent to: ${email}`);
+      } catch (emailError) {
+        // Don't fail registration if email fails
+        console.error('Welcome email failed:', emailError.message);
       }
     }
 
@@ -201,7 +213,7 @@ export const authService = {
     };
   },
 
-  // Forgot password - send OTP
+  // Forgot password - send OTP via email
   forgotPassword: async (identifier) => {
     const user = await User.findOne({
       $or: [
@@ -212,7 +224,7 @@ export const authService = {
 
     if (!user) {
       // Don't reveal if user exists
-      return { message: 'If the account exists, an OTP will be sent' };
+      return { message: 'If the account exists, an OTP will be sent to your email' };
     }
 
     const otp = generateOTP();
@@ -223,7 +235,17 @@ export const authService = {
       phoneVerificationExpire: otpExpiry
     });
 
-    // Send OTP via SMS for password reset
+    // Send OTP via email for password reset
+    if (user.email) {
+      try {
+        await sendPasswordResetEmail(user.email, otp);
+        console.log(`Password reset email sent to: ${user.email}`);
+      } catch (emailError) {
+        console.error('Password reset email failed:', emailError.message);
+      }
+    }
+
+    // Also try SMS if phone exists
     if (user.phone) {
       try {
         await sendOTP(user.phone, otp);
@@ -232,11 +254,11 @@ export const authService = {
       }
     }
 
-    // In production, send OTP via SMS
+    // Log OTP for development
     console.log(`Reset OTP for ${identifier}: ${otp}`);
 
     return {
-      message: 'If the account exists, an OTP will be sent',
+      message: 'If the account exists, an OTP will be sent to your email',
       // Remove this in production
       otp: otp
     };
