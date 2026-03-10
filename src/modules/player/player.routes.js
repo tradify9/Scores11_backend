@@ -16,6 +16,7 @@ router.get('/', authenticate, playerController.getAllPlayers);
 router.get('/team/:teamId', authenticate, playerController.getPlayersByTeam);
 router.get('/:id', authenticate, playerController.getPlayerById);
 router.get('/:id/stats', playerController.getPlayerStats);
+router.get('/:id/performance', playerController.getPlayerPerformance);
 router.put('/:id', authenticate, playerController.updatePlayer);
 
 export default router;

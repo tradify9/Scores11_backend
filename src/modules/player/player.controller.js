@@ -1,4 +1,5 @@
 import { playerService } from './player.service.js';
+import { performanceService } from '../performance/performance.service.js';
 import ApiResponse from '../../utils/ApiResponse.js';
 import catchAsync from '../../utils/catchAsync.js';
 
@@ -61,6 +62,17 @@ export const playerController = {
   getPlayerStats: catchAsync(async (req, res) => {
     const stats = await playerService.getPlayerStats(req.params.id);
     res.json(new ApiResponse(200, 'Player stats retrieved', stats));
+  }),
+
+  getPlayerPerformance: catchAsync(async (req, res) => {
+    const player = await playerService.getPlayerById(req.params.id);
+    const performances = await performanceService.getMyPerformances(req.params.id, req.query);
+    const stats = await performanceService.getPerformanceStats(req.params.id);
+    res.json(new ApiResponse(200, 'Player performance retrieved', {
+      player,
+      performances,
+      stats
+    }));
   })
 };
 
