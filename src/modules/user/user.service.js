@@ -385,6 +385,197 @@ export const userService = {
     return user;
   },
 
+  // Admin - Ban User
+  banUser: async (userId, reason) => {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        isBlocked: true,
+        isActive: false,
+        blockedReason: reason,
+        blockedAt: new Date()
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return user;
+  },
+
+  // Admin - Unban User
+  unbanUser: async (userId) => {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        isBlocked: false,
+        isActive: true,
+        blockedReason: null,
+        blockedAt: null
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return user;
+  },
+
+  // Admin - Reset Password
+  adminResetPassword: async (userId, newPassword) => {
+    const user = await User.findById(userId);
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    await user.save();
+
+    return { message: 'Password reset successfully' };
+  },
+
+  // Admin - Verify User Account
+  verifyUserAccount: async (userId) => {
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        isEmailVerified: true,
+        isPhoneVerified: true,
+        verifiedAt: new Date()
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return user;
+  },
+
+  // Admin - Change User Role
+  changeUserRole: async (userId, newRole) => {
+    const validRoles = ['user', 'admin', 'moderator', 'player', 'captain', 'manager', 'scorer', 'umpire'];
+    
+    if (!validRoles.includes(newRole)) {
+      throw new ApiError(400, 'Invalid role');
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { role: newRole },
+      { new: true }
+    );
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    return user;
+  },
+
+  // Admin - Get Login History
+  getLoginHistory: async (userId, query) => {
+    const { page, limit, skip } = getPagination(query);
+    
+    const user = await User.findById(userId).select('loginHistory');
+    
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    const total = user.loginHistory.length;
+    const history = user.loginHistory.slice(skip, skip + limit);
+
+    return {
+      history,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    };
+  },
+
+  // User Reports - Create Report
+  createUserReport: async (reporterId, reportedUserId, reason, description) => {
+    const Report = (await import('../report/report.model.js')).default;
+    
+    const report = await Report.create({
+      reporter: reporterId,
+      reportedUser: reportedUserId,
+      reason,
+      description,
+      status: 'pending'
+    });
+
+    return report;
+  },
+
+  // Admin - Get User Reports
+  getUserReports: async (query) => {
+    const { page, limit, skip } = getPagination(query);
+    const Report = (await import('../report/report.model.js')).default;
+    
+    const filter = {};
+    if (query.status) filter.status = query.status;
+    if (query.type) filter.type = query.type;
+
+    const [reports, total] = await Promise.all([
+      Report.find(filter)
+        .populate('reporter', 'username fullName email')
+        .populate('reportedUser', 'username fullName email')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Report.countDocuments(filter)
+    ]);
+
+    return {
+      reports,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    };
+  },
+
+  // Admin - Action on Report
+  actionOnReport: async (reportId, action, adminNote) => {
+    const Report = (await import('../report/report.model.js')).default;
+    
+    const report = await Report.findByIdAndUpdate(
+      reportId,
+      {
+        status: action === 'ban' ? 'approved' : 'rejected',
+        actionTaken: action,
+        adminNote,
+        resolvedAt: new Date(),
+        resolvedBy: this.currentUserId
+      },
+      { new: true }
+    );
+
+    if (!report) {
+      throw new ApiError(404, 'Report not found');
+    }
+
+    // If action is ban, block the user
+    if (action === 'ban') {
+      await this.banUser(report.reportedUser, adminNote);
+    }
+
+    return report;
+  },
+
   // Statistics
   getUserStats: async (userId) => {
     const user = await User.findById(userId)

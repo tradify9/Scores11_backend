@@ -32,6 +32,10 @@ router.get('/:id/points-table', authenticate, tournamentController.getPointsTabl
 // Match generation
 router.post('/:id/generate/league', authenticate, tournamentController.generateLeagueMatches);
 router.post('/:id/generate/knockout', authenticate, tournamentController.generateKnockoutMatches);
+router.post('/:id/generate-fixtures', authenticate, tournamentController.generateFixtures);
+
+// Get tournament matches/fixtures
+router.get('/:id/matches', authenticate, tournamentController.getTournamentMatches);
 
 // Stats
 router.get('/:id/stats', authenticate, tournamentController.getTournamentStats);

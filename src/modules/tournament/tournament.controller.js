@@ -91,6 +91,20 @@ export const tournamentController = {
   getTournamentStats: catchAsync(async (req, res) => {
     const stats = await tournamentService.getTournamentStats(req.params.id);
     res.json(new ApiResponse(200, 'Tournament stats retrieved', stats));
+  }),
+
+  // Generate fixtures (unified endpoint for league and knockout)
+  generateFixtures: catchAsync(async (req, res) => {
+    const { type } = req.body; // 'league' or 'knockout'
+    const matches = await tournamentService.generateFixtures(req.params.id, type, req.user.userId);
+    res.json(new ApiResponse(200, `${type} fixtures generated successfully`, matches));
+  }),
+
+  // Get tournament matches (fixtures)
+  getTournamentMatches: catchAsync(async (req, res) => {
+    const { matchType, status } = req.query;
+    const matches = await tournamentService.getTournamentMatches(req.params.id, matchType, status);
+    res.json(new ApiResponse(200, 'Matches retrieved', matches));
   })
 };
 

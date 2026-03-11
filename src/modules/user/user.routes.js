@@ -69,4 +69,24 @@ router.get('/:id', authorize(ROLES.ADMIN), userController.getUserById);
 router.put('/:id', authorize(ROLES.ADMIN), userController.updateUser);
 router.delete('/:id', authorize(ROLES.ADMIN), userController.deleteUser);
 
+// Admin User Management - Ban/Unban
+router.post('/:id/ban', authorize(ROLES.ADMIN), userController.banUser);
+router.post('/:id/unban', authorize(ROLES.ADMIN), userController.unbanUser);
+
+// Admin - Reset Password
+router.post('/:id/reset-password', authorize(ROLES.ADMIN), userController.adminResetPassword);
+
+// Admin - Verify Account
+router.post('/:id/verify', authorize(ROLES.ADMIN), userController.verifyUserAccount);
+
+// Admin - Change Role
+router.post('/:id/change-role', authorize(ROLES.ADMIN), userController.changeUserRole);
+
+// Admin - Login History
+router.get('/:id/login-history', authorize(ROLES.ADMIN), userController.getLoginHistory);
+
+// Admin - User Reports
+router.get('/reports', authorize(ROLES.ADMIN), userController.getUserReports);
+router.post('/reports/:reportId/action', authorize(ROLES.ADMIN), userController.actionOnReport);
+
 export default router;

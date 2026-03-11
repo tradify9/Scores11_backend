@@ -348,6 +348,52 @@ export const adminController = {
   getContestStats: catchAsync(async (req, res) => {
     const stats = await adminService.getContestStats();
     res.json(new ApiResponse(200, 'Contest stats retrieved', stats));
+  }),
+
+  // Player Management
+  getAllPlayers: catchAsync(async (req, res) => {
+    const { players, pagination } = await adminService.getAllPlayers(req.query);
+    res.json(new ApiResponse(200, 'Players retrieved', players, pagination));
+  }),
+
+  getPlayerStats: catchAsync(async (req, res) => {
+    const stats = await adminService.getPlayerStats(req.query);
+    res.json(new ApiResponse(200, 'Player stats retrieved', stats));
+  }),
+
+  updatePlayerStats: catchAsync(async (req, res) => {
+    const result = await adminService.updatePlayerStats(req.body);
+    res.json(new ApiResponse(200, 'Player stats updated', result));
+  }),
+
+  editPlayerStats: catchAsync(async (req, res) => {
+    const player = await adminService.editPlayerStats(req.params.id, req.body);
+    res.json(new ApiResponse(200, 'Player stats edited', player));
+  }),
+
+  assignPlayerTeam: catchAsync(async (req, res) => {
+    const player = await adminService.assignPlayerTeam(req.params.id, req.body.teamId);
+    res.json(new ApiResponse(200, 'Player team assigned', player));
+  }),
+
+  verifyPlayer: catchAsync(async (req, res) => {
+    const player = await adminService.verifyPlayer(req.params.id, req.body.verified);
+    res.json(new ApiResponse(200, 'Player verification updated', player));
+  }),
+
+  mergePlayers: catchAsync(async (req, res) => {
+    const result = await adminService.mergePlayers(req.body.sourceId, req.body.targetId);
+    res.json(new ApiResponse(200, 'Players merged successfully', result));
+  }),
+
+  getDuplicatePlayers: catchAsync(async (req, res) => {
+    const duplicates = await adminService.getDuplicatePlayers();
+    res.json(new ApiResponse(200, 'Duplicate players retrieved', duplicates));
+  }),
+
+  deletePlayer: catchAsync(async (req, res) => {
+    await adminService.deletePlayer(req.params.id);
+    res.json(new ApiResponse(200, 'Player deleted'));
   })
 };
 

@@ -23,9 +23,12 @@ router.delete('/:id', authenticate, teamController.deleteTeam);
 
 // Player management
 router.post('/:id/players', authenticate, teamController.addPlayer);
-router.delete('/:id/players', authenticate, teamController.removePlayer);
+router.delete('/:id/players/:playerId', authenticate, teamController.removePlayer);
 router.post('/:id/captain', authenticate, teamController.setCaptain);
 router.post('/:id/vice-captain', authenticate, teamController.setViceCaptain);
+
+// Team matches
+router.get('/:id/matches', teamController.getTeamMatches);
 
 // Team media
 router.post('/:id/logo', authenticate, upload.single('logo'), teamController.uploadLogo);

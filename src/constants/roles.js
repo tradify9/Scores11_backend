@@ -4,7 +4,9 @@ export const ROLES = {
   MODERATOR: 'moderator',
   PLAYER: 'player',
   CAPTAIN: 'captain',
-  MANAGER: 'manager'
+  MANAGER: 'manager',
+  SCORER: 'scorer',
+  UMPIRE: 'umpire'
 };
 export const ROLE_PERMISSIONS = {
   [ROLES.ADMIN]: [

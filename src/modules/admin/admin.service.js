@@ -1048,6 +1048,304 @@ export const adminService = {
         { fee: '₹500+', count: 10000 }
       ]
     };
+  },
+
+  // Player Management
+  getAllPlayers: async (query) => {
+    const { page = 1, limit = 10, search, role, team, isVerified } = query;
+    const filter = {};
+    
+    if (search) {
+      filter.playerName = { $regex: search, $options: 'i' };
+    }
+    if (role) filter.role = role;
+    if (team) filter.team = team;
+    if (isVerified) filter.isVerified = isVerified === 'true';
+
+    const players = await Player.find(filter)
+      .populate('user', 'name email phone')
+      .populate('team', 'name shortName')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const total = await Player.countDocuments(filter);
+
+    return {
+      players,
+      pagination: paginate(total, page, limit)
+    };
+  },
+
+  getPlayerStats: async (query) => {
+    const { playerId, role, team } = query;
+    
+    const filter = {};
+    if (playerId) filter._id = playerId;
+    if (role) filter.role = role;
+    if (team) filter.team = team;
+
+    // Get batting stats aggregation
+    const battingStats = await Player.aggregate([
+      { $match: filter },
+      { $group: {
+        _id: null,
+        totalMatches: { $sum: '$battingStats.matches' },
+        totalRuns: { $sum: '$battingStats.runs' },
+        totalInnings: { $sum: '$battingStats.innings' },
+        totalFifties: { $sum: '$battingStats.fifties' },
+        totalCenturies: { $sum: '$battingStats.centuries' },
+        avgStrikeRate: { $avg: '$battingStats.strikeRate' },
+        avgAverage: { $avg: '$battingStats.average' }
+      }}
+    ]);
+
+    // Get bowling stats aggregation
+    const bowlingStats = await Player.aggregate([
+      { $match: filter },
+      { $group: {
+        _id: null,
+        totalWickets: { $sum: '$bowlingStats.wickets' },
+        totalOvers: { $sum: '$bowlingStats.overs' },
+        totalRunsConceded: { $sum: '$bowlingStats.runsConceded' },
+        total5Wickets: { $sum: '$bowlingStats.fiveWickets' },
+        avgEconomy: { $avg: '$bowlingStats.economy' }
+      }}
+    ]);
+
+    // Get top performers
+    const topBatsmen = await Player.find(filter)
+      .sort({ 'battingStats.runs': -1 })
+      .limit(10)
+      .select('playerName battingStats team')
+      .populate('team', 'name shortName');
+
+    const topBowlers = await Player.find(filter)
+      .sort({ 'bowlingStats.wickets': -1 })
+      .limit(10)
+      .select('playerName bowlingStats team')
+      .populate('team', 'name shortName');
+
+    return {
+      overview: {
+        totalPlayers: await Player.countDocuments(filter),
+        totalBatsmen: await Player.countDocuments({ ...filter, role: 'batsman' }),
+        totalBowlers: await Player.countDocuments({ ...filter, role: 'bowler' }),
+        totalAllRounders: await Player.countDocuments({ ...filter, role: 'all-rounder' }),
+        verifiedPlayers: await Player.countDocuments({ ...filter, isVerified: true })
+      },
+      batting: battingStats[0] || {},
+      bowling: bowlingStats[0] || {},
+      topBatsmen,
+      topBowlers,
+      roleDistribution: await Player.aggregate([
+        { $match: filter },
+        { $group: { _id: '$role', count: { $sum: 1 } } }
+      ])
+    };
+  },
+
+  updatePlayerStats: async (data) => {
+    const { playerIds, stats } = data;
+    
+    const players = await Player.updateMany(
+      { _id: { $in: playerIds } },
+      { $set: stats },
+      { new: true }
+    );
+
+    return { updated: players.modifiedCount };
+  },
+
+  editPlayerStats: async (playerId, data) => {
+    const player = await Player.findById(playerId);
+    if (!player) throw new ApiError(404, 'Player not found');
+
+    const { battingStats, bowlingStats, fieldingStats } = data;
+
+    if (battingStats) {
+      player.battingStats = { ...player.battingStats.toObject(), ...battingStats };
+    }
+    if (bowlingStats) {
+      player.bowlingStats = { ...player.bowlingStats.toObject(), ...bowlingStats };
+    }
+    if (fieldingStats) {
+      player.fieldingStats = { ...player.fieldingStats.toObject(), ...fieldingStats };
+    }
+
+    await player.save();
+    return player;
+  },
+
+  assignPlayerTeam: async (playerId, teamId) => {
+    const player = await Player.findById(playerId);
+    if (!player) throw new ApiError(404, 'Player not found');
+
+    if (teamId) {
+      const team = await Team.findById(teamId);
+      if (!team) throw new ApiError(404, 'Team not found');
+      
+      // Remove from old team
+      if (player.team) {
+        await Team.updateOne(
+          { _id: player.team },
+          { $pull: { players: player._id } }
+        );
+      }
+
+      // Add to new team
+      player.team = teamId;
+      if (!team.players.includes(player._id)) {
+        team.players.push(player._id);
+        await team.save();
+      }
+    } else {
+      // Remove from current team
+      if (player.team) {
+        await Team.updateOne(
+          { _id: player.team },
+          { $pull: { players: player._id } }
+        );
+      }
+      player.team = null;
+    }
+
+    await player.save();
+    return player;
+  },
+
+  verifyPlayer: async (playerId, verified) => {
+    const player = await Player.findByIdAndUpdate(
+      playerId,
+      { isVerified: verified },
+      { new: true }
+    ).populate('user', 'name email').populate('team', 'name shortName');
+    
+    if (!player) throw new ApiError(404, 'Player not found');
+    return player;
+  },
+
+  mergePlayers: async (sourceId, targetId) => {
+    const sourcePlayer = await Player.findById(sourceId);
+    const targetPlayer = await Player.findById(targetId);
+
+    if (!sourcePlayer) throw new ApiError(404, 'Source player not found');
+    if (!targetPlayer) throw new ApiError(404, 'Target player not found');
+    if (sourceId === targetId) throw new ApiError(400, 'Cannot merge player with itself');
+
+    // Merge batting stats
+    targetPlayer.battingStats = {
+      matches: targetPlayer.battingStats.matches + sourcePlayer.battingStats.matches,
+      innings: targetPlayer.battingStats.innings + sourcePlayer.battingStats.innings,
+      runs: targetPlayer.battingStats.runs + sourcePlayer.battingStats.runs,
+      highestScore: Math.max(targetPlayer.battingStats.highestScore, sourcePlayer.battingStats.highestScore),
+      average: (targetPlayer.battingStats.average + sourcePlayer.battingStats.average) / 2,
+      strikeRate: (targetPlayer.battingStats.strikeRate + sourcePlayer.battingStats.strikeRate) / 2,
+      fifties: targetPlayer.battingStats.fifties + sourcePlayer.battingStats.fifties,
+      centuries: targetPlayer.battingStats.centuries + sourcePlayer.battingStats.centuries,
+      fours: targetPlayer.battingStats.fours + sourcePlayer.battingStats.fours,
+      sixes: targetPlayer.battingStats.sixes + sourcePlayer.battingStats.sixes
+    };
+
+    // Merge bowling stats
+    targetPlayer.bowlingStats = {
+      matches: targetPlayer.bowlingStats.matches + sourcePlayer.bowlingStats.matches,
+      innings: targetPlayer.bowlingStats.innings + sourcePlayer.bowlingStats.innings,
+      wickets: targetPlayer.bowlingStats.wickets + sourcePlayer.bowlingStats.wickets,
+      runsConceded: targetPlayer.bowlingStats.runsConceded + sourcePlayer.bowlingStats.runsConceded,
+      overs: targetPlayer.bowlingStats.overs + sourcePlayer.bowlingStats.overs,
+      economy: (targetPlayer.bowlingStats.economy + sourcePlayer.bowlingStats.economy) / 2,
+      bestFigures: sourcePlayer.bowlingStats.wickets > targetPlayer.bowlingStats.wickets 
+        ? sourcePlayer.bowlingStats.bestFigures 
+        : targetPlayer.bowlingStats.bestFigures,
+      fiveWickets: targetPlayer.bowlingStats.fiveWickets + sourcePlayer.bowlingStats.fiveWickets
+    };
+
+    // Merge fielding stats
+    targetPlayer.fieldingStats = {
+      catches: targetPlayer.fieldingStats.catches + sourcePlayer.fieldingStats.catches,
+      stumpings: targetPlayer.fieldingStats.stumpings + sourcePlayer.fieldingStats.stumpings,
+      runOuts: targetPlayer.fieldingStats.runOuts + sourcePlayer.fieldingStats.runOuts
+    };
+
+    // Keep target player info, use source's team if target has none
+    if (!targetPlayer.team && sourcePlayer.team) {
+      targetPlayer.team = sourcePlayer.team;
+    }
+
+    await targetPlayer.save();
+
+    // Update source player to inactive
+    sourcePlayer.isActive = false;
+    sourcePlayer.playerName = `[MERGED] ${sourcePlayer.playerName}`;
+    await sourcePlayer.save();
+
+    return {
+      merged: targetPlayer,
+      source: sourcePlayer,
+      message: 'Players merged successfully'
+    };
+  },
+
+  getDuplicatePlayers: async () => {
+    // Find potential duplicates based on name similarity
+    const allPlayers = await Player.find({ isActive: true })
+      .populate('user', 'name email')
+      .populate('team', 'name shortName')
+      .select('playerName user team battingStats bowlingStats createdAt');
+
+    const duplicates = [];
+    const checked = new Set();
+
+    for (let i = 0; i < allPlayers.length; i++) {
+      if (checked.has(allPlayers[i]._id.toString())) continue;
+
+      for (let j = i + 1; j < allPlayers.length; j++) {
+        if (checked.has(allPlayers[j]._id.toString())) continue;
+
+        // Check for similar names
+        const name1 = allPlayers[i].playerName.toLowerCase();
+        const name2 = allPlayers[j].playerName.toLowerCase();
+        
+        const isSimilar = name1.includes(name2) || name2.includes(name1) ||
+          name1.split(' ').some(n => n.length > 2 && name2.includes(n));
+
+        // Check if same user
+        const sameUser = allPlayers[i].user?._id?.toString() === allPlayers[j].user?._id?.toString();
+
+        if (isSimilar || sameUser) {
+          duplicates.push({
+            players: [allPlayers[i], allPlayers[j]],
+            reason: sameUser ? 'Same User Account' : 'Similar Name'
+          });
+          checked.add(allPlayers[i]._id.toString());
+          checked.add(allPlayers[j]._id.toString());
+          break;
+        }
+      }
+    }
+
+    return duplicates;
+  },
+
+  deletePlayer: async (playerId) => {
+    const player = await Player.findById(playerId);
+    if (!player) throw new ApiError(404, 'Player not found');
+
+    // Remove from team if assigned
+    if (player.team) {
+      await Team.updateOne(
+        { _id: player.team },
+        { $pull: { players: player._id } }
+      );
+    }
+
+    // Soft delete - mark as inactive
+    player.isActive = false;
+    player.playerName = `[DELETED] ${player.playerName}`;
+    await player.save();
+
+    return { deleted: true };
   }
 };
 

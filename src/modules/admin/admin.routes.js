@@ -99,4 +99,15 @@ router.patch('/contests/:id/status', authenticate, authorize(ROLES.ADMIN), admin
 router.get('/contests/prize-pools', authenticate, authorize(ROLES.ADMIN), adminController.getPrizePools);
 router.get('/contests/stats', authenticate, authorize(ROLES.ADMIN), adminController.getContestStats);
 
+// Player Management
+router.get('/players', authenticate, authorize(ROLES.ADMIN), adminController.getAllPlayers);
+router.get('/players/stats', authenticate, authorize(ROLES.ADMIN), adminController.getPlayerStats);
+router.put('/players/update', authenticate, authorize(ROLES.ADMIN), adminController.updatePlayerStats);
+router.put('/players/:id/stats', authenticate, authorize(ROLES.ADMIN), adminController.editPlayerStats);
+router.put('/players/:id/team', authenticate, authorize(ROLES.ADMIN), adminController.assignPlayerTeam);
+router.put('/players/:id/verify', authenticate, authorize(ROLES.ADMIN), adminController.verifyPlayer);
+router.post('/players/merge', authenticate, authorize(ROLES.ADMIN), adminController.mergePlayers);
+router.get('/players/duplicates', authenticate, authorize(ROLES.ADMIN), adminController.getDuplicatePlayers);
+router.delete('/players/:id', authenticate, authorize(ROLES.ADMIN), adminController.deletePlayer);
+
 export default router;

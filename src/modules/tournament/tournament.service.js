@@ -479,6 +479,34 @@ export const tournamentService = {
     };
 
     return stats;
+  },
+
+  // Generate fixtures (unified)
+  generateFixtures: async (tournamentId, type, userId) => {
+    if (type === 'league') {
+      return await tournamentService.generateLeagueMatches(tournamentId, userId);
+    } else if (type === 'knockout') {
+      return await tournamentService.generateKnockoutMatches(tournamentId, userId);
+    } else {
+      throw new ApiError(400, 'Invalid fixture type. Use "league" or "knockout"');
+    }
+  },
+
+  // Get tournament matches
+  getTournamentMatches: async (tournamentId, matchType, status) => {
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) throw new ApiError(404, 'Tournament not found');
+
+    const filter = { tournament: tournamentId };
+    if (matchType) filter.matchType = matchType;
+    if (status) filter.status = status;
+
+    const matches = await Match.find(filter)
+      .populate('team1', 'name shortName logo')
+      .populate('team2', 'name shortName logo')
+      .sort({ scheduledDate: 1 });
+
+    return matches;
   }
 };
 

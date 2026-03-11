@@ -97,6 +97,12 @@ export const teamController = {
   verifyTeam: catchAsync(async (req, res) => {
     const team = await teamService.verifyTeam(req.params.id);
     res.json(new ApiResponse(200, 'Team verified successfully', team));
+  }),
+
+  // Get team matches
+  getTeamMatches: catchAsync(async (req, res) => {
+    const { matches, pagination } = await teamService.getTeamMatches(req.params.id, req.query);
+    res.json(new ApiResponse(200, 'Team matches retrieved', matches, pagination));
   })
 };
 

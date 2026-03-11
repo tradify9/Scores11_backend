@@ -128,6 +128,67 @@ export const userController = {
     res.json(new ApiResponse(200, 'User deleted successfully'));
   }),
 
+  // Admin - Ban User
+  banUser: catchAsync(async (req, res) => {
+    const { reason } = req.body;
+    const user = await userService.banUser(req.params.id, reason);
+    res.json(new ApiResponse(200, 'User banned successfully', user));
+  }),
+
+  // Admin - Unban User
+  unbanUser: catchAsync(async (req, res) => {
+    const user = await userService.unbanUser(req.params.id);
+    res.json(new ApiResponse(200, 'User unbanned successfully', user));
+  }),
+
+  // Admin - Reset Password
+  adminResetPassword: catchAsync(async (req, res) => {
+    const { newPassword } = req.body;
+    if (!newPassword) {
+      throw new ApiError(400, 'New password is required');
+    }
+    await userService.adminResetPassword(req.params.id, newPassword);
+    res.json(new ApiResponse(200, 'Password reset successfully'));
+  }),
+
+  // Admin - Verify User Account
+  verifyUserAccount: catchAsync(async (req, res) => {
+    const user = await userService.verifyUserAccount(req.params.id);
+    res.json(new ApiResponse(200, 'User account verified successfully', user));
+  }),
+
+  // Admin - Change User Role
+  changeUserRole: catchAsync(async (req, res) => {
+    const { role } = req.body;
+    if (!role) {
+      throw new ApiError(400, 'Role is required');
+    }
+    const user = await userService.changeUserRole(req.params.id, role);
+    res.json(new ApiResponse(200, 'User role changed successfully', user));
+  }),
+
+  // Admin - Get Login History
+  getLoginHistory: catchAsync(async (req, res) => {
+    const { history, pagination } = await userService.getLoginHistory(req.params.id, req.query);
+    res.json(new ApiResponse(200, 'Login history retrieved', history, pagination));
+  }),
+
+  // Admin - Get User Reports
+  getUserReports: catchAsync(async (req, res) => {
+    const { reports, pagination } = await userService.getUserReports(req.query);
+    res.json(new ApiResponse(200, 'User reports retrieved', reports, pagination));
+  }),
+
+  // Admin - Action on Report
+  actionOnReport: catchAsync(async (req, res) => {
+    const { action, adminNote } = req.body;
+    if (!action) {
+      throw new ApiError(400, 'Action is required');
+    }
+    const report = await userService.actionOnReport(req.params.reportId, action, adminNote);
+    res.json(new ApiResponse(200, 'Report action completed', report));
+  }),
+
   // Profile Enhancement Features
   updateLocation: catchAsync(async (req, res) => {
     const user = await userService.updateLocation(req.user.userId, req.body);

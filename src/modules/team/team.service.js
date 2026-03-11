@@ -344,6 +344,37 @@ export const teamService = {
     );
     if (!team) throw new ApiError(404, 'Team not found');
     return team;
+  },
+
+  // Get team matches
+  getTeamMatches: async (teamId, query) => {
+    const { page, limit, skip } = getPagination(query);
+    
+    // Import Match model dynamically to avoid circular dependency
+    const Match = (await import('../match/match.model.js')).default;
+    
+    const filter = {
+      $or: [
+        { 'team1': teamId },
+        { 'team2': teamId }
+      ]
+    };
+
+    const [matches, total] = await Promise.all([
+      Match.find(filter)
+        .populate('team1', 'name shortName logo')
+        .populate('team2', 'name shortName logo')
+        .populate('tournament', 'name')
+        .sort({ scheduledDate: -1 })
+        .skip(skip)
+        .limit(limit),
+      Match.countDocuments(filter)
+    ]);
+
+    return {
+      matches,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+    };
   }
 };
 
