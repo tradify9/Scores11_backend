@@ -4,6 +4,7 @@ import Team from '../team/team.model.js';
 import Player from '../player/player.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
+import { emitToMatch } from '../../../config/socket.js';
 
 export const scoringService = {
   // Initialize match for live scoring
@@ -62,10 +63,13 @@ export const scoringService = {
     match.status = MATCH_STATUS.LIVE;
     await match.save();
 
+    emitToMatch(matchId, 'liveScoreUpdate', { matchId, action: 'initialize' });
+
     return await Match.findById(matchId)
       .populate('team1', 'name shortName')
       .populate('team2', 'name shortName');
   },
+
 
   // Add a ball with full tracking
   addBall: async (matchId, ballData, userId) => {
@@ -260,12 +264,21 @@ export const scoringService = {
 
     await match.save();
 
+    // Broadcast live update via socket
+    emitToMatch(matchId, 'liveScoreUpdate', {
+      matchId,
+      score: match.score,
+      currentInnings: match.innings[currentInningsIndex],
+      newBall
+    });
+
     return {
       ball: newBall,
       innings,
       score: match.score
     };
   },
+
 
   // Get match scoring data with full details
   getMatchScoring: async (matchId) => {
@@ -486,10 +499,13 @@ export const scoringService = {
     match.currentInnings = inningsNumber;
     await match.save();
 
+    emitToMatch(matchId, 'liveScoreUpdate', { matchId, action: 'inningsStart', inningsNumber });
+
     return await Match.findById(matchId)
       .populate('team1', 'name shortName')
       .populate('team2', 'name shortName');
   },
+
 
   // End innings
   endInnings: async (matchId, userId) => {
