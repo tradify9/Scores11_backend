@@ -303,56 +303,83 @@ export const scoringService = {
     };
   },
 
-  // Get live score with current state
+// Get live score with current state - NULL SAFE
   getLiveScore: async (matchId) => {
     const match = await Match.findById(matchId)
       .populate('team1', 'name shortName logo')
-      .populate('team2', 'name shortName logo');
+      .populate('team2', 'name shortName logo')
+      .lean();  // Use lean for better perf
     
     if (!match) throw new ApiError(404, 'Match not found');
 
-    const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
-    
-    // Get last 6 balls
-    const recentBalls = await Ball.find({ 
-      match: matchId, 
-      innings: match.currentInnings 
-    })
-      .sort({ overNumber: -1, ballNumber: -1 })
-      .limit(6)
-      .reverse();
+    const currentInningsNumber = match.currentInnings || 1;
+    const currentInnings = match.innings?.find(i => i?.inningsNumber === currentInningsNumber) || {
+      totalRuns: 0,
+      totalWickets: 0,
+      totalOvers: 0,
+      totalBalls: 0,
+      extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, total: 0 },
+      battingScorecard: [],
+      bowlingScorecard: [],
+      fallOfWickets: []
+    };
 
-    // Get current batsmen
-    const onStrike = currentInnings?.battingScorecard.find(b => b.howOut === 'not_out');
-    
-    // Get current bowler
-    const lastBall = await Ball.findOne({ match: matchId, innings: match.currentInnings })
-      .sort({ overNumber: -1, ballNumber: -1 })
-      .populate('bowler', 'playerName jerseyNumber');
+    // Safe recent balls query - handle missing innings
+    let recentBalls = [];
+    let lastBall = null;
+    try {
+      recentBalls = await Ball.find({ 
+        match: matchId, 
+        innings: currentInningsNumber 
+      })
+        .sort({ overNumber: -1, ballNumber: -1 })
+        .limit(6)
+        .populate('batsman bowler fielder', 'playerName jerseyNumber')
+        .lean();
+      
+      recentBalls = recentBalls.reverse();
+      
+      const recentBallDoc = await Ball.findOne({ match: matchId, innings: currentInningsNumber })
+        .sort({ overNumber: -1, ballNumber: -1 })
+        .populate('bowler', 'playerName jerseyNumber')
+        .lean();
+      lastBall = recentBallDoc;
+    } catch (ballError) {
+      console.warn(`No ball data for match ${matchId}:`, ballError.message);
+    }
+
+    const safeScore = {
+      team1: match.score?.team1 || { runs: 0, wickets: 0, overs: '0.0' },
+      team2: match.score?.team2 || { runs: 0, wickets: 0, overs: '0.0' }
+    };
+
+    const safePowerplay = match.powerplay?.[match.currentInnings === 1 ? 'firstInnings' : 'secondInnings'] || { runs: 0, wickets: 0 };
 
     return {
       match: {
-        _id: match._id,
-        team1: match.team1,
-        team2: match.team2,
-        status: match.status,
-        currentInnings: match.currentInnings,
-        overs: match.overs
+        _id: match._id.toString(),
+        team1: match.team1 || { name: 'Team 1', shortName: 'T1' },
+        team2: match.team2 || { name: 'Team 2', shortName: 'T2' },
+        status: match.status || 'scheduled',
+        currentInnings: currentInningsNumber,
+        overs: match.overs || 20
       },
-      score: match.score,
-      currentInnings: {
-        runs: currentInnings?.totalRuns || 0,
-        wickets: currentInnings?.totalWickets || 0,
-        overs: `${currentInnings?.totalOvers || 0}.${currentInnings?.totalBalls || 0}`,
-        extras: currentInnings?.extras,
-        battingScorecard: currentInnings?.battingScorecard.filter(b => b.howOut === 'not_out'),
-        bowlingScorecard: currentInnings?.bowlingScorecard
+      score: safeScore,
+      scorecard: {
+        runs: currentInnings.totalRuns || 0,
+        wickets: currentInnings.totalWickets || 0,
+        overs: `${currentInnings.totalOvers || 0}.${currentInnings.totalBalls || 0}`,
+        runRate: currentInnings.totalBalls > 0 ? ((currentInnings.totalRuns / (currentInnings.totalOvers * 6 + currentInnings.totalBalls)) * 6).toFixed(2) : '0.00',
+        extras: currentInnings.extras || { total: 0 },
+        battingScorecard: (currentInnings.battingScorecard || []).filter(b => (b.howOut || 'not_out') === 'not_out'),
+        bowlingScorecard: currentInnings.bowlingScorecard || []
       },
       recentBalls,
-      currentBowler: lastBall?.bowler,
-      target: match.result?.target,
-      requiredRuns: match.result?.requiredRuns,
-      powerplay: match.currentInnings === 1 ? match.powerplay.firstInnings : match.powerplay.secondInnings
+      currentBowler: lastBall?.bowler || null,
+      target: match.result?.target || null,
+      requiredRuns: match.result?.requiredRuns || null,
+      powerplay: safePowerplay,
+      initialized: !!(currentInnings.battingScorecard && currentInnings.battingScorecard.length > 0)
     };
   },
 
