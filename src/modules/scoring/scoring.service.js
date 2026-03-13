@@ -328,7 +328,7 @@ export const scoringService = {
     let recentBalls = [];
     let lastBall = null;
     try {
-      recentBalls = await Ball.find({ 
+      const recentQuery = await Ball.find({ 
         match: matchId, 
         innings: currentInningsNumber 
       })
@@ -336,8 +336,7 @@ export const scoringService = {
         .limit(6)
         .populate('batsman bowler fielder', 'playerName jerseyNumber')
         .lean();
-      
-      recentBalls = recentBalls.reverse();
+      recentBalls = [...recentQuery].reverse();
       
       const recentBallDoc = await Ball.findOne({ match: matchId, innings: currentInningsNumber })
         .sort({ overNumber: -1, ballNumber: -1 })
@@ -346,6 +345,8 @@ export const scoringService = {
       lastBall = recentBallDoc;
     } catch (ballError) {
       console.warn(`No ball data for match ${matchId}:`, ballError.message);
+      recentBalls = [];
+      lastBall = null;
     }
 
     const safeScore = {
