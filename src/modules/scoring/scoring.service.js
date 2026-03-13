@@ -324,7 +324,7 @@ export const scoringService = {
       fallOfWickets: []
     };
 
-    // Safe recent balls query - handle missing innings
+    // Safe recent balls query - handle missing innings (FIXED mongoose chain)
     let recentBalls = [];
     let lastBall = null;
     try {
@@ -334,14 +334,14 @@ export const scoringService = {
       })
         .sort({ overNumber: -1, ballNumber: -1 })
         .limit(6)
-        .populate('batsman bowler fielder', 'playerName jerseyNumber')
-        .lean();
-      recentBalls = [...recentQuery].reverse();
+        .populate('batsman bowler fielder', 'playerName jerseyNumber');
+      
+      recentBalls = recentQuery.reverse();
       
       const recentBallDoc = await Ball.findOne({ match: matchId, innings: currentInningsNumber })
         .sort({ overNumber: -1, ballNumber: -1 })
-        .populate('bowler', 'playerName jerseyNumber')
-        .lean();
+        .populate('bowler', 'playerName jerseyNumber');
+      
       lastBall = recentBallDoc;
     } catch (ballError) {
       console.warn(`No ball data for match ${matchId}:`, ballError.message);
