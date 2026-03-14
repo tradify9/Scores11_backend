@@ -4,7 +4,7 @@ import Team from '../team/team.model.js';
 import Player from '../player/player.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
-import { emitToMatch } from '../../../config/socket.js';
+import { emitToMatch } from '../../config/socket.js';
 
 export const scoringService = {
   // Initialize match for live scoring
