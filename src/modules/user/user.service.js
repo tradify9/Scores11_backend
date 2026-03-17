@@ -372,17 +372,23 @@ export const userService = {
   },
 
   deleteUser: async (userId) => {
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { isActive: false },
-      { new: true }
-    );
-
+    const user = await User.findById(userId);
     if (!user) {
       throw new ApiError(404, 'User not found');
     }
 
-    return user;
+    // Delete associated images
+    if (user.avatar?.publicId) {
+      await deleteImage(user.avatar.publicId);
+    }
+    if (user.coverPhoto?.publicId) {
+      await deleteImage(user.coverPhoto.publicId);
+    }
+
+    // Permanent delete
+    await User.findByIdAndDelete(userId);
+    
+    return { message: 'User permanently deleted' };
   },
 
   // Admin - Ban User
