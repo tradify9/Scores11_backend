@@ -20,12 +20,16 @@ const errorMiddleware = (err, req, res, next) => {
     error.statusCode = 400;
   }
 
-  res.status(error.statusCode).json({
+  const response = {
     statusCode: error.statusCode,
-    message: error.message,
-    error: err.stack,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
+    message: error.message
+  };
+
+  if (process.env.NODE_ENV === 'development') {
+    response.stack = err.stack;
+  }
+
+  res.status(error.statusCode).json(response);
 };
 
 export default errorMiddleware;

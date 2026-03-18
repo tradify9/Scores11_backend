@@ -41,7 +41,7 @@ router.use('/users', userRoutes);
 router.use('/teams', teamRoutes);
 router.use('/players', playerRoutes);
 router.use('/matches', matchRoutes);
-router.use('/api/scoring', scoringRoutes);
+router.use('/scoring', scoringRoutes);
 router.use('/tournaments', tournamentRoutes);
 router.use('/contests', contestRoutes);
 router.use('/leaderboard', leaderboardRoutes);
