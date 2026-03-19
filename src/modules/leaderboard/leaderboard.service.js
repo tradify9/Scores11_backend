@@ -317,7 +317,7 @@ export const leaderboardService = {
       $or: [
         { playerName: { $regex: searchTerm, $options: 'i' } }
       ]
-    })
+    }) 
       .select('playerName jerseyNumber role team battingStats bowlingStats')
       .populate('team', 'name shortName')
       .limit(limit);

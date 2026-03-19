@@ -8,27 +8,32 @@ import { getPagination } from '../../utils/pagination.js';
 export const teamService = {
   // Create a new team
   createTeam: async (teamData, userId) => {
+
+    // Check duplicate team name
     const existingTeam = await Team.findOne({ name: teamData.name });
     if (existingTeam) {
-      throw new ApiError(400, 'Team with this name already exists');
+      throw new ApiError(400, "Team with this name already exists");
     }
 
     // Check if user already has a team
     const userTeam = await Team.findOne({ owner: userId });
-    if (userTeam && !teamData.isPublic) {
-      throw new ApiError(400, 'You already own a team');
+    if (userTeam) {
+      throw new ApiError(400, "You already created a team");
     }
 
+    // Create team
     const team = await Team.create({
       ...teamData,
       owner: userId
     });
 
     // Populate owner details
-    await team.populate('owner', 'name email phone');
+    await team.populate("owner", "name email phone");
 
     return team;
   },
+
+
 
   // Get team by ID with full details
   getTeamById: async (teamId) => {

@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export default {
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv: process.env.NODE_ENV || 'development', 
   port: parseInt(process.env.PORT, 10) || 3000,
   
   jwt: {
@@ -39,12 +39,11 @@ export default {
   
   email: {
     smtp: {
-      host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
       port: parseInt(process.env.SMTP_PORT, 10) || 587,
-      user: process.env.SMTP_USER || 'test@fintradify.com',
-      pass: process.env.SMTP_PASS || 'Tradify@#1234'
-    },
-    from: process.env.EMAIL_FROM || 'test@fintradify.com'
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    }
   },
   
   cors: {
@@ -67,3 +66,4 @@ export default {
     minWithdrawal: parseInt(process.env.WALLET_MIN_WITHDRAWAL, 10) || 100
   }
 };
+
