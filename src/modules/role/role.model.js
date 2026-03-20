@@ -45,7 +45,7 @@ roleSchema.virtual('userCount', {
 });
 
 // Index for performance
-roleSchema.index({ slug: 1 });
+
 roleSchema.index({ isActive: 1 });
 roleSchema.index({ name: 'text', description: 'text' });
 
