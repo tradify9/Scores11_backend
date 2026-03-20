@@ -73,7 +73,7 @@ const postSchema = new mongoose.Schema({
 });
 
 // Indexes
-postSchema.index({ user: 1 });
+
 postSchema.index({ createdAt: -1 });
 postSchema.index({ tags: 1 });
 postSchema.index({ isPinned: -1 });

@@ -49,7 +49,7 @@ const contactSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 contactSchema.index({ status: 1 });
-contactSchema.index({ user: 1 });
+
 
 const Contact = mongoose.model('Contact', contactSchema);
 
