@@ -17,7 +17,7 @@ export const createLiveStream = async (userId, streamData) => {
     userId,
     streamKey,
     rtmpUrl: process.env.RTMP_URL || 'rtmp://68.178.171.95/live',
-    hlsUrl: process.env.HLS_URL || 'http://68.178.171.95:30000/live',
+    hlsUrl: process.env.HLS_URL || 'http://68.178.171.95:3000/live',
     streamUrl: `${process.env.STREAM_URL || 'http://68.178.171.95:3000'}/live/${streamKey}`
   });
 
