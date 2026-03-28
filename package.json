@@ -9,6 +9,7 @@
     "seed": "node src/seeds/admin.seed.js"
   },
   "dependencies": {
+    "agora-access-token": "^2.0.4",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^1.41.0",
     "cors": "^2.8.5",

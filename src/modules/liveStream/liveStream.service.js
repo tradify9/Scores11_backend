@@ -231,3 +231,47 @@ export const getMyStreams = async (userId, page = 1, limit = 10) => {
     sort: { createdAt: -1 }
   });
 };
+
+// Agora RTC Token Generation
+import RtcTokenBuilder from 'agora-access-token';
+
+export const generateAgoraToken = async (streamId, uid, role = 'publisher') => {
+  const stream = await LiveStream.findById(streamId);
+  if (!stream) {
+    throw new ApiError(404, 'Live stream not found');
+  }
+
+  const channelName = stream.streamKey;
+  const appId = process.env.AGORA_APP_ID || 'your_agora_app_id_here';
+  const appCertificate = process.env.AGORA_APP_CERTIFICATE || 'your_agora_app_certificate_here';
+  const expireTime = 3600; // 1 hour
+
+  const roleMap = {
+    publisher: RtcTokenBuilder.Role.PUBLISHER,
+    subscriber: RtcTokenBuilder.Role.SUBSCRIBER,
+    admin: RtcTokenBuilder.Role.ADMIN,
+    audience: RtcTokenBuilder.Role.AUDIENCE
+  };
+
+  const privilegeExpiredTs = Math.floor(Date.now() / 1000) + expireTime;
+  const token = RtcTokenBuilder.buildTokenWithUid(
+    appId,
+    appCertificate,
+    channelName,
+    uid,
+    roleMap[role],
+    privilegeExpiredTs
+  );
+
+  return {
+    channel: channelName,
+    token,
+    uid,
+    appId,
+    expire: expireTime
+  };
+};
+
+export const getRtcToken = async (streamId, uid, role = 'publisher') => {
+  return await generateAgoraToken(streamId, uid, role);
+};

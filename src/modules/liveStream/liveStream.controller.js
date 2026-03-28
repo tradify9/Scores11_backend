@@ -157,3 +157,14 @@ export const getMyStreams = catchAsync(async (req, res) => {
   );
   ApiResponse.success(res, streams, 'My streams fetched successfully');
 });
+
+// Get Agora RTC Token for stream
+export const getRtcToken = catchAsync(async (req, res) => {
+  const { uid, role = 'publisher' } = req.body;
+  const tokenData = await liveStreamService.getRtcToken(
+    req.params.streamId,
+    uid,
+    role
+  );
+  ApiResponse.success(res, tokenData, 'RTC token generated');
+});
