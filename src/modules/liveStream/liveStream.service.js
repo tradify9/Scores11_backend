@@ -2,6 +2,11 @@ import LiveStream from './liveStream.model.js';
 import User from '../user/user.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
+import { getIO } from '../../config/socket.js';
+import crypto from 'crypto';
+
+// Agora Token Generation
+import RtcTokenBuilder from 'agora-access-token';
 
 export const createLiveStream = async (userId, streamData) => {
   const user = await User.findById(userId);
@@ -9,16 +14,14 @@ export const createLiveStream = async (userId, streamData) => {
     throw new ApiError(404, 'User not found');
   }
 
-  // Generate stream key
-  const streamKey = `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
   const liveStream = new LiveStream({
     ...streamData,
     userId,
-    streamKey,
+    streamKey: `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    agoraChannel: `channel_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`,
     rtmpUrl: process.env.RTMP_URL || 'rtmp://68.178.171.95/live',
     hlsUrl: process.env.HLS_URL || 'http://68.178.171.95:3000/live',
-    streamUrl: `${process.env.STREAM_URL || 'http://68.178.171.95:3000'}/live/${streamKey}`
+    streamUrl: `${process.env.STREAM_URL || 'http://68.178.171.95:3000'}/live/${this.streamKey}`
   });
 
   await liveStream.save();
@@ -48,7 +51,6 @@ export const getLiveStreams = async (query) => {
     filter.$text = { $search: search };
   }
 
-  // Only show live or scheduled streams by default
   if (!status) {
     filter.status = { $in: ['live', 'scheduled'] };
   }
@@ -56,25 +58,16 @@ export const getLiveStreams = async (query) => {
   return await paginate(LiveStream, filter, {
     page,
     limit,
-    sort: { createdAt: -1 },
+    sort: { viewerCount: -1, createdAt: -1 },
     populate: 'userId'
   });
 };
 
 export const getLiveStreamById = async (streamId) => {
   const stream = await LiveStream.findById(streamId)
-    .populate('userId', 'name email avatar');
-  
-  if (!stream) {
-    throw new ApiError(404, 'Live stream not found');
-  }
-  
-  return stream;
-};
-
-export const getLiveStreamByKey = async (streamKey) => {
-  const stream = await LiveStream.findOne({ streamKey })
-    .populate('userId', 'name email avatar');
+    .populate('userId', 'name email avatar')
+    .populate('viewers.userId', 'name avatar')
+    .populate('chat.userId', 'name avatar');
   
   if (!stream) {
     throw new ApiError(404, 'Live stream not found');
@@ -118,6 +111,12 @@ export const startLiveStream = async (streamId, userId) => {
   stream.startedAt = new Date();
   await stream.save();
 
+  // Emit socket event
+  const io = getIO();
+  if (io) {
+    io.emit('streamStarted', { streamId: stream._id, title: stream.title });
+  }
+
   return stream;
 };
 
@@ -136,6 +135,13 @@ export const endLiveStream = async (streamId, userId) => {
   }
   
   await stream.save();
+
+  // Emit socket event
+  const io = getIO();
+  if (io) {
+    io.emit('streamEnded', { streamId: stream._id });
+  }
+
   return stream;
 };
 
@@ -159,6 +165,15 @@ export const joinLiveStream = async (streamId, userId) => {
     stream.viewers.push({ userId });
     stream.viewerCount = stream.viewers.length;
     await stream.save();
+    
+    // Emit socket event
+    const io = getIO();
+    if (io) {
+      io.to(streamId).emit('viewerJoined', { 
+        viewerCount: stream.viewerCount,
+        userId 
+      });
+    }
   }
 
   return stream;
@@ -177,6 +192,15 @@ export const leaveLiveStream = async (streamId, userId) => {
   stream.viewerCount = stream.viewers.length;
   await stream.save();
 
+  // Emit socket event
+  const io = getIO();
+  if (io) {
+    io.to(streamId).emit('viewerLeft', { 
+      viewerCount: stream.viewerCount,
+      userId 
+    });
+  }
+
   return stream;
 };
 
@@ -191,14 +215,27 @@ export const sendChatMessage = async (streamId, userId, message) => {
     throw new ApiError(400, 'Stream is not live');
   }
 
-  stream.chat.push({ userId, message });
+  const chatMessage = { 
+    userId, 
+    message, 
+    timestamp: new Date() 
+  };
+  
+  stream.chat.push(chatMessage);
   await stream.save();
   
-  const populatedChat = await LiveStream.findById(streamId)
-    .select('chat')
-    .populate('chat.userId', 'name avatar');
+  // Populate user details
+  await stream.populate('chat.userId', 'name avatar');
+  
+  const populatedMessage = stream.chat[stream.chat.length - 1];
 
-  return populatedChat.chat[populatedChat.chat.length - 1];
+  // Emit socket event
+  const io = getIO();
+  if (io) {
+    io.to(streamId).emit('newChatMessage', populatedMessage);
+  }
+
+  return populatedMessage;
 };
 
 export const likeLiveStream = async (streamId, userId) => {
@@ -210,6 +247,15 @@ export const likeLiveStream = async (streamId, userId) => {
 
   stream.likes += 1;
   await stream.save();
+
+  // Emit socket event
+  const io = getIO();
+  if (io) {
+    io.to(streamId).emit('streamLiked', { 
+      likes: stream.likes,
+      userId 
+    });
+  }
 
   return stream;
 };
@@ -230,4 +276,51 @@ export const getMyStreams = async (userId, page = 1, limit = 10) => {
     limit,
     sort: { createdAt: -1 }
   });
+};
+
+// Generate Agora RTC Token
+export const generateAgoraToken = async (streamId, uid, role = 'publisher') => {
+  const stream = await LiveStream.findById(streamId);
+  if (!stream) {
+    throw new ApiError(404, 'Live stream not found');
+  }
+
+  const channelName = stream.agoraChannel;
+  const appId = process.env.AGORA_APP_ID;
+  const appCertificate = process.env.AGORA_APP_CERTIFICATE;
+  
+  if (!appId || !appCertificate) {
+    throw new ApiError(500, 'Agora configuration missing');
+  }
+
+  const expireTime = 3600; // 1 hour
+
+  const roleMap = {
+    publisher: RtcTokenBuilder.Role.PUBLISHER,
+    subscriber: RtcTokenBuilder.Role.SUBSCRIBER,
+    admin: RtcTokenBuilder.Role.ADMIN,
+    audience: RtcTokenBuilder.Role.AUDIENCE
+  };
+
+  const privilegeExpiredTs = Math.floor(Date.now() / 1000) + expireTime;
+  const token = RtcTokenBuilder.buildTokenWithUid(
+    appId,
+    appCertificate,
+    channelName,
+    uid,
+    roleMap[role] || roleMap.publisher,
+    privilegeExpiredTs
+  );
+
+  return {
+    channel: channelName,
+    token,
+    uid: uid,
+    appId: appId,
+    expire: expireTime
+  };
+};
+
+export const getRtcToken = async (streamId, uid, role = 'publisher') => {
+  return await generateAgoraToken(streamId, uid, role);
 };

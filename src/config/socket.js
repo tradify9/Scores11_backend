@@ -35,6 +35,35 @@ export const initializeSocket = (server) => {
       console.log(`Socket ${socket.id} joined tournament:${tournamentId}`);
     });
 
+    // Join live stream room
+    socket.on('joinStream', (streamId) => {
+      socket.join(`stream:${streamId}`);
+      console.log(`Socket ${socket.id} joined stream:${streamId}`);
+    });
+
+    // Leave live stream room
+    socket.on('leaveStream', (streamId) => {
+      socket.leave(`stream:${streamId}`);
+      console.log(`Socket ${socket.id} left stream:${streamId}`);
+    });
+
+    // Stream signaling (Agora)
+    socket.on('user-published', (data) => {
+      socket.to(data.streamId).emit('user-published', data);
+    });
+
+    socket.on('user-unpublished', (data) => {
+      socket.to(data.streamId).emit('user-unpublished', data);
+    });
+
+    socket.on('user-joined', (data) => {
+      socket.to(data.streamId).emit('user-joined', data);
+    });
+
+    socket.on('user-left', (data) => {
+      socket.to(data.streamId).emit('user-left', data);
+    });
+
     // User authentication
     socket.on('authenticate', (userId) => {
       socket.join(`user:${userId}`);

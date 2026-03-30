@@ -9,6 +9,7 @@
     "seed": "node src/seeds/admin.seed.js"
   },
   "dependencies": {
+    "agora-access-token": "^2.0.4",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^1.41.0",
     "cors": "^2.8.5",
@@ -24,7 +25,7 @@
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.13",
     "redis": "^4.6.7",
-    "socket.io": "^4.7.5",
+    "socket.io": "^4.8.3",
     "swagger-ui-express": "^5.0.0",
     "winston": "^3.13.0",
     "yaml": "^2.4.1"

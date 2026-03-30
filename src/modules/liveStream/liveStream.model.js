@@ -28,7 +28,8 @@ const liveStreamSchema = new mongoose.Schema({
   thumbnail: String,
   streamKey: {
     type: String,
-    unique: true
+    unique: true,
+    sparse: true
   },
   streamUrl: String,
   rtmpUrl: String,
@@ -130,17 +131,42 @@ const liveStreamSchema = new mongoose.Schema({
       type: Date,
       default: Date.now
     }
-  }]
+  }],
+  // Agora specific fields
+  agoraChannel: {
+    type: String,
+    unique: true,
+    sparse: true
+  }
 }, {
   timestamps: true
 });
 
-// Index for geospatial queries
-liveStreamSchema.index({ location: '2dsphere' });
+// Generate stream key and channel name before save
+liveStreamSchema.pre('save', async function(next) {
+  if (!this.streamKey) {
+    this.streamKey = `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+  if (!this.agoraChannel) {
+    this.agoraChannel = `channel_${this._id}_${Date.now()}`;
+  }
+  if (!this.streamUrl) {
+    this.streamUrl = `${process.env.STREAM_URL || 'http://68.178.171.95:3000'}/live/${this.streamKey}`;
+  }
+  if (!this.rtmpUrl) {
+    this.rtmpUrl = process.env.RTMP_URL || 'rtmp://68.178.171.95/live';
+  }
+  if (!this.hlsUrl) {
+    this.hlsUrl = process.env.HLS_URL || 'http://68.178.171.95:3000/live';
+  }
+  next();
+});
 
-// Index for search
+// Indexes
+liveStreamSchema.index({ location: '2dsphere' });
 liveStreamSchema.index({ title: 'text', description: 'text', tags: 'text' });
+liveStreamSchema.index({ status: 1, viewerCount: -1 });
+liveStreamSchema.index({ userId: 1, createdAt: -1 });
 
 const LiveStream = mongoose.model('LiveStream', liveStreamSchema);
-
 export default LiveStream;
