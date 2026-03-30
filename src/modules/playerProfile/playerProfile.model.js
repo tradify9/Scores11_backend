@@ -167,7 +167,7 @@ const playerProfileSchema = new mongoose.Schema({
 });
 
 // Indexes
-playerProfileSchema.index({ user: 1 });
+
 playerProfileSchema.index({ player: 1 });
 playerProfileSchema.index({ isVerified: 1 });
 playerProfileSchema.index({ verificationStatus: 1 });

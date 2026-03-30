@@ -27,7 +27,7 @@ const reviewSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-reviewSchema.index({ user: 1 });
+
 
 const Review = mongoose.model('Review', reviewSchema);
 

@@ -32,6 +32,7 @@ import searchRoutes from './modules/search/search.routes.js';
 import bannerRoutes from './modules/banner/banner.routes.js';
 import featureToggleRoutes from './modules/featureToggle/featureToggle.routes.js';
 import dashboardRoutes from './modules/dashboard/dashboard.routes.js';
+import roleRoutes from './modules/role/role.routes.js';
 
 const router = express.Router();
 
@@ -40,13 +41,14 @@ router.use('/users', userRoutes);
 router.use('/teams', teamRoutes);
 router.use('/players', playerRoutes);
 router.use('/matches', matchRoutes);
-router.use('/api/scoring', scoringRoutes);
+router.use('/scoring', scoringRoutes);
 router.use('/tournaments', tournamentRoutes);
 router.use('/contests', contestRoutes);
 router.use('/leaderboard', leaderboardRoutes);
 router.use('/wallet', walletRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/admin', adminRoutes);
+router.use('/roles', roleRoutes);
 router.use('/profiles', playerProfileRoutes);
 router.use('/blogs', blogRoutes);
 router.use('/news', newsRoutes);

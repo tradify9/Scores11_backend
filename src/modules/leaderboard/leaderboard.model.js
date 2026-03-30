@@ -41,7 +41,7 @@ const leaderboardSchema = new mongoose.Schema({
 });
 
 leaderboardSchema.index({ tournament: 1, type: 1 });
-leaderboardSchema.index({ user: 1 });
+
 leaderboardSchema.index({ points: -1 });
 
 const Leaderboard = mongoose.model('Leaderboard', leaderboardSchema);

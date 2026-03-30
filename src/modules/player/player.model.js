@@ -97,7 +97,7 @@ const playerSchema = new mongoose.Schema({
   timestamps: true
 });
 
-playerSchema.index({ user: 1 });
+
 playerSchema.index({ team: 1 });
 playerSchema.index({ isActive: 1 });
 

@@ -19,10 +19,8 @@ router.put('/users/:id', authenticate, authorize(ROLES.ADMIN), adminController.u
 router.delete('/users/:id', authenticate, authorize(ROLES.ADMIN), adminController.deleteUser);
 
 // Role Management
-router.get('/roles', authenticate, authorize(ROLES.ADMIN), adminController.getRoles);
-router.post('/roles', authenticate, authorize(ROLES.ADMIN), adminController.createRole);
-router.put('/roles/:id', authenticate, authorize(ROLES.ADMIN), adminController.updateRole);
-router.delete('/roles/:id', authenticate, authorize(ROLES.ADMIN), adminController.deleteRole);
+import roleRoutes from '../role/role.routes.js';
+router.use('/roles', roleRoutes);
 
 // System Logs
 router.get('/logs', authenticate, authorize(ROLES.ADMIN), adminController.getSystemLogs);

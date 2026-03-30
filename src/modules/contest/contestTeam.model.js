@@ -86,7 +86,7 @@ const contestTeamSchema = new mongoose.Schema({
 contestTeamSchema.index({ contest: 1, user: 1 }, { unique: true });
 contestTeamSchema.index({ contest: 1, totalPoints: -1 });
 contestTeamSchema.index({ contest: 1, rank: 1 });
-contestTeamSchema.index({ user: 1 });
+
 
 const ContestTeam = mongoose.model('ContestTeam', contestTeamSchema);
 

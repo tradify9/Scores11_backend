@@ -66,4 +66,3 @@ export default {
     minWithdrawal: parseInt(process.env.WALLET_MIN_WITHDRAWAL, 10) || 100
   }
 };
-

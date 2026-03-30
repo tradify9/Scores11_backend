@@ -18,66 +18,9 @@ import Award from '../award/award.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
 
-// Role definitions with permissions
-const defaultRoles = [
-  {
-    name: 'Super Admin',
-    slug: 'super-admin',
-    description: 'Full system access',
-    permissions: ['*'],
-    isSystem: true
-  },
-  {
-    name: 'Admin',
-    slug: 'admin',
-    description: 'Administrative access',
-    permissions: [
-      'users:read', 'users:write',
-      'matches:read', 'matches:write',
-      'tournaments:read', 'tournaments:write',
-      'content:read', 'content:write',
-      'finance:read',
-      'settings:read', 'settings:write'
-    ],
-    isSystem: true
-  },
-  {
-    name: 'Moderator',
-    slug: 'moderator',
-    description: 'Content moderation access',
-    permissions: [
-      'content:read', 'content:write',
-      'users:read',
-      'community:moderate'
-    ],
-    isSystem: true
-  },
-  {
-    name: 'Finance Manager',
-    slug: 'finance-manager',
-    description: 'Financial operations access',
-    permissions: [
-      'finance:read', 'finance:write',
-      'transactions:read',
-      'subscriptions:read'
-    ],
-    isSystem: true
-  },
-  {
-    name: 'Support Agent',
-    slug: 'support',
-    description: 'Customer support access',
-    permissions: [
-      'users:read',
-      'tickets:read', 'tickets:write',
-      'contact:read', 'contact:write'
-    ],
-    isSystem: true
-  }
-];
+import roleService from '../role/role.service.js';
 
-// In-memory storage for features not yet in database
-let roles = [...defaultRoles];
+// In-memory storage for features not yet in database (keeping others)
 let apiKeys = [];
 let webhooks = [];
 let emailTemplates = [];
@@ -85,6 +28,7 @@ let backups = [];
 let systemLogs = [];
 let verifications = [];
 let moderationQueue = [];
+
 
 export const adminService = {
   // Dashboard
@@ -316,37 +260,23 @@ export const adminService = {
     if (!user) throw new ApiError(404, 'User not found');
   },
 
-  // Roles
+  // Roles - delegated to role service
   getRoles: async () => {
-    return roles;
+    return roleService.getRoles();
   },
 
   createRole: async (data) => {
-    const role = {
-      _id: Date.now().toString(),
-      ...data,
-      createdAt: new Date()
-    };
-    roles.push(role);
-    return role;
+    return roleService.createRole(data);
   },
 
   updateRole: async (id, data) => {
-    const index = roles.findIndex(r => r._id === id);
-    if (index === -1) throw new ApiError(404, 'Role not found');
-    if (roles[index].isSystem) throw new ApiError(400, 'Cannot modify system role');
-    
-    roles[index] = { ...roles[index], ...data, updatedAt: new Date() };
-    return roles[index];
+    return roleService.updateRole(id, data);
   },
 
   deleteRole: async (id) => {
-    const index = roles.findIndex(r => r._id === id);
-    if (index === -1) throw new ApiError(404, 'Role not found');
-    if (roles[index].isSystem) throw new ApiError(400, 'Cannot delete system role');
-    
-    roles.splice(index, 1);
+    return roleService.deleteRole(id);
   },
+
 
   // System Logs
   getSystemLogs: async (query) => {

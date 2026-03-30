@@ -56,7 +56,7 @@ const transactionSchema = new mongoose.Schema({
   timestamps: true
 });
 
-transactionSchema.index({ user: 1 });
+
 transactionSchema.index({ wallet: 1 });
 transactionSchema.index({ status: 1 });
 transactionSchema.index({ createdAt: -1 });

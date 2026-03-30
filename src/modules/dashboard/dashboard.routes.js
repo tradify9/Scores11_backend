@@ -3,6 +3,9 @@ import { dashboardController } from './dashboard.controller.js';
 
 const router = express.Router();
 
+// Main dashboard endpoint - comprehensive overview (primary mobile app endpoint)
+router.get('/', dashboardController.getOverview);
+
 // Dashboard routes - all public endpoints for mobile app
 router.get('/overview', dashboardController.getOverview);
 router.get('/live-matches', dashboardController.getLiveMatches);
