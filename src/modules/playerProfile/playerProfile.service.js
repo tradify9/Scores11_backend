@@ -7,11 +7,11 @@ import { getPagination } from '../../utils/pagination.js';
 export const playerProfileService = {
   // Create player profile (Self Registration)
   createProfile: async (profileData, userId) => {
-    // Check if profile already exists
-    const existingProfile = await PlayerProfile.findOne({ user: userId });
-    if (existingProfile) {
-      throw new ApiError(400, 'Player profile already exists');
-    }
+  // Duplicate check removed - handle MongoDB unique gracefully
+  // const existingProfile = await PlayerProfile.findOne({ user: userId });
+  // if (existingProfile) {
+  //   throw new ApiError(400, 'Player profile already exists');
+  // }
 
     // Verify user exists
     const user = await User.findById(userId);
@@ -19,21 +19,33 @@ export const playerProfileService = {
       throw new ApiError(404, 'User not found');
     }
 
-    const profile = await PlayerProfile.create({
-      ...profileData,
-      user: userId
-    });
-
-    // Link with Player model if exists
-    if (profileData.player) {
-      await Player.findByIdAndUpdate(profileData.player, {
-        user: userId,
-        playerName: profileData.fullName,
-        dateOfBirth: profileData.dateOfBirth
+    try {
+      const profile = await PlayerProfile.create({
+        ...profileData,
+        user: userId
       });
-    }
 
-    return profile;
+      // Link with Player model if exists
+      if (profileData.player) {
+        await Player.findByIdAndUpdate(profileData.player, {
+          user: userId,
+          playerName: profileData.fullName,
+          dateOfBirth: profileData.dateOfBirth
+        });
+      }
+
+      return profile;
+    } catch (error) {
+      if (error.code === 11000) {
+        // Duplicate user - return existing profile as success
+        return await PlayerProfile.findOne({ user: userId })
+          .populate('user', 'name email phone avatar')
+          .populate('player', 'playerName jerseyNumber role')
+          .populate('currentTeam', 'name shortName logo')
+          .populate('verifiedBy', 'name');
+      }
+      throw error;
+    }
   },
 
   // Get profile by ID
