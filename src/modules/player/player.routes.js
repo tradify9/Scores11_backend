@@ -12,7 +12,7 @@ router.get('/public/:id', playerController.getPlayerByIdPublic);
 
 // Protected routes - require authentication
 router.post('/', authenticate, playerController.createPlayer);
-router.get('/', authenticate, playerController.getAllPlayers);
+router.get('/', playerController.getAllPlayers);
 router.get('/team/:teamId', authenticate, playerController.getPlayersByTeam);
 router.get('/:id', authenticate, playerController.getPlayerById);
 router.get('/:id/stats', playerController.getPlayerStats);
