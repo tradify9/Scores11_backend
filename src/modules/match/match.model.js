@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { MATCH_STATUS, MATCH_FORMAT, MATCH_TYPE, TOSS_DECISION } from '../../constants/matchStatus.js';
+import { MATCH_STATUS, MATCH_FORMAT, MATCH_TYPE } from '../../constants/matchStatus.js';
 
 const matchSchema = new mongoose.Schema({
   tournament: {
@@ -9,15 +9,16 @@ const matchSchema = new mongoose.Schema({
   team1: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Team',
-    required: [true, 'Team 1 is required']
+    required: true
   },
   team2: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Team',
-    required: [true, 'Team 2 is required']
+    required: true
   },
-  matchNumber: {
-    type: Number
+  winner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Team'
   },
   format: {
     type: String,
@@ -29,19 +30,6 @@ const matchSchema = new mongoose.Schema({
     enum: Object.values(MATCH_TYPE),
     default: MATCH_TYPE.LEAGUE
   },
-  venue: {
-    name: { type: String, required: true },
-    city: String,
-    state: String,
-    country: { type: String, default: 'India' }
-  },
-  scheduledDate: {
-    type: Date,
-    required: true
-  },
-  startTime: {
-    type: String
-  },
   overs: {
     type: Number,
     default: 20
@@ -51,14 +39,26 @@ const matchSchema = new mongoose.Schema({
     enum: Object.values(MATCH_STATUS),
     default: MATCH_STATUS.SCHEDULED
   },
+  scheduledDate: {
+    type: Date,
+    required: true
+  },
+  venue: {
+    name: String,
+    city: String,
+    state: String,
+    country: String
+  },
   toss: {
     winner: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
-    decision: { type: String, enum: Object.values(TOSS_DECISION) },
-    decidedAt: Date
+    decision: { type: String, enum: ['bat', 'bowl'] }
   },
-  // Enhanced innings tracking
+  currentInnings: {
+    type: Number,
+    default: 1
+  },
   innings: [{
-    inningsNumber: { type: Number, default: 1 },
+    inningsNumber: Number,
     battingTeam: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
     bowlingTeam: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
     totalRuns: { type: Number, default: 0 },
@@ -72,21 +72,13 @@ const matchSchema = new mongoose.Schema({
       legByes: { type: Number, default: 0 },
       total: { type: Number, default: 0 }
     },
-    fallOfWickets: [{
-      wicketNumber: Number,
-      batsman: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
-      runs: Number,
-      overs: String,
-      partnership: Number
-    }],
     battingScorecard: [{
       batsman: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
       runs: { type: Number, default: 0 },
       balls: { type: Number, default: 0 },
       fours: { type: Number, default: 0 },
       sixes: { type: Number, default: 0 },
-      strikeRate: { type: Number, default: 0 },
-      howOut: String,
+      howOut: { type: String, default: 'not_out' },
       fielder: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
       bowler: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' }
     }],
@@ -100,24 +92,27 @@ const matchSchema = new mongoose.Schema({
       noBall: { type: Number, default: 0 },
       economy: { type: Number, default: 0 }
     }],
+    fallOfWickets: [{
+      wicketNumber: Number,
+      batsman: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
+      runs: Number,
+      overs: String,
+      partnership: Number
+    }],
     partnerships: [{
       batsman1: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
       batsman2: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
-      runs: { type: Number, default: 0 },
-      balls: { type: Number, default: 0 }
+      runs: Number,
+      balls: Number
     }],
     currentBatsmen: [{
       batsman: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
-      runs: { type: Number, default: 0 },
-      balls: { type: Number, default: 0 },
-      isOnStrike: { type: Boolean, default: false }
+      runs: Number,
+      balls: Number,
+      isOnStrike: Boolean
     }],
-    currentBowler: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Player'
-    },
+    currentBowler: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
     lastOverBalls: [{
-      ballNumber: Number,
       runs: Number,
       isWicket: Boolean,
       isWide: Boolean,
@@ -127,31 +122,10 @@ const matchSchema = new mongoose.Schema({
     startTime: Date,
     endTime: Date
   }],
-  // Current match state
-  currentInnings: {
-    type: Number,
-    default: 1
-  },
-  battingOrder: [{
-    team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
-    players: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Player' }]
-  }],
-  // Live score tracking
   score: {
-    team1: {
-      runs: { type: Number, default: 0 },
-      wickets: { type: Number, default: 0 },
-      overs: { type: String, default: '0.0' },
-      innings: { type: Number, default: 1 }
-    },
-    team2: {
-      runs: { type: Number, default: 0 },
-      wickets: { type: Number, default: 0 },
-      overs: { type: String, default: '0.0' },
-      innings: { type: Number, default: 2 }
-    }
+    team1: { runs: { type: Number, default: 0 }, wickets: { type: Number, default: 0 }, overs: { type: String, default: '0.0' } },
+    team2: { runs: { type: Number, default: 0 }, wickets: { type: Number, default: 0 }, overs: { type: String, default: '0.0' } }
   },
-  // Match result details
   result: {
     winner: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
     margin: String,
@@ -161,24 +135,6 @@ const matchSchema = new mongoose.Schema({
     requiredRuns: Number,
     requiredBalls: Number
   },
-  // Match officials
-  officials: {
-    umpire1: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    umpire2: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    referee: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
-  },
-  // Weather and pitch info
-  weather: {
-    condition: String,
-    temperature: Number,
-    humidity: Number
-  },
-  pitch: {
-    type: String,
-    batting: { type: String, enum: ['difficult', 'balanced', 'easy'], default: 'balanced' },
-    dew: { type: Boolean, default: false }
-  },
-  // Commentary
   commentary: [{
     over: Number,
     ball: Number,
@@ -188,47 +144,22 @@ const matchSchema = new mongoose.Schema({
     isWicket: Boolean,
     timestamp: { type: Date, default: Date.now }
   }],
-  // Powerplay tracking
+  battingOrder: [{
+    team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+    players: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Player' }]
+  }],
   powerplay: {
-    firstInnings: {
-      startOver: { type: Number, default: 0 },
-      endOver: { type: Number, default: 6 },
-      runs: { type: Number, default: 0 },
-      wickets: { type: Number, default: 0 }
-    },
-    secondInnings: {
-      startOver: { type: Number, default: 0 },
-      endOver: { type: Number, default: 6 },
-      runs: { type: Number, default: 0 },
-      wickets: { type: Number, default: 0 }
-    }
+    firstInnings: { runs: { type: Number, default: 0 }, wickets: { type: Number, default: 0 } },
+    secondInnings: { runs: { type: Number, default: 0 }, wickets: { type: Number, default: 0 } }
   },
-  // Match statistics
-  stats: {
-    highestIndividualScore: { runs: Number, player: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' } },
-    bestBowling: { wickets: Number, runs: Number, player: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' } },
-    highestPartnership: { runs: Number, players: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Player' }] },
-    mostSixes: { count: Number, player: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' } },
-    mostFours: { count: Number, player: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' } }
-  },
-  // Created by
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  }
-}, {
-  timestamps: true
-});
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  isActive: { type: Boolean, default: true }
+}, { timestamps: true });
 
 matchSchema.index({ tournament: 1 });
-matchSchema.index({ team1: 1, team2: 1 });
-matchSchema.index({ scheduledDate: 1 });
 matchSchema.index({ status: 1 });
+matchSchema.index({ scheduledDate: 1 });
+matchSchema.index({ team1: 1, team2: 1 });
 
 const Match = mongoose.model('Match', matchSchema);
-
 export default Match;

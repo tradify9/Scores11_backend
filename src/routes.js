@@ -33,6 +33,7 @@ import bannerRoutes from './modules/banner/banner.routes.js';
 import featureToggleRoutes from './modules/featureToggle/featureToggle.routes.js';
 import dashboardRoutes from './modules/dashboard/dashboard.routes.js';
 import roleRoutes from './modules/role/role.routes.js';
+// import matchRoutes from './modules/match/match.routes.js';
 
 const router = express.Router();
 
@@ -69,6 +70,7 @@ router.use('/search', searchRoutes);
 router.use('/banners', bannerRoutes);
 router.use('/feature-toggles', featureToggleRoutes);
 router.use('/dashboard', dashboardRoutes);
+// router.use('/matches', matchRoutes);
 
 router.get('/', (req, res) => {
   res.json({

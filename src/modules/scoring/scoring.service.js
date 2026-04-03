@@ -70,7 +70,6 @@ export const scoringService = {
       .populate('team2', 'name shortName');
   },
 
-
   // Add a ball with full tracking
   addBall: async (matchId, ballData, userId) => {
     const match = await Match.findById(matchId);
@@ -279,7 +278,6 @@ export const scoringService = {
     };
   },
 
-
   // Get match scoring data with full details
   getMatchScoring: async (matchId) => {
     const match = await Match.findById(matchId)
@@ -303,7 +301,7 @@ export const scoringService = {
     };
   },
 
-// Get live score with current state - NULL SAFE
+  // Get live score with current state - NULL SAFE
   getLiveScore: async (matchId) => {
     const match = await Match.findById(matchId)
       .populate('team1', 'name shortName logo')
@@ -534,7 +532,6 @@ export const scoringService = {
       .populate('team2', 'name shortName');
   },
 
-
   // End innings
   endInnings: async (matchId, userId) => {
     const match = await Match.findById(matchId);
@@ -731,6 +728,39 @@ export const scoringService = {
     };
   },
 
+  // Get over summary data for all overs
+  getOverSummaryData: async (matchId) => {
+    const balls = await Ball.find({ match: matchId })
+      .sort({ innings: 1, overNumber: 1, ballNumber: 1 });
+    
+    const overMap = new Map();
+    
+    balls.forEach(ball => {
+      const key = `${ball.innings}-${ball.overNumber}`;
+      if (!overMap.has(key)) {
+        overMap.set(key, {
+          overNumber: ball.overNumber,
+          innings: ball.innings,
+          runs: 0,
+          wickets: 0,
+          balls: []
+        });
+      }
+      const over = overMap.get(key);
+      over.runs += (ball.runs || 0) + (ball.extras || 0);
+      if (ball.wicket) over.wickets += 1;
+      over.balls.push({
+        ballNumber: ball.ballNumber,
+        runs: ball.runs,
+        isWicket: ball.wicket,
+        isWide: ball.isWide,
+        isNoBall: ball.isNoBall
+      });
+    });
+    
+    return Array.from(overMap.values());
+  },
+
   // Get match timeline
   getMatchTimeline: async (matchId) => {
     const match = await Match.findById(matchId)
@@ -815,8 +845,8 @@ function calculateMatchStats(balls, match) {
       if (ball.runs === 6) batsmanScores[batsmanId].sixes += 1;
     }
     
-    if (ball.isFour) stats.totalFours += 1;
-    if (ball.isSix) stats.totalSixes += 1;
+    if (ball.runs === 4) stats.totalFours += 1;
+    if (ball.runs === 6) stats.totalSixes += 1;
     if (ball.extras > 0) stats.totalExtras += ball.extras;
   });
 
