@@ -115,8 +115,49 @@ async function seedData() {
     ]);
     console.log(`✅ Seeded ${tournaments.length} tournaments`);
 
-    // 4. SEED LIVE MATCHES (5 w/ scores)
+    // 4. SEED LIVE MATCHES WITH FULL SCORECARD (MI vs RCB live 0/0)
     const liveMatches = await Match.insertMany([
+      {
+        team1: teams[0]._id, // MI
+        team2: teams[2]._id, // RCB
+        tournament: tournaments[0]._id, // IPL
+        matchNumber: 'MI vs RCB - Live',
+        format: 'T20',
+        status: 'live',
+        currentInnings: 1,
+        scheduledDate: new Date(),
+        venue: { name: 'Nassau County Stadium', city: 'New York' },
+        score: {
+          team1: { runs: 0, wickets: 0, overs: '0.0' },
+          team2: { runs: 0, wickets: 0, overs: '0.0' }
+        },
+        innings: [
+          {
+            inningsNumber: 1,
+            battingTeam: teams[0]._id,
+            bowlingTeam: teams[2]._id,
+            totalRuns: 0,
+            totalWickets: 0,
+            totalOvers: 0,
+            totalBalls: 0,
+            overs: '0.0',
+            extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, total: 0 },
+            battingScorecard: [
+              { batsman: players[1]._id, playerName: 'Rohit Sharma', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0, howOut: 'not_out' },
+              { batsman: players[5]._id, playerName: 'Ishan Kishan', runs: 0, balls: 0, fours: 0, sixes: 0, strikeRate: 0, howOut: 'not_out' }
+            ],
+            bowlingScorecard: [],
+            fallOfWickets: [],
+            isCompleted: false,
+            startTime: new Date()
+          }
+        ],
+        isActive: true,
+        toss: {
+          winner: teams[0]._id,
+          decision: 'bat'
+        }
+      },
       {
         team1: teams[0]._id, // MI
         team2: teams[2]._id, // RCB

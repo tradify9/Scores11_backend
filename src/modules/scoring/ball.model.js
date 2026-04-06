@@ -23,7 +23,7 @@ const ballSchema = new mongoose.Schema({
   scoredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
 }, { timestamps: true });
 
-ballSchema.index({ match: 1, innings: 1, overNumber: 1 });
+ballSchema.index({ match: 1, innings: 1, overNumber: 1, ballNumber: 1 });
 ballSchema.index({ match: 1, createdAt: -1 });
 
 const Ball = mongoose.model('Ball', ballSchema);
