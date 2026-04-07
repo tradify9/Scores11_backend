@@ -45,6 +45,7 @@ async function seedMatchSchedules() {
 
       matchData.push({
         matchId,
+        isActive: true,
         team1: team1._id,
         team2: team2._id,
         format: 't20',

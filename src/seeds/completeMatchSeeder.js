@@ -59,7 +59,8 @@ format: 't20', matchType: 'league', status: 'completed',
       score: {
         team1: { runs: 168, wickets: 6, overs: '20.0' },
         team2: { runs: 172, wickets: 4, overs: '19.1' }
-      }
+      },
+      isActive: true
     });
 
     console.log(`🎯 Match created: ${match._id}`);

@@ -48,6 +48,7 @@ async function seedLiveMatch() {
         team2: { runs: 0, wickets: 0, overs: '0.0' }
       },
       currentInnings: 1,
+      isActive: true,
       createdBy: seedUserId
     });
 
