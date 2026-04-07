@@ -121,8 +121,8 @@ export const matchService = {
   getAllMatches: async (query) => {
     const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
     
-    console.log('🔍 Matches filter:', JSON.stringify({ isActive: { $ne: false } }));
-    const filter = {}; // TEMP: no filter to test
+    console.log('🔍 Matches filter:', JSON.stringify({ isActive: true }));
+    const filter = { isActive: true };
     if (query.status) filter.status = query.status;
     if (query.tournament) filter.tournament = query.tournament;
     if (query.format) filter.format = query.format;

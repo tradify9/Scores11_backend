@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 
 async function createSeedUser() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/crick11');
+    await mongoose.connect(process.env.MONGODB_URI);
     
     const hashedPassword = await bcrypt.hash('password123', 12);
     
