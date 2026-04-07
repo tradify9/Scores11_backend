@@ -103,8 +103,8 @@ const matchSchema = new mongoose.Schema({
   team1: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
   team2: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
   tournament: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament' },
-  format: { type: String, enum: Object.values(MATCH_FORMAT), default: 'T20' },
-  matchType: { type: String, enum: Object.values(MATCH_TYPE), default: 'LEAGUE' },
+  format: { type: String, enum: Object.values(MATCH_FORMAT), default: MATCH_FORMAT.T20 },
+  matchType: { type: String, enum: Object.values(MATCH_TYPE), default: MATCH_TYPE.LEAGUE },
   venue: venueSchema,
   scheduledDate: { type: Date, required: true },
   overs: { type: Number, default: 20 },
@@ -146,3 +146,4 @@ matchSchema.index({ tournament: 1 });
 
 const Match = mongoose.model('Match', matchSchema);
 export default Match;
+
