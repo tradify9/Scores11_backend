@@ -122,7 +122,7 @@ export const matchService = {
     const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
     
     console.log('🔍 Matches filter:', JSON.stringify({ isActive: true }));
-    const filter = { isActive: true };
+    const filter = { $or: [{ isActive: true }, { isActive: { $exists: false } }] };
     if (query.status) filter.status = query.status;
     if (query.tournament) filter.tournament = query.tournament;
     if (query.format) filter.format = query.format;
