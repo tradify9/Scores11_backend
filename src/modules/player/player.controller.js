@@ -1,10 +1,16 @@
 import { playerService } from './player.service.js';
 import { performanceService } from '../performance/performance.service.js';
+import { createPlayerSchema } from './player.validation.js';
 import ApiResponse from '../../utils/ApiResponse.js';
+import ApiError from '../../utils/ApiError.js';
 import catchAsync from '../../utils/catchAsync.js';
 
 export const playerController = {
   createPlayer: catchAsync(async (req, res) => {
+    const { error } = createPlayerSchema.validate(req.body);
+    if (error) {
+      throw new ApiError(422, error.details[0].message);
+    }
     const player = await playerService.createPlayer(req.body, req.user.userId);
     res.status(201).json(new ApiResponse(201, 'Player created successfully', player));
   }),
