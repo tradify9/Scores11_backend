@@ -83,6 +83,16 @@ const inningsSchema = new mongoose.Schema({
   partnerships: [],
   currentBatsmen: [],
   lastOverBalls: [],
+  // Current live state
+  currentStriker: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
+  currentNonStriker: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
+  currentBowler: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
+  currentOverNumber: { type: Number, default: 1 },
+  currentBallNumber: { type: Number, default: 1 },
+  currentPartnership: {
+    runs: { type: Number, default: 0 },
+    balls: { type: Number, default: 0 }
+  },
   isCompleted: { type: Boolean, default: false },
   startTime: Date,
   endTime: Date
@@ -132,7 +142,10 @@ const matchSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   isActive: { type: Boolean, default: true }
-}, { timestamps: true });
+}, { 
+  timestamps: true,
+  versionKey: false // Disabled optimistic concurrency control
+});
 
 matchSchema.pre('save', function(next) {
   if (!this.matchId) {
@@ -142,8 +155,11 @@ matchSchema.pre('save', function(next) {
 });
 
 matchSchema.index({ status: 1, scheduledDate: 1 });
+matchSchema.index({ status: 1, isActive: 1 });
 matchSchema.index({ team1: 1, team2: 1 });
 matchSchema.index({ tournament: 1 });
+matchSchema.index({ 'innings.inningsNumber': 1 });
+matchSchema.index({ 'innings.totalRuns': -1 });
 
 const Match = mongoose.model('Match', matchSchema);
 export default Match;

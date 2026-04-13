@@ -59,8 +59,9 @@ export const getIO = () => {
 
 export const emitToMatch = (matchId, event, data) => {
   if (io && matchId) {
-    io.to(`match:${matchId}`).emit(event, data);
-    console.log(`📤 Emitted ${event} to match:${matchId}`);
+    const room = `match:${matchId}`;
+    io.to(room).emit(event, data);
+    console.log(`📤 Emitted ${event} to ${room} (${Object.keys(io.sockets.adapter.rooms[room] || {}).length} clients)`);
   }
 };
 
