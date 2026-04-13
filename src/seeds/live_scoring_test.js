@@ -1,79 +1,142 @@
-// Live Scoring Test Seed
-const mongoose = require('mongoose');
-const Match = require('../src/modules/match/match.model.js');
-const Team = require('../src/modules/team/team.model.js');
-const Player = require('../src/modules/player/player.model.js');
-const Ball = require('../src/modules/scoring/ball.model.js');
+// Live Scoring Test Seed - FIXED EXECUTABLE VERSION
+
+import dotenv from 'dotenv';
+import mongoose from 'mongoose';
+
+import Match from '../modules/match/match.model.js';
+import Team from '../../modules/team/team.model.js';
+import Player from '../modules/player/player.model.js';
+
+dotenv.config();
+
+// MongoDB Connect
+await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/crick11')
+  .then(() => console.log('✅ MongoDB connected for seed'))
+  .catch(err => console.error('❌ MongoDB error:', err));
 
 async function createLiveTestMatch() {
-  console.log('🌟 Creating live scoring test match...');
-  
-  // Find teams
-  const miTeam = await Team.findOne({ shortName: 'MI' });
-  const cskTeam = await Team.findOne({ shortName: 'CSK' });
-  if (!miTeam || !cskTeam) {
-    console.log('❌ Teams not found. Run seedUser.js first');
-    return;
-  }
+  try {
+    console.log('🌟 Creating COMPLETE live scoring test data...');
 
-  // Find players
-  const rohit = await Player.findOne({ playerName: 'Rohit Sharma' });
-  const dhoni = await Player.findOne({ playerName: 'MS Dhoni' });
-  const bumrah = await Player.findOne({ playerName: 'Jasprit Bumrah' });
-  const jadeja = await Player.findOne({ playerName: 'Ravindra Jadeja' });
-  
-  if (!rohit || !dhoni || !bumrah || !jadeja) {
-    console.log('❌ Players not found');
-    return;
-  }
-
-  // Create LIVE match
-  const liveMatch = await Match.create({
-    team1: miTeam._id,
-    team2: cskTeam._id,
-    matchType: 'league',
-    format: 'T20',
-    status: 'live',
-    venue: { name: 'Wankhede Stadium', city: 'Mumbai' },
-    toss: { winner: miTeam._id, decision: 'bat' },
-    overs: 20,
-    currentInnings: 1,
-    innings: [{
-      inningsNumber: 1,
-      battingTeam: miTeam._id,
-      bowlingTeam: cskTeam._id,
-      totalRuns: 85,
-      totalWickets: 1,
-      totalOvers: 10,
-      totalBalls: 3,
-      extras: { wides: 2, noBalls: 1, total: 3 },
-      battingScorecard: [
-        { batsman: rohit._id, runs: 42, balls: 25, fours: 5, sixes: 1, strikeRate: 168, howOut: 'not_out' },
-        { batsman: dhoni._id, runs: 23, balls: 18, fours: 2, sixes: 0, strikeRate: 127.78, howOut: 'not_out' }
-      ],
-      bowlingScorecard: [
-        { bowler: jadeja._id, overs: 2, maidens: 0, runsConceded: 18, wickets: 1, economy: 9.0 }
-      ],
-      currentStriker: rohit._id,
-      currentNonStriker: dhoni._id,
-      currentBowler: jadeja._id,
-      currentOverNumber: 11,
-      currentBallNumber: 4,
-      currentPartnership: { runs: 25, balls: 15 },
-      isCompleted: false,
-      startTime: new Date(Date.now() - 60*60*1000)
-    }],
-    score: {
-      team1: { runs: 85, wickets: 1, overs: '10.3', innings: 1 },
-      team2: { runs: 0, wickets: 0, overs: '0.0' }
+    // Create/Fetch MI Team
+    let miTeam = await Team.findOne({ shortName: 'MI' });
+    if (!miTeam) {
+      miTeam = await Team.create({
+        name: 'Mumbai Indians',
+        shortName: 'MI',
+        city: 'Mumbai',
+        country: 'India',
+        players: [],
+        stats: { matchesPlayed: 0 }
+      });
     }
-  });
 
-  console.log(`✅ Live test match created: ${liveMatch._id}`);
-  console.log(`🔗 Test URLs:`);
-  console.log(`  Live Score: http://localhost:5000/api/scoring/match/${liveMatch._id}/live`);
-  console.log(`  Add Ball: POST http://localhost:5000/api/scoring/match/${liveMatch._id}/ball`);
-  console.log(`  Current State: Rohit 42*(25), Dhoni 23*(18) | Jadeja 2-0-18-1`);
+    // Create/Fetch CSK Team
+    let cskTeam = await Team.findOne({ shortName: 'CSK' });
+    if (!cskTeam) {
+      cskTeam = await Team.create({
+        name: 'Chennai Super Kings',
+        shortName: 'CSK',
+        city: 'Chennai',
+        country: 'India',
+        players: [],
+        stats: { matchesPlayed: 0 }
+      });
+    }
+
+    // Create Test Players
+    const playersData = [
+      { name: 'Rohit Sharma', jersey: 45, role: 'batsman', team: miTeam._id },
+      { name: 'Ishan Kishan', jersey: 14, role: 'wicketkeeper', team: miTeam._id },
+      { name: 'Suryakumar Yadav', jersey: 63, role: 'batsman', team: miTeam._id },
+      { name: 'MS Dhoni', jersey: 7, role: 'wicketkeeper', team: cskTeam._id },
+      { name: 'Ruturaj Gaikwad', jersey: 30, role: 'batsman', team: cskTeam._id },
+      { name: 'Ravindra Jadeja', jersey: 8, role: 'allrounder', team: cskTeam._id },
+      { name: 'Jasprit Bumrah', jersey: 93, role: 'bowler', team: miTeam._id },
+    ];
+
+    const players = [];
+
+    for (const data of playersData) {
+      let player = await Player.findOne({ playerName: data.name });
+
+      if (!player) {
+        player = await Player.create({
+          playerName: data.name,
+          jerseyNumber: data.jersey,
+          role: data.role,
+          team: data.team
+        });
+      }
+
+      players.push(player);
+
+      // ✅ FIX: correct player assignment to teams
+      if (String(data.team) === String(miTeam._id)) {
+        if (!miTeam.players.includes(player._id)) {
+          miTeam.players.push(player._id);
+        }
+      }
+
+      if (String(data.team) === String(cskTeam._id)) {
+        if (!cskTeam.players.includes(player._id)) {
+          cskTeam.players.push(player._id);
+        }
+      }
+    }
+
+    await Promise.all([miTeam.save(), cskTeam.save()]);
+
+    // Create LIVE READY match
+    const liveMatch = await Match.create({
+      team1: miTeam._id,
+      team2: cskTeam._id,
+      format: 'T20',
+      matchType: 'league',
+      status: 'ready',
+      venue: {
+        name: 'Wankhede Stadium',
+        city: 'Mumbai'
+      },
+      scheduledDate: new Date(Date.now() + 60 * 60 * 1000),
+      overs: 20,
+      toss: {
+        winner: miTeam._id,
+        decision: 'bat',
+        timestamp: new Date()
+      },
+      battingOrder: [
+        {
+          team: miTeam._id,
+          players: players.slice(0, 4).map(p => p._id)
+        },
+        {
+          team: cskTeam._id,
+          players: players.slice(4, 7).map(p => p._id)
+        }
+      ],
+      isActive: true
+    });
+
+    console.log('🎉 LIVE SCORING TEST DATA CREATED!');
+    console.log('🏏 Match ID:', liveMatch._id);
+    console.log('⚾ Teams: MI vs CSK (Status: ready, Toss: MI bat)');
+    console.log('👥 Players ready for XI selection');
+    console.log('');
+    console.log('🧪 TEST COMMANDS:');
+    console.log(`Live Score: http://localhost:5000/api/scoring/match/${liveMatch._id}/live`);
+    console.log(`Toss API: PATCH /api/matches/${liveMatch._id}/toss`);
+    console.log(`Initialize: POST /api/scoring/match/${liveMatch._id}/initialize`);
+    console.log(`Add Ball: POST /api/scoring/match/${liveMatch._id}/ball`);
+    console.log(`Set Striker: PATCH /api/scoring/match/${liveMatch._id}/striker`);
+
+  } catch (error) {
+    console.error('❌ Seed error:', error);
+  } finally {
+    await mongoose.connection.close();
+    console.log('🔌 DB connection closed');
+  }
 }
 
-module.exports = { createLiveTestMatch };
+// EXECUTE
+createLiveTestMatch();

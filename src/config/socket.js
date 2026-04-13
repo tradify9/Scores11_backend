@@ -65,6 +65,13 @@ export const emitToMatch = (matchId, event, data) => {
   }
 };
 
+// Live scoring specific events
+export const emitTossUpdate = (matchId, tossData) => emitToMatch(matchId, 'tossUpdate', tossData);
+export const emitInningsStart = (matchId, inningsData) => emitToMatch(matchId, 'inningsStart', inningsData);
+export const emitInningsEnd = (matchId, inningsData) => emitToMatch(matchId, 'inningsEnd', inningsData);
+export const emitWicketFall = (matchId, wicketData) => emitToMatch(matchId, 'wicketFall', wicketData);
+export const emitBoundary = (matchId, boundaryData) => emitToMatch(matchId, 'boundary', boundaryData);
+
 export const emitToTournament = (tournamentId, event, data) => {
   if (io && tournamentId) {
     io.to(`tournament:${tournamentId}`).emit(event, data);
