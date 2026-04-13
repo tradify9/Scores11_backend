@@ -1,12 +1,11 @@
-# Complete Match Seeder Fix Progress - ✅ FIXED
+# Live Scoring Seed MongoDB Fix Progress
 
-## Completed Steps:
-- [x] 1. SeedUserId scope & param fixes
-- [x] 2. generateInningsData signature & variable renames
-- [x] 3. Function calls updated with seedUserId
-- [x] 4. Duplicate call removed
-- [x] 5. Loop logic improved (uses overs, wickets params)
-- [x] 6. All ReferenceError & connection issues resolved
+## Steps:
+- [x] Plan approved ✅
+- [x] 1. Edit live_scoring_test.js to use config/env.js ✅
+- [x] 2. Test connection: `cd backend && node src/seeds/live_scoring_test.js` ✅
+  - Fixed WSL path resolution with absolute ESM import
+- [ ] 3. Verify live match created ✅
+- [ ] 4. Test scoring APIs with new match
 
-**Status:** ✅ COMPLETE! Ready to test.
-
+**Status:** Edit complete, ready for test

@@ -1,77 +1,149 @@
 #!/usr/bin/env node
 
+// ✅ QUICK LIVE FIX - CLEAN & WORKING
+
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+
 import Match from '../modules/match/match.model.js';
 import Team from '../modules/team/team.model.js';
-import Tournament from '../modules/tournament/tournament.model.js';
+import Ball from '../modules/scoring/ball.model.js';
+import { scoringService } from '../modules/scoring/scoring.service.js';
 
 dotenv.config({ path: '../../.env' });
 
-const MONGODB_URI = process.env.MONGODB_URI;
+async function quickLiveScoringFix() {
+  let liveMatch;
 
-async function quickLiveFix() {
   try {
-    if (!MONGODB_URI) {
-      console.error('❌ Add MONGODB_URI to backend/.env');
-      process.exit(1);
+    if (!process.env.MONGODB_URI) {
+      throw new Error("❌ MONGODB_URI missing");
     }
-    await mongoose.connect(MONGODB_URI);
-    console.log('✅ MongoDB Connected');
 
-    // Check if live match exists
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log('✅ Connected to MongoDB Atlas');
+
+    // 🔍 Check existing live match
     const liveCount = await Match.countDocuments({ status: 'live', isActive: true });
+
     if (liveCount > 0) {
-      console.log(`✅ Already ${liveCount} live matches exist`);
-      await mongoose.disconnect();
+      console.log(`✅ ${liveCount} live matches already exist`);
       return;
     }
 
-    // Find or create teams
-    let miTeam = await Team.findOne({ shortName: 'MI' });
-    let rcbTeam = await Team.findOne({ shortName: 'RCB' });
-    let tournament = await Tournament.findOne({ name: /Champions Trophy/ });
+    // -----------------------
+    // TEAMS
+    // -----------------------
+    const miTeam = await Team.findOne({ shortName: 'MI' }).populate('players');
+    const cskTeam = await Team.findOne({ shortName: 'CSK' }).populate('players');
 
-    if (!miTeam || !rcbTeam) {
-      console.log('⚠️ Run all.seed.js first for teams');
-      await mongoose.disconnect();
+    if (!miTeam || !cskTeam) {
+      console.log('⚠️ Run: node src/seeds/all.seed.js first');
       return;
     }
 
-    if (!tournament) {
-      console.log('⚠️ Run all.seed.js first for tournaments');
-      await mongoose.disconnect();
+    if (!miTeam.players.length || !cskTeam.players.length) {
+      console.log('⚠️ Players missing in teams');
       return;
     }
 
-    // Create LIVE match
-    const liveMatch = await Match.create({
+    const striker = miTeam.players[0];
+    const nonStriker = miTeam.players[1];
+    const bowler =
+      cskTeam.players.find(p => p.role === 'bowler') || cskTeam.players[0];
+
+    // -----------------------
+    // MATCH CREATE
+    // -----------------------
+    liveMatch = await Match.create({
       team1: miTeam._id,
-      team2: rcbTeam._id,
-      tournament: tournament._id,
-      format: 't20',
-      matchType: 'league',
+      team2: cskTeam._id,
+      format: 'T20',
       status: 'live',
-      venue: { name: 'Nassau County Stadium', city: 'New York' },
-      scheduledDate: new Date(Date.now() - 60 * 60 * 1000), // Started 1hr ago
-      toss: { winner: miTeam._id, decision: 'bowl' },
+      venue: { name: 'Wankhede Stadium', city: 'Mumbai' },
+      scheduledDate: new Date(),
+      toss: { winner: miTeam._id, decision: 'bat' },
+      battingOrder: [
+        { team: miTeam._id, players: miTeam.players.map(p => p._id) },
+        { team: cskTeam._id, players: cskTeam.players.map(p => p._id) }
+      ],
       score: {
-        team1: { runs: 120, wickets: 2, overs: '14.0' },
+        team1: { runs: 45, wickets: 1, overs: '5.2' },
         team2: { runs: 0, wickets: 0, overs: '0.0' }
       },
-      currentInnings: 1,
       isActive: true
     });
 
-    console.log('🎯 LIVE Match created:', liveMatch._id);
-    console.log('✅ API now returns data!');
-    console.log('Test: http://68.178.171.95:3000/api/v1/matches/live');
+    // -----------------------
+    // INIT SCORING
+    // -----------------------
+    await scoringService.initializeMatch(
+      liveMatch._id,
+      liveMatch.battingOrder,
+      'quick_seed'
+    );
+
+    console.log('✅ Match initialized');
+
+    // -----------------------
+    // BALLS
+    // -----------------------
+    const quickBalls = [
+      { batsman: striker._id, bowler: bowler._id, runs: 4, overNumber: 1, ballNumber: 1 },
+      { batsman: striker._id, bowler: bowler._id, runs: 6, overNumber: 1, ballNumber: 2 },
+      { batsman: nonStriker._id, bowler: bowler._id, runs: 1, overNumber: 1, ballNumber: 3 },
+      { batsman: striker._id, bowler: bowler._id, runs: 0, overNumber: 1, ballNumber: 4 },
+      { batsman: striker._id, bowler: bowler._id, runs: 2, overNumber: 1, ballNumber: 5 },
+      { batsman: striker._id, bowler: bowler._id, runs: 1, overNumber: 1, ballNumber: 6 },
+
+      { batsman: nonStriker._id, bowler: bowler._id, runs: 2, overNumber: 2, ballNumber: 1 },
+      { batsman: nonStriker._id, bowler: bowler._id, isWide: true, runs: 1, overNumber: 2, ballNumber: 2 },
+      { batsman: striker._id, bowler: bowler._id, isWicket: true, wicketType: 'bowled', overNumber: 3, ballNumber: 1 }
+    ];
+
+    for (const ball of quickBalls) {
+      await Ball.create({
+        ...ball,
+        match: liveMatch._id,
+        innings: 1,
+        battingTeam: miTeam._id,
+        bowlingTeam: cskTeam._id,
+        scoredBy: 'quick_seed'
+      });
+    }
+
+    console.log('✅ Balls inserted');
+
+    // -----------------------
+    // UPDATE SCORECARD
+    // -----------------------
+    const match = await Match.findById(liveMatch._id);
+
+    match.innings[0].totalRuns = 45;
+    match.innings[0].totalWickets = 1;
+    match.innings[0].totalOvers = 5;
+    match.innings[0].totalBalls = 2;
+    match.innings[0].currentOverNumber = 5;
+    match.innings[0].currentBallNumber = 3;
+    match.innings[0].currentStriker = striker._id;
+    match.innings[0].currentNonStriker = nonStriker._id;
+    match.innings[0].currentBowler = bowler._id;
+
+    await match.save();
+
+    // -----------------------
+    // SUCCESS LOG
+    // -----------------------
+    console.log('🎉 LIVE MATCH READY!');
+    console.log('🆔 Match ID:', liveMatch._id);
+    console.log(`🔗 API: /api/v1/scoring/match/${liveMatch._id}/scorecard`);
 
   } catch (error) {
-    console.error('❌ ERROR:', error.message);
+    console.error('❌ Error:', error.message);
   } finally {
     await mongoose.disconnect();
+    console.log('🔌 DB closed');
   }
 }
 
-quickLiveFix();
+quickLiveScoringFix();
