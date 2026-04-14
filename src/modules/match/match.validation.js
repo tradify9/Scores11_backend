@@ -4,8 +4,8 @@ export const createMatchSchema = Joi.object({
   team1: Joi.string().required(),
   team2: Joi.string().required(),
   tournament: Joi.string(),
-  format: Joi.string().valid('T20', 'ODI', 'TEST'),
-matchType: Joi.string().valid('LEAGUE', 'FRIENDLY', 'KNOCKOUT', 'FINAL'),
+format: Joi.string().valid('T20', 'ODI', 'TEST'),
+  matchType: Joi.string().valid('LEAGUE', 'FRIENDLY', 'KNOCKOUT', 'FINAL'),
   venue: Joi.object({
     name: Joi.string().required(),
     city: Joi.string(),

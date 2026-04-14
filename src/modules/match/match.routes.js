@@ -3,8 +3,22 @@ import { matchController } from './match.controller.js';
 import { authenticate } from '../../middleware/auth.middleware.js';
 import { authorize } from '../../middleware/role.middleware.js';
 import { ROLES } from '../../constants/roles.js';
+import { createMatchSchema } from './match.validation.js';
+
+const validateMatchCreate = (req, res, next) => {
+  const { error } = createMatchSchema.validate(req.body);
+  if (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.details[0].message,
+      ...(process.env.NODE_ENV === 'development' && { details: error.details })
+    });
+  }
+  next();
+};
 
 const router = express.Router();
+
 
 // 🔥 PUBLIC ROUTES - NO AUTH REQUIRED (for app home, listings)
 router.get('/live', matchController.getLiveMatches);
@@ -18,8 +32,8 @@ router.get('/', matchController.getAllMatches);
 router.get('/list', matchController.getAllMatches); 
 router.get('/public/list', matchController.getAllMatches);  // 🔥 Test endpoint - explicitly public
 
-// 🔒 PROTECTED ROUTES - AUTH REQUIRED
-router.post('/', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.MANAGER), matchController.createMatch);
+// 🔒 PROTECTED ROUTES - AUTH REQUIRED  
+router.post('/', validateMatchCreate, authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.MANAGER), matchController.createMatch);
 router.get('/tournament/:tournamentId', authenticate, matchController.getTournamentMatches);
 router.get('/team/:teamId', authenticate, matchController.getMatchesByTeam);
 router.get('/:id', authenticate, matchController.getMatchById);
