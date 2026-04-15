@@ -1203,6 +1203,12 @@ const seedAll = async () => {
     console.log(`   Organizer: organizer@crick11.com / password123`);
     console.log(`   User: rahul.sharma@crick11.com / password123`);
 
+    console.log('\n🚀 NEXT STEPS:');
+    console.log('1. cd backend && npm start');
+    console.log('2. Login as admin@crick11.com');
+    console.log('3. Test Create Match with teams: Mumbai Indians vs Chennai Super Kings');
+    console.log('4. cd cric11_app && flutter run');
+
     await mongoose.disconnect();
     console.log('🔌 Disconnected from MongoDB');
     process.exit(0);
