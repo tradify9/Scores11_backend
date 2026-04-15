@@ -13,11 +13,11 @@ export const registerSchema = Joi.object({
 
 export const updateProfileSchema = Joi.object({
   body: Joi.object({
-    fullName: Joi.string().min(2).max(100),
-    phone: Joi.string().pattern(/^[0-9]{10,15}$/),
+    fullName: Joi.string().min(2).max(100).allow('').empty(''),
+    phone: Joi.string().pattern(/^[0-9+\\s-]{10,15}$/).allow('').empty(''),
     dateOfBirth: Joi.date().iso().max('now'),
     gender: Joi.string().valid('male', 'female', 'other', 'prefer-not-to-say'),
-    bio: Joi.string().max(500),
+    bio: Joi.string().max(500).allow('').empty(''),
     location: Joi.object({
       city: Joi.string(),
       state: Joi.string(),
