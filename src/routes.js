@@ -40,7 +40,7 @@ import chatRoutes from './modules/chat/chat.routes.js';
 const router = express.Router();
 
 router.use('/auth', authRoutes);
-router.use('/users', userRoutes);
+router.use('/user', userRoutes);
 router.use('/teams', teamRoutes);
 router.use('/players', playerRoutes);
 router.use('/matches', matchRoutes);
@@ -52,7 +52,7 @@ router.use('/wallet', walletRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/admin', adminRoutes);
 router.use('/roles', roleRoutes);
-router.use('/profiles', playerProfileRoutes);
+router.use('/player-profiles', playerProfileRoutes);
 router.use('/blogs', blogRoutes);
 router.use('/news', newsRoutes);
 router.use('/community', communityRoutes);

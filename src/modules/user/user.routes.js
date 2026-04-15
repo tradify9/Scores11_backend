@@ -28,6 +28,7 @@ router.use(authenticate);
 router.get('/me', userController.getProfile);
 router.put('/me', validate(updateProfileSchema), userController.updateProfile);
 router.get('/me/stats', userController.getUserStats);
+router.get('/stats', userController.getUserStats);
 
 // Media upload
 router.post('/avatar', upload.single('avatar'), userController.uploadAvatar);
