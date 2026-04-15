@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import config from '../config/env.js';
 
-const transporter = nodemailer.createTransport({
+nodemailer.createTransport({
   host: config.email.smtp.host,
   port: config.email.smtp.port,
   secure: false,
@@ -66,11 +66,4 @@ export const sendMatchReminderEmail = async (email, matchDetails) => {
     <p>Venue: ${matchDetails.venue}</p>
   `;
   return sendEmail(email, subject, html);
-};
-
-export default {
-  sendEmail,
-  sendWelcomeEmail,
-  sendPasswordResetEmail,
-  sendMatchReminderEmail
 };

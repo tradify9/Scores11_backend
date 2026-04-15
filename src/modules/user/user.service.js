@@ -5,6 +5,7 @@ import { getPagination } from '../../utils/pagination.js';
 import { EXPERIENCE_POINTS } from '../../constants/userLevels.js';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import { sendVerificationEmail } from '../../utils/sendVerificationEmail.js';
 
 export const userService = {
   // Basic CRUD Operations
@@ -67,7 +68,7 @@ export const userService = {
     
     // Handle referral if provided
     if (userData.referralCode) {
-      await this.handleReferral(userData.referralCode, user._id);
+      await userService.handleReferral(userData.referralCode, user._id);
     }
     
     return user;
@@ -201,6 +202,25 @@ export const userService = {
       newLevel: user.level,
       newTitle: user.title,
       experiencePoints: user.experiencePoints
+    };
+  },
+
+  getNextLevelExperience: (currentLevel, currentExp) => {
+    const levelRequirements = {
+      1: 100,
+      2: 500,
+      3: 1000,
+      4: 5000,
+      5: null
+    };
+    
+    const required = levelRequirements[currentLevel];
+    if (!required) return null;
+    
+    return {
+      required,
+      remaining: required - currentExp,
+      percentage: Math.round((currentExp / required) * 100)
     };
   },
 
@@ -555,7 +575,7 @@ export const userService = {
   },
 
   // Admin - Action on Report
-  actionOnReport: async (reportId, action, adminNote) => {
+  actionOnReport: async (reportId, action, adminNote, resolvedBy = null) => {
     const Report = (await import('../report/report.model.js')).default;
     
     const report = await Report.findByIdAndUpdate(
@@ -565,7 +585,7 @@ export const userService = {
         actionTaken: action,
         adminNote,
         resolvedAt: new Date(),
-        resolvedBy: this.currentUserId
+        resolvedBy
       },
       { new: true }
     );
@@ -576,7 +596,7 @@ export const userService = {
 
     // If action is ban, block the user
     if (action === 'ban') {
-      await this.banUser(report.reportedUser, adminNote);
+      await userService.banUser(report.reportedUser, adminNote);
     }
 
     return report;
@@ -918,8 +938,13 @@ export const userService = {
     user.emailVerificationExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
     await user.save();
 
-    // In production, send email here
-    // await sendVerificationEmail(user.email, verificationToken);
+    try {
+      await sendVerificationEmail(user.email, verificationToken);
+      console.log(`Verification email sent to: ${user.email}`);
+    } catch (error) {
+      console.error('Verification email failed:', error.message);
+      // Don't fail API if email fails
+    }
 
     return { message: 'Verification email sent' };
   },

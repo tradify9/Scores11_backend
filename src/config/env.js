@@ -39,12 +39,12 @@ export default {
   
   email: {
     smtp: {
-      host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
       port: parseInt(process.env.SMTP_PORT, 10) || 587,
-      user: process.env.SMTP_USER || 'test@fintradify.com',
-      pass: process.env.SMTP_PASS || 'Tradify@#1234'
+      user: process.env.SMTP_USER || 'noreply@crick11.app',
+      pass: process.env.SMTP_PASS || 'your-gmail-app-password-here-change-this'
     },
-    from: process.env.EMAIL_FROM || 'test@fintradify.com'
+    from: process.env.EMAIL_FROM || '"Crick11" <noreply@crick11.app>'
   },
   
   cors: {
