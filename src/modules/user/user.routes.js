@@ -17,6 +17,7 @@ const router = express.Router();
 router.post('/register', validate(registerSchema), userController.register);
 router.get('/verify-email/:token', userController.verifyEmail);
 router.get('/profile/:username', userController.getProfileByUsername);
+router.get('/users/:id/avatar', userController.getUserAvatarPublic);
 router.get('/list', userController.getAllUsers);
 router.get('/leaderboard', userController.getLeaderboard);
 

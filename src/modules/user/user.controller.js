@@ -258,6 +258,18 @@ export const userController = {
   getAchievements: catchAsync(async (req, res) => {
     const achievements = await userService.getAchievements(req.user.userId);
     res.json(new ApiResponse(200, 'Achievements retrieved', achievements));
+  }),
+
+  // Public avatar endpoint - no auth required for img tags
+  getUserAvatarPublic: catchAsync(async (req, res) => {
+    const userId = req.params.id;
+    const avatar = await userService.getUserAvatarPublic(userId);
+    if (avatar) {
+      res.redirect(301, avatar);
+    } else {
+      // Return default avatar
+      res.redirect('https://via.placeholder.com/400x400/6B7280/FFFFFF?text=👤');
+    }
   })
 };
 

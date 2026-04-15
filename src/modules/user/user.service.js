@@ -976,6 +976,19 @@ export const userService = {
 
     // Return achievements - this would be populated from various activities
     return user.achievements || [];
+  },
+
+  // Public avatar - returns Cloudinary URL or null
+  getUserAvatarPublic: async (userId) => {
+    const user = await User.findById(userId).select('avatar').lean();
+    if (!user || !user.avatar?.url || user.avatar.url === 'default-avatar-url') {
+      return null;
+    }
+    // Only return Cloudinary URLs (public)
+    if (user.avatar.url.includes('res.cloudinary.com')) {
+      return user.avatar.url;
+    }
+    return null;
   }
 };
 
