@@ -5,7 +5,12 @@ import catchAsync from '../../utils/catchAsync.js';
 export const matchController = {
   // Create a new match
   createMatch: catchAsync(async (req, res) => {
+    console.log('📥 Match create request body:', JSON.stringify(req.body, null, 2));
+    console.log('👤 User ID:', req.user.userId);
+    
     const match = await matchService.createMatch(req.body, req.user.userId);
+    console.log('✅ Match created:', match._id);
+    
     res.status(201).json(new ApiResponse(201, 'Match created successfully', match));
   }),
 

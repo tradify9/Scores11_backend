@@ -9,12 +9,17 @@ import { MATCH_STATUS } from '../../constants/matchStatus.js';
 export const matchService = {
   // Create a new match
   createMatch: async (matchData, userId) => {
+    console.log('🔥 CREATE MATCH DATA:', JSON.stringify(matchData, null, 2));
+    
     const { team1, team2, tournament } = matchData;
     
     // Validate teams exist
     const t1 = await Team.findById(team1);
     const t2 = await Team.findById(team2);
-    if (!t1 || !t2) throw new ApiError(404, 'Team not found');
+    if (!t1 || !t2) {
+      console.log('❌ Team not found - t1:', team1, 't2:', team2);
+      throw new ApiError(404, `Team not found - Team1: ${team1}, Team2: ${team2}`);
+    }
 
     // Check if teams are different
     if (team1.toString() === team2.toString()) {
