@@ -3,6 +3,7 @@ import ApiResponse from '../../utils/ApiResponse.js';
 import catchAsync from '../../utils/catchAsync.js';
 
 export const matchController = {
+
   // Create a new match
   createMatch: catchAsync(async (req, res) => {
     const match = await matchService.createMatch(req.body, req.user.userId);
@@ -25,6 +26,26 @@ export const matchController = {
   updateMatch: catchAsync(async (req, res) => {
     const match = await matchService.updateMatch(req.params.id, req.body, req.user.userId);
     res.json(new ApiResponse(200, 'Match updated successfully', match));
+  }),
+
+  // ✅ UPDATE SCORE (🔥 ADD THIS)
+  updateScore: catchAsync(async (req, res) => {
+    const match = await matchService.updateScore(
+      req.params.id,
+      req.body
+    );
+
+    res.json(new ApiResponse(200, 'Score updated successfully', match));
+  }),
+
+  // ✅ CHANGE INNINGS (🔥 ADD THIS)
+  changeInnings: catchAsync(async (req, res) => {
+    const match = await matchService.changeInnings(
+      req.params.id,
+      req.body.innings
+    );
+
+    res.json(new ApiResponse(200, 'Innings changed', match));
   }),
 
   // Get all matches
@@ -109,7 +130,35 @@ export const matchController = {
   searchMatches: catchAsync(async (req, res) => {
     const matches = await matchService.searchMatches(req.query.q, req.query.limit);
     res.json(new ApiResponse(200, 'Matches found', matches));
-  })
+  }),
+
+
+endInnings: catchAsync(async (req, res) => {
+  const matchId = req.params.id;
+
+  // ✅ Validate ID
+  if (!matchId) {
+    throw new ApiError(400, "Match ID is required");
+  }
+
+  // ✅ Service call
+  const match = await matchService.endInnings(matchId);
+
+  // ❗ Agar service null return kare
+  if (!match) {
+    throw new ApiError(404, "Match not found or cannot end innings");
+  }
+
+  // ✅ Socket emit (safe)
+  if (req.io) {
+    req.io.emit("matchUpdated", match);
+  }
+
+  // ✅ Response (standard format)
+  return res.status(200).json(
+    new ApiResponse(200, "Innings ended successfully", match)
+  );
+}),
 };
 
 export default matchController;

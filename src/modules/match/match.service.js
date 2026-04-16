@@ -5,66 +5,102 @@ import Player from '../player/player.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
+import { emitToMatch } from "../../config/socket.js";
+
 
 export const matchService = {
   // Create a new match
-  createMatch: async (matchData, userId) => {
-    const { team1, team2, tournament } = matchData;
-    
-    // Validate teams exist
-    const t1 = await Team.findById(team1);
-    const t2 = await Team.findById(team2);
-    if (!t1 || !t2) throw new ApiError(404, 'Team not found');
+ createMatch: async (matchData, userId) => {
+  try {
+    let { team1, team2, tournament } = matchData;
 
-    // Check if teams are different
-    if (team1.toString() === team2.toString()) {
-      throw new ApiError(400, 'Team1 and Team2 must be different');
+    // ✅ convert to ObjectId (important)
+    team1 = new mongoose.Types.ObjectId(team1);
+    team2 = new mongoose.Types.ObjectId(team2);
+
+    // ✅ Validate teams exist
+    const [t1, t2] = await Promise.all([
+      Team.findById(team1),
+      Team.findById(team2),
+    ]);
+
+    if (!t1 || !t2) {
+      throw new ApiError(404, "Team not found");
     }
 
-    // Check if match already exists between these teams in the tournament
+    // ✅ Teams must be different
+    if (team1.equals(team2)) {
+      throw new ApiError(400, "Team1 and Team2 must be different");
+    }
+
+    // ✅ Tournament validation
+    let matchNumber = 1;
+
     if (tournament) {
+      tournament = new mongoose.Types.ObjectId(tournament);
+
       const tour = await Tournament.findById(tournament);
-      if (!tour) throw new ApiError(404, 'Tournament not found');
-      
+      if (!tour) throw new ApiError(404, "Tournament not found");
+
+      // ✅ check duplicate match (both directions)
       const existingMatch = await Match.findOne({
         tournament,
         $or: [
           { team1, team2 },
-          { team1: team2, team2: team1 }
-        ]
+          { team1: team2, team2: team1 },
+        ],
       });
-      
+
       if (existingMatch) {
-        throw new ApiError(400, 'Match between these teams already exists in this tournament');
+        throw new ApiError(
+          400,
+          "Match between these teams already exists in this tournament"
+        );
       }
-    }
 
-    // Generate match number if tournament exists
-    let matchNumber = 1;
-    if (tournament) {
+      // ✅ generate match number safely
       const lastMatch = await Match.findOne({ tournament })
-        .sort({ matchNumber: -1 });
-      matchNumber = lastMatch ? lastMatch.matchNumber + 1 : 1;
+        .sort({ matchNumber: -1 })
+        .lean();
+
+      matchNumber = lastMatch?.matchNumber
+        ? lastMatch.matchNumber + 1
+        : 1;
     }
 
+    // ✅ create match
     const match = await Match.create({
       ...matchData,
+      team1,
+      team2,
+      tournament,
       matchNumber,
       createdBy: userId,
-      status: MATCH_STATUS.SCHEDULED
+      status: matchData.status || MATCH_STATUS.SCHEDULED,
     });
 
-    // Add match to tournament
+    // ✅ add to tournament (safe)
     if (tournament) {
-      await Tournament.findByIdAndUpdate(tournament, {
-        $push: { matches: match._id }
-      });
+      await Tournament.findByIdAndUpdate(
+        tournament,
+        { $addToSet: { matches: match._id } } // 🔥 avoid duplicates
+      );
     }
 
-    return await Match.findById(match._id)
-      .populate('team1', 'name shortName logo')
-      .populate('team2', 'name shortName logo');
-  },
+    const populatedMatch = await Match.findById(match._id)
+      .populate("team1", "name shortName logo")
+      .populate("team2", "name shortName logo")
+      .populate("tournament", "name format");
+
+    // 🔥 SOCKET EMIT (LIVE MATCH LIST UPDATE)
+    emitToAll("matchesUpdated", populatedMatch);
+
+    return populatedMatch;
+
+  } catch (error) {
+    throw new ApiError(500, error.message);
+  }
+},
 
   // Get match by ID with full details
   getMatchById: async (matchId) => {
@@ -117,36 +153,53 @@ export const matchService = {
     return updatedMatch;
   },
 
-  // Get all matches with filters
-  getAllMatches: async (query) => {
-    const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
-    
-    const filter = { isActive: true };
-    if (query.status) filter.status = query.status;
-    if (query.tournament) filter.tournament = query.tournament;
-    if (query.format) filter.format = query.format;
-    if (query.matchType) filter.matchType = query.matchType;
-    
-    if (query.team) {
-      filter.$or = [{ team1: query.team }, { team2: query.team }];
+ // Get all matches with filters
+getAllMatches: async (query) => {
+  const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
+
+  const filter = { isActive: true };
+
+  // ✅ safe filters
+  if (query.status) filter.status = query.status;
+  if (query.tournament) filter.tournament = query.tournament;
+  if (query.format) filter.format = query.format;
+  if (query.matchType) filter.matchType = query.matchType;
+
+  // ✅ team filter (important fix)
+  if (query.team) {
+    filter.$or = [
+      { team1: query.team },
+      { team2: query.team }
+    ];
+  }
+
+  // ✅ safe sorting (fallback add)
+  const safeSortBy = sortBy || "createdAt";
+  const safeSortOrder = sortOrder === -1 ? -1 : 1;
+
+  const [matches, total] = await Promise.all([
+    Match.find(filter)
+      .populate('team1', 'name shortName logo')
+      .populate('team2', 'name shortName logo')
+      .populate('tournament', 'name format')
+      .sort({ [safeSortBy]: safeSortOrder })
+      .skip(skip)
+      .limit(limit)
+      .lean(), // 🔥 performance boost
+
+    Match.countDocuments(filter)
+  ]);
+
+  return {
+    matches,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit)
     }
-
-    const [matches, total] = await Promise.all([
-      Match.find(filter)
-        .populate('team1', 'name shortName logo')
-        .populate('team2', 'name shortName logo')
-        .populate('tournament', 'name format')
-        .sort({ [sortBy]: sortOrder })
-        .skip(skip)
-        .limit(limit),
-      Match.countDocuments(filter)
-    ]);
-
-    return {
-      matches,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
-    };
-  },
+  };
+},
 
   // Get matches for a tournament
   getTournamentMatches: async (tournamentId, query) => {
@@ -479,7 +532,222 @@ export const matchService = {
       .limit(limit);
 
     return matches;
+  },
+
+
+  searchMatches: async (searchTerm, limit = 10) => {
+    try {
+      // ✅ agar searchTerm empty hai
+      if (!searchTerm) {
+        const matches = await Match.find({ isActive: true })
+          .populate('team1', 'name shortName')
+          .populate('team2', 'name shortName')
+          .populate('tournament', 'name')
+          .sort({ scheduledDate: -1 })
+          .limit(Number(limit));
+
+        return matches;
+      }
+
+      // ✅ TEAM SEARCH
+      const teams = await Team.find({
+        $or: [
+          { name: { $regex: searchTerm, $options: 'i' } },
+          { shortName: { $regex: searchTerm, $options: 'i' } }
+        ]
+      }).select('_id');
+
+      const teamIds = teams.map((t) => t._id);
+
+      // ✅ MATCH SEARCH
+      const matches = await Match.find({
+        isActive: true,
+        $or: [
+          { team1: { $in: teamIds } },
+          { team2: { $in: teamIds } }
+        ]
+      })
+        .populate('team1', 'name shortName')
+        .populate('team2', 'name shortName')
+        .populate('tournament', 'name')
+        .sort({ scheduledDate: -1 })
+        .limit(Number(limit));
+
+      return matches;
+
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  },
+
+
+
+
+
+
+   // 🔥 ADD THIS FUNCTION INSIDE OBJECT
+ // 🔥 FIXED FUNCTION
+updateScore: async (matchId, data) => {
+  try {
+    const match = await Match.findById(matchId);
+
+    if (!match) throw new Error("Match not found");
+
+    const key = match.currentInnings === 1 ? "team1" : "team2";
+
+    const updateQuery = {};
+
+    // =========================
+    // ✅ RUN / WICKET ADD (SAFE)
+    // =========================
+    if (data.type) {
+      updateQuery.$inc = {};
+
+      if (data.type === "run") {
+        updateQuery.$inc[`score.${key}.runs`] = data.runs || 0;
+      }
+
+      if (data.type === "wide" || data.type === "noball") {
+        updateQuery.$inc[`score.${key}.runs`] = data.runs || 1;
+      }
+
+      if (data.type === "wicket") {
+        updateQuery.$inc[`score.${key}.wickets`] = 1;
+      }
+    }
+
+    // =========================
+    // ✅ MANUAL UPDATE (SAFE)
+    // =========================
+    if (!data.type) {
+      updateQuery.$set = {};
+
+      if (data.runs !== undefined) {
+        updateQuery.$set[`score.${key}.runs`] = Number(data.runs);
+      }
+
+      if (data.wickets !== undefined) {
+        updateQuery.$set[`score.${key}.wickets`] = Number(data.wickets);
+      }
+
+      // ✅ 🔥 IMPORTANT FIX
+      if (data.overs !== undefined) {
+        updateQuery.$set[`score.${key}.overs`] = data.overs;
+      }
+    }
+
+    // =========================
+    // ✅ OVER UPDATE (ONLY WHEN SENT)
+    // =========================
+    if (data.overNumber !== undefined && data.ballNumber !== undefined) {
+      if (!updateQuery.$set) updateQuery.$set = {};
+
+      updateQuery.$set[`score.${key}.overs`] =
+        `${data.overNumber}.${data.ballNumber}`;
+    }
+
+    // 🧹 cleanup
+    if (updateQuery.$inc && Object.keys(updateQuery.$inc).length === 0) {
+      delete updateQuery.$inc;
+    }
+
+    if (updateQuery.$set && Object.keys(updateQuery.$set).length === 0) {
+      delete updateQuery.$set;
+    }
+
+    const updatedMatch = await Match.findByIdAndUpdate(
+      matchId,
+      updateQuery,
+      { new: true }
+    );
+
+    emitToMatch(matchId, "scoreUpdated", updatedMatch);
+
+    return updatedMatch;
+
+  } catch (error) {
+    console.error("updateScore error:", error);
+    throw new Error(error.message);
   }
+},
+
+
+
+
+
+
+endInnings: async (matchId) => {
+  // ✅ Validate
+  if (!matchId) {
+    throw new ApiError(400, "Match ID is required");
+  }
+
+  const match = await Match.findById(matchId);
+
+  if (!match) {
+    throw new ApiError(404, "Match not found");
+  }
+
+  if (match.status !== MATCH_STATUS.LIVE) {
+    throw new ApiError(400, "Match is not live");
+  }
+
+  if (Number(match.currentInnings) !== 1) {
+    throw new ApiError(400, "Innings already ended or invalid state");
+  }
+
+  // ✅ Ensure score object
+  if (!match.score) {
+    match.score = {};
+  }
+
+  // ✅ Ensure team1 exists
+  if (!match.score.team1) {
+    throw new ApiError(400, "First innings not started properly");
+  }
+
+  const team1 = match.score.team1;
+
+  const overs = team1.overs ?? "0.0";
+  const runs = team1.runs ?? 0;
+
+  // ✅ Prevent empty innings end
+  if (overs === "0.0" && runs === 0) {
+    throw new ApiError(400, "Cannot end innings before any play");
+  }
+
+  console.log("🚀 Ending 1st innings:", matchId);
+
+  // ✅ Switch innings
+  match.currentInnings = 2;
+
+  // ✅ Set target
+  match.target = runs + 1;
+
+  // 🔥 ONLY INIT team2 (NO overwrite)
+  if (!match.score.team2) {
+    match.score.team2 = {
+      runs: 0,
+      wickets: 0,
+      overs: "0.0"
+    };
+  }
+
+  // ✅ IMPORTANT (nested update save fix)
+  match.markModified("score");
+
+  await match.save();
+
+  await match.populate([
+    { path: "team1", select: "name shortName" },
+    { path: "team2", select: "name shortName" }
+  ]);
+
+  console.log("✅ Innings switched → Target:", match.target);
+
+  return match;
+}
 };
 
 export default matchService;
+ 

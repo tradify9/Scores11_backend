@@ -8,16 +8,13 @@ dotenv.config();
 
 const seedAdmin = async () => {
   try {
-    // ✅ Ensure MONGODB_URI exists
     if (!process.env.MONGODB_URI) {
       throw new Error('MONGODB_URI is not defined in .env file');
     }
 
-    // ✅ Connect using ENV only
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('✅ Connected to MongoDB');
 
-    // Check if admin already exists
     const existingAdmin = await User.findOne({ email: 'admin@crick11.com' });
 
     if (existingAdmin) {
@@ -25,15 +22,14 @@ const seedAdmin = async () => {
       console.log('Email: admin@crick11.com');
       console.log('Password: admin123');
     } else {
-      // Hash password
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash('admin123', salt);
 
-      // Create admin
       const adminUser = await User.create({
+        username: 'sumitbawa95',        // ✅ fixed
+        fullName: 'Sumit Kumari',       // ✅ fixed
         email: 'admin@crick11.com',
         password: hashedPassword,
-        name: 'Admin',
         phone: '+919999999999',
         role: ROLES.ADMIN,
         isEmailVerified: true,

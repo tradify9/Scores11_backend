@@ -340,7 +340,7 @@ export const adminService = {
   },
 
   deleteBackup: async (id) => {
-    const index = backups.findIndex(b => b._id === id);
+    const index = backups.findIndex(b => b._id === id);  
     if (index === -1) throw new ApiError(404, 'Backup not found');
     backups.splice(index, 1);
   },
@@ -391,13 +391,13 @@ export const adminService = {
     const { page = 1, limit = 20, type, status = 'pending' } = query;
     
     let filtered = moderationQueue.filter(item => item.status === status);
-    if (type) filtered = filtered.filter(item => item.contentType === type);
+    if (type) filtered = filtered.filter(item => item.contentType === type); 
 
     const start = (page - 1) * limit;
     return {
       items: filtered.slice(start, start + limit),
       pagination: paginate(filtered.length, page, limit)
-    };
+    };    
   },
 
   moderateContent: async (id, data) => {
@@ -406,7 +406,7 @@ export const adminService = {
     
     item.status = data.action;
     item.moderatedAt = new Date();
-    item.moderatedBy = data.moderatorId;
+    item.moderatedBy = data.moderatorId;     
     item.moderationNotes = data.notes;
     
     return item;
@@ -649,7 +649,7 @@ export const adminService = {
       geographicData: [
         { country: 'India', users: 4500, revenue: 125000 },
         { country: 'Pakistan', users: 1200, revenue: 35000 },
-        { country: 'Bangladesh', users: 800, revenue: 22000 },
+        { country: 'Bangladesh', users: 800, revenue: 22000 }, 
         { country: 'England', users: 600, revenue: 18000 },
         { country: 'Australia', users: 400, revenue: 12000 }
       ]

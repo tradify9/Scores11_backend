@@ -1,115 +1,120 @@
-import { Server } from 'socket.io';
-import config from './env.js';
+import { Server } from "socket.io";
+import config from "./env.js";
 
 let io = null;
 
 export const initializeSocket = (server) => {
   io = new Server(server, {
     cors: {
-      origin: config.cors.origin,
-      methods: ['GET', 'POST'],
-      credentials: true
+      origin: config.cors.origin || "*",
+      methods: ["GET", "POST"],
+      credentials: true,
     },
     pingTimeout: 60000,
-    pingInterval: 25000
+    pingInterval: 25000,
   });
 
-  io.on('connection', (socket) => {
-    console.log(`Socket connected: ${socket.id}`);
+  io.on("connection", (socket) => {
+    console.log(`✅ Socket connected: ${socket.id}`);
 
-    // Join match room
-    socket.on('joinMatch', (matchId) => {
-      socket.join(`match:${matchId}`);
-      console.log(`Socket ${socket.id} joined match:${matchId}`);
+    // ✅ Join match room
+    socket.on("joinMatch", (matchId) => {
+      if (!matchId) return;
+      const room = `match:${matchId}`;
+      socket.join(room);
+      console.log(`➡️ ${socket.id} joined ${room}`);
     });
 
-    // Leave match room
-    socket.on('leaveMatch', (matchId) => {
-      socket.leave(`match:${matchId}`);
-      console.log(`Socket ${socket.id} left match:${matchId}`);
+    // ✅ Leave match room
+    socket.on("leaveMatch", (matchId) => {
+      if (!matchId) return;
+      const room = `match:${matchId}`;
+      socket.leave(room);
+      console.log(`⬅️ ${socket.id} left ${room}`);
     });
 
-    // Join tournament room
-    socket.on('joinTournament', (tournamentId) => {
+    // ✅ Tournament
+    socket.on("joinTournament", (tournamentId) => {
+      if (!tournamentId) return;
       socket.join(`tournament:${tournamentId}`);
-      console.log(`Socket ${socket.id} joined tournament:${tournamentId}`);
     });
 
-    // Join live stream room
-    socket.on('joinStream', (streamId) => {
+    // ✅ Stream
+    socket.on("joinStream", (streamId) => {
+      if (!streamId) return;
       socket.join(`stream:${streamId}`);
-      console.log(`Socket ${socket.id} joined stream:${streamId}`);
     });
 
-    // Leave live stream room
-    socket.on('leaveStream', (streamId) => {
+    socket.on("leaveStream", (streamId) => {
+      if (!streamId) return;
       socket.leave(`stream:${streamId}`);
-      console.log(`Socket ${socket.id} left stream:${streamId}`);
     });
 
-    // Stream signaling (Agora)
-    socket.on('user-published', (data) => {
-      socket.to(data.streamId).emit('user-published', data);
+    // ✅ Agora signaling FIX (IMPORTANT)
+    socket.on("user-published", (data) => {
+      if (!data?.streamId) return;
+      socket.to(`stream:${data.streamId}`).emit("user-published", data);
     });
 
-    socket.on('user-unpublished', (data) => {
-      socket.to(data.streamId).emit('user-unpublished', data);
+    socket.on("user-unpublished", (data) => {
+      if (!data?.streamId) return;
+      socket.to(`stream:${data.streamId}`).emit("user-unpublished", data);
     });
 
-    socket.on('user-joined', (data) => {
-      socket.to(data.streamId).emit('user-joined', data);
+    socket.on("user-joined", (data) => {
+      if (!data?.streamId) return;
+      socket.to(`stream:${data.streamId}`).emit("user-joined", data);
     });
 
-    socket.on('user-left', (data) => {
-      socket.to(data.streamId).emit('user-left', data);
+    socket.on("user-left", (data) => {
+      if (!data?.streamId) return;
+      socket.to(`stream:${data.streamId}`).emit("user-left", data);
     });
 
-    // User authentication
-    socket.on('authenticate', (userId) => {
+    // ✅ Auth
+    socket.on("authenticate", (userId) => {
+      if (!userId) return;
       socket.join(`user:${userId}`);
-      console.log(`Socket ${socket.id} authenticated as user:${userId}`);
     });
 
-    // Disconnect
-    socket.on('disconnect', () => {
-      console.log(`Socket disconnected: ${socket.id}`);
+    socket.on("disconnect", () => {
+      console.log(`❌ Socket disconnected: ${socket.id}`);
     });
   });
 
-  console.log('Socket.io initialized');
+  console.log("🚀 Socket.io initialized");
   return io;
 };
 
+// ✅ Safe getter
 export const getIO = () => {
   if (!io) {
-    throw new Error('Socket.io not initialized');
+    console.warn("⚠️ Socket not initialized");
+    return null;
   }
   return io;
 };
 
-// Emit events to specific rooms
+// ✅ Emit helpers (SAFE VERSION)
+
 export const emitToMatch = (matchId, event, data) => {
-  if (io) {
-    io.to(`match:${matchId}`).emit(event, data);
-  }
+  if (!io || !matchId) return;
+  io.to(`match:${matchId}`).emit(event, data);
 };
 
 export const emitToTournament = (tournamentId, event, data) => {
-  if (io) {
-    io.to(`tournament:${tournamentId}`).emit(event, data);
-  }
+  if (!io || !tournamentId) return;
+  io.to(`tournament:${tournamentId}`).emit(event, data);
 };
 
 export const emitToUser = (userId, event, data) => {
-  if (io) {
-    io.to(`user:${userId}`).emit(event, data);
-  }
+  if (!io || !userId) return;
+  io.to(`user:${userId}`).emit(event, data);
 };
 
 export const emitToAll = (event, data) => {
-  if (io) {
-    io.emit(event, data);
-  }
+  if (!io) return;
+  io.emit(event, data);
 };
 
 export default initializeSocket;

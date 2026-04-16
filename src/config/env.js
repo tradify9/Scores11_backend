@@ -16,27 +16,27 @@ export default {
     uri: process.env.NODE_ENV === 'production' 
       ? process.env.MONGODB_URI_PROD 
       : process.env.MONGODB_URI || 'mongodb://localhost:27017/crick11'
-  },
+  },  
   
-  redis: {
+  redis: {  
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT, 10) || 6379,
-    password: process.env.REDIS_PASSWORD || ''
+    password: process.env.REDIS_PASSWORD || ''                 
   },
   
-  cloudinary: {
+  cloudinary: { 
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
     apiKey: process.env.CLOUDINARY_API_KEY,
     apiSecret: process.env.CLOUDINARY_API_SECRET
   },
-  
+   
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID,
     privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
     databaseUrl: process.env.FIREBASE_DATABASE_URL
   },
-  
+   
   email: {
     smtp: {
       host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -66,3 +66,4 @@ export default {
     minWithdrawal: parseInt(process.env.WALLET_MIN_WITHDRAWAL, 10) || 100
   }
 };
+ 
