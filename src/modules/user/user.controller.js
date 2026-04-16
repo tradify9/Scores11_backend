@@ -189,10 +189,6 @@ const userController = {
     res.json(new ApiResponse(200, "User verified"));
   }),
 
-<<<<<<< HEAD
-  changeUserRole: catchAsync(async (req, res) => {
-    res.json(new ApiResponse(200, "Role updated"));
-=======
   updateEquipment: catchAsync(async (req, res) => {
     const equipment = await userService.updateEquipment(req.user.userId, req.body);
     res.json(new ApiResponse(200, 'Equipment updated successfully', equipment));
@@ -233,6 +229,11 @@ const userController = {
     res.json(new ApiResponse(200, 'Cricket stats retrieved', stats));
   }),
 
+  changeUserRole: catchAsync(async (req, res) => {
+    const user = await userService.changeUserRole(req.params.id, req.body.role);
+    res.json(new ApiResponse(200, "User role changed", user));
+  }),
+
   getAchievements: catchAsync(async (req, res) => {
     const achievements = await userService.getAchievements(req.user.userId);
     res.json(new ApiResponse(200, 'Achievements retrieved', achievements));
@@ -248,7 +249,6 @@ const userController = {
       // Return default avatar
       res.redirect('https://via.placeholder.com/400x400/6B7280/FFFFFF?text=👤');
     }
->>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
   })
 
 };

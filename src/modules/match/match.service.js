@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Match from './match.model.js';
 import Tournament from '../tournament/tournament.model.js';
 import Team from '../team/team.model.js';
@@ -5,7 +6,7 @@ import Player from '../player/player.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
-import { emitToMatch } from "../../config/socket.js";
+import { emitToMatch, emitToAll } from "../../config/socket.js";
 
 
 export const matchService = {
@@ -86,11 +87,8 @@ export const matchService = {
     emitToAll("matchesUpdated", populatedMatch);
 
     return populatedMatch;
+  },
 
-  } catch (error) {
-    throw new ApiError(500, error.message);
-  }
-},
 
   // Get match by ID with full details
   getMatchById: async (matchId) => {
@@ -157,15 +155,17 @@ export const matchService = {
       filter.$or = [{ team1: query.team }, { team2: query.team }];
     }
 
+    // Already destructured from getPagination(query) above
+
   const [matches, total] = await Promise.all([
     Match.find(filter)
       .populate('team1', 'name shortName logo')
       .populate('team2', 'name shortName logo')
       .populate('tournament', 'name format')
-      .sort({ [safeSortBy]: safeSortOrder })
+      .sort({ [sortBy]: sortOrder })
       .skip(skip)
       .limit(limit)
-      .lean(), // 🔥 performance boost
+      .lean(),
 
     Match.countDocuments(filter)
   ]);
@@ -179,7 +179,7 @@ export const matchService = {
       pages: Math.ceil(total / limit)
     }
   };
-},
+  },
 
   // Get matches for a tournament
   getTournamentMatches: async (tournamentId, query) => {
@@ -489,47 +489,16 @@ export const matchService = {
 
   // Search matches
   searchMatches: async (searchTerm, limit = 10) => {
-    const teams = await Team.find({
-      $or: [
-        { name: { $regex: searchTerm, $options: 'i' } },
-        { shortName: { $regex: searchTerm, $options: 'i' } }
-      ]
-    }).select('_id');
-
-    const teamIds = teams.map(t => t._id);
-
-    const matches = await Match.find({
-      isActive: true,
-      $or: [
-        { team1: { $in: teamIds } },
-        { team2: { $in: teamIds } }
-      ]
-    })
-      .populate('team1', 'name shortName')
-      .populate('team2', 'name shortName')
-      .populate('tournament', 'name')
-      .sort({ scheduledDate: -1 })
-      .limit(limit);
-
-    return matches;
-  },
-
-
-  searchMatches: async (searchTerm, limit = 10) => {
     try {
-      // ✅ agar searchTerm empty hai
       if (!searchTerm) {
-        const matches = await Match.find({ isActive: true })
+        return await Match.find({ isActive: true })
           .populate('team1', 'name shortName')
           .populate('team2', 'name shortName')
           .populate('tournament', 'name')
           .sort({ scheduledDate: -1 })
           .limit(Number(limit));
-
-        return matches;
       }
 
-      // ✅ TEAM SEARCH
       const teams = await Team.find({
         $or: [
           { name: { $regex: searchTerm, $options: 'i' } },
@@ -537,10 +506,9 @@ export const matchService = {
         ]
       }).select('_id');
 
-      const teamIds = teams.map((t) => t._id);
+      const teamIds = teams.map(t => t._id);
 
-      // ✅ MATCH SEARCH
-      const matches = await Match.find({
+      return await Match.find({
         isActive: true,
         $or: [
           { team1: { $in: teamIds } },
@@ -553,10 +521,8 @@ export const matchService = {
         .sort({ scheduledDate: -1 })
         .limit(Number(limit));
 
-      return matches;
-
     } catch (error) {
-      throw new Error(error.message);
+      throw new ApiError(500, error.message);
     }
   },
 

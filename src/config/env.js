@@ -41,16 +41,10 @@ export default {
     smtp: {
       host: process.env.SMTP_HOST || 'smtp.gmail.com',
       port: parseInt(process.env.SMTP_PORT, 10) || 587,
-<<<<<<< HEAD
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    }
-=======
       user: process.env.SMTP_USER || 'noreply@crick11.app',
       pass: process.env.SMTP_PASS || 'your-gmail-app-password-here-change-this'
     },
     from: process.env.EMAIL_FROM || '"Crick11" <noreply@crick11.app>'
->>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
   },
   
   cors: {
