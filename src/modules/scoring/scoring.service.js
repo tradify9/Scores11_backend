@@ -2,6 +2,8 @@ import Match from '../match/match.model.js';
 import Ball from './ball.model.js';
 import Team from '../team/team.model.js';
 import Player from '../player/player.model.js';
+import scoringValidation from './scoring.validation.js';
+import statCalculator from '../../utils/statCalculator.js';
 import ApiError from '../../utils/ApiError.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
 import { emitToMatch } from '../../config/socket.js';
@@ -37,7 +39,13 @@ export const scoringService = {
       currentBatsmen: [],
       lastOverBalls: [],
       isCompleted: false,
-      startTime: new Date()
+      startTime: new Date(),
+      currentStriker: null,
+      currentNonStriker: null,
+      currentBowler: null,
+      currentOverNumber: 1,
+      currentBallNumber: 1,
+      currentPartnership: { runs: 0, balls: 0 }
     });
 
     // Initialize batting scorecard with playing XI
@@ -70,16 +78,23 @@ export const scoringService = {
       .populate('team2', 'name shortName');
   },
 
-
-  // Add a ball with full tracking
+  // Add a ball with full tracking (PROFESSIONAL REAL-TIME LOGIC)
   addBall: async (matchId, ballData, userId) => {
-    const match = await Match.findById(matchId);
-    if (!match) throw new ApiError(404, 'Match not found');
+    // Validate input
+    const { error } = scoringValidation.validateBallData(ballData);
+    if (error) throw new ApiError(400, `Invalid ball data: ${error.details[0].message}`);
+
+    const expectedVersion = ballData.expectedVersion;
+
+    // Find and lock match with version check for concurrency
+    const match = await Match.findOne(expectedVersion ? { _id: matchId, __v: expectedVersion } : { _id: matchId });
+    if (!match) {
+      if (expectedVersion) throw new ApiError(409, 'Match state changed by another scorer');
+      throw new ApiError(404, 'Match not found');
+    }
     if (match.status !== MATCH_STATUS.LIVE) throw new ApiError(400, 'Match is not live');
     
     const { 
-      overNumber, 
-      ballNumber, 
       batsmanId, 
       bowlerId, 
       runs, 
@@ -94,11 +109,60 @@ export const scoringService = {
     } = ballData;
 
     const currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match.currentInnings);
-    if (currentInningsIndex === -1) throw new ApiError(400, 'Innings not found');
+    if (currentInningsIndex === -1) throw new ApiError(400, 'Current innings not found');
 
     const innings = match.innings[currentInningsIndex];
 
-    // Create ball record
+    // PROFESSIONAL VALIDATIONS
+    // 1. Check innings not completed
+    if (innings.isCompleted) throw new ApiError(400, 'Innings already completed');
+    if (innings.totalWickets >= 10) throw new ApiError(400, '10 wickets fallen - innings ended');
+    
+    // 2. Overs limit check
+    const legalOvers = innings.totalOvers + (innings.totalBalls / 6);
+    if (legalOvers >= match.overs) throw new ApiError(400, `Innings overs completed (${match.overs})`);
+
+    // 3. Current striker validation
+    if (!innings.currentStriker) throw new ApiError(400, 'Set striker first');
+    if (innings.currentStriker.toString() !== batsmanId.toString()) {
+      throw new ApiError(400, 'Ball must be scored off current striker');
+    }
+
+    // Use current state for consistency
+    let overNumber = innings.currentOverNumber;
+    let ballNumber = innings.currentBallNumber;
+
+    // Advance over/ball counters after creating ball
+    const isValidDelivery = !isWide && !isNoBall;
+    
+    // STRIKER ROTATION LOGIC (Professional)
+    const rotation = statCalculator.calculateStrikeRotation(innings.currentStriker, runs || 0, ballNumber === 6 && isValidDelivery);
+    let newStriker = innings.currentStriker;
+    
+    if (rotation.shouldRotate) {
+      // Swap striker/non-striker
+      newStriker = innings.currentNonStriker;
+      innings.currentNonStriker = innings.currentStriker;
+      console.log(`🔄 Striker rotated: ${rotation.reason}`);
+    }
+    
+    // Advance ball counter
+    innings.currentBallNumber += 1;
+    
+    // OVER ADVANCEMENT LOGIC
+    if (isValidDelivery && ballNumber === 6) {
+      innings.currentOverNumber += 1;
+      innings.currentBallNumber = 1; // Reset ball counter
+      console.log(`🏏 New over started: ${innings.currentOverNumber}`);
+    }
+    
+    // Update innings.currentStriker for next ball
+    innings.currentStriker = newStriker;
+
+    // Validate ball sequence
+    if (ballNumber > 6 && !isWide && !isNoBall) throw new ApiError(400, 'Invalid ball number sequence');
+
+    // Create ball record with current state
     const newBall = await Ball.create({
       match: matchId,
       overNumber,
@@ -106,17 +170,17 @@ export const scoringService = {
       innings: match.currentInnings,
       battingTeam: innings.battingTeam,
       bowlingTeam: innings.bowlingTeam,
-      batsman: batsmanId,
-      bowler: bowlerId,
+      batsman: innings.currentStriker,
+      bowler: bowlerId || innings.currentBowler,
       runs: runs || 0,
       extras: (isWide || isNoBall || isBye || isLegBye) ? 1 : 0,
       wicket: isWicket || false,
       wicketType: wicketType || null,
       wicketFielder: fielderId || null,
-      isWide: isWide || false,
-      isNoBall: isNoBall || false,
-      isBye: isBye || false,
-      isLegBye: isLegBye || false,
+      isWide,
+      isNoBall, 
+      isBye, 
+      isLegBye,
       comment: comment || '',
       scoredBy: userId
     });
@@ -172,15 +236,18 @@ export const scoringService = {
       }
     }
 
-    // Update bowler stats
+    // Update bowler stats (using innings.currentBowler if not provided)
+    const actualBowlerId = bowlerId || innings.currentBowler;
+    if (!actualBowlerId) throw new ApiError(400, 'Set bowler first');
+    
     const bowlerIndex = innings.bowlingScorecard.findIndex(b => 
-      b.bowler.toString() === bowlerId.toString()
+      b.bowler.toString() === actualBowlerId.toString()
     );
     
     if (bowlerIndex === -1) {
       // Add new bowler
       innings.bowlingScorecard.push({
-        bowler: bowlerId,
+        bowler: actualBowlerId,
         overs: 0,
         maidens: 0,
         runsConceded: totalRuns + extrasCount,
@@ -201,6 +268,24 @@ export const scoringService = {
       innings.bowlingScorecard[bowlerIndex].overs = Math.floor(totalBalls / 6);
       innings.bowlingScorecard[bowlerIndex].economy = 
         innings.bowlingScorecard[bowlerIndex].runsConceded / innings.bowlingScorecard[bowlerIndex].overs || 0;
+    }
+
+    // UPDATE PARTNERSHIP TRACKING (Professional)
+    if (isValidDelivery) {
+      innings.currentPartnership.balls += 1;
+    }
+    innings.currentPartnership.runs += totalRuns; // Extras not counted in partnership
+
+    // RRR CALCULATION for 2nd innings
+    if (match.currentInnings === 2 && match.innings[0]) {
+      const target = match.innings[0].totalRuns + 1;
+      const runsNeeded = target - innings.totalRuns;
+      const ballsRemaining = (match.overs * 6) - innings.totalBalls;
+      if (ballsRemaining > 0) {
+        if (!match.result) match.result = {};
+        match.result.requiredRunRate = (runsNeeded / (ballsRemaining / 6)).toFixed(2);
+        match.result.requiredRuns = runsNeeded;
+      }
     }
 
     // Handle wicket
@@ -224,6 +309,7 @@ export const scoringService = {
     }
 
     // Update match score
+    if (!match.score) match.score = {};
     if (match.currentInnings === 1) {
       match.score.team1 = {
         runs: innings.totalRuns,
@@ -241,6 +327,7 @@ export const scoringService = {
     }
 
     // Add commentary
+    if (!match.commentary) match.commentary = [];
     match.commentary.push({
       over: overNumber,
       ball: ballNumber,
@@ -252,6 +339,13 @@ export const scoringService = {
     });
 
     // Update powerplay
+    if (!match.powerplay) {
+      match.powerplay = {
+        firstInnings: { runs: 0, wickets: 0 },
+        secondInnings: { runs: 0, wickets: 0 }
+      };
+    }
+    
     if (overNumber <= 6) {
       if (match.currentInnings === 1) {
         match.powerplay.firstInnings.runs += totalRuns + extrasCount;
@@ -264,13 +358,26 @@ export const scoringService = {
 
     await match.save();
 
-    // Broadcast live update via socket
-    emitToMatch(matchId, 'liveScoreUpdate', {
+    // ENHANCED SOCKET BROADCAST (Professional real-time)
+    const liveState = {
       matchId,
+      action: isWicket ? 'wicketFall' : (runs >= 4 ? 'boundary' : 'ballUpdate'),
       score: match.score,
-      currentInnings: match.innings[currentInningsIndex],
-      newBall
-    });
+      currentInnings: {
+        ...innings.toObject ? innings.toObject() : innings,
+        currentStriker: innings.currentStriker,
+        currentNonStriker: innings.currentNonStriker,
+        currentBowler: actualBowlerId,
+        currentOver: `${innings.currentOverNumber}.${innings.currentBallNumber}`,
+        partnership: innings.currentPartnership,
+        runRate: statCalculator.calculateRunRate(innings.totalRuns, innings.totalOvers + (innings.totalBalls / 6)),
+        requiredRR: match.result?.requiredRunRate || null
+      },
+      newBall,
+      rotation
+    };
+    
+    emitToMatch(matchId, 'liveScoreUpdate', liveState);
 
     return {
       ball: newBall,
@@ -278,7 +385,6 @@ export const scoringService = {
       score: match.score
     };
   },
-
 
   // Get match scoring data with full details
   getMatchScoring: async (matchId) => {
@@ -303,7 +409,7 @@ export const scoringService = {
     };
   },
 
-// Get live score with current state - NULL SAFE
+  // Get live score with current state - ENHANCED PROFESSIONAL VERSION
   getLiveScore: async (matchId) => {
     const match = await Match.findById(matchId)
       .populate('team1', 'name shortName logo')
@@ -321,10 +427,30 @@ export const scoringService = {
       extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, total: 0 },
       battingScorecard: [],
       bowlingScorecard: [],
-      fallOfWickets: []
+      fallOfWickets: [],
+      currentStriker: null,
+      currentNonStriker: null,
+      currentBowler: null,
+      currentOverNumber: 1,
+      currentBallNumber: 1,
+      currentPartnership: { runs: 0, balls: 0 }
     };
+    
+    // Calculate real-time metrics
+    const currentOvers = currentInnings.totalOvers + (currentInnings.totalBalls / 6);
+    const runRate = currentOvers > 0 ? statCalculator.calculateRunRate(currentInnings.totalRuns, currentOvers) : '0.00';
+    
+    let rrr = null;
+    if (match.currentInnings === 2 && match.innings?.[0]) {
+      const target = match.innings[0].totalRuns + 1;
+      const runsNeeded = target - currentInnings.totalRuns;
+      const ballsLeft = (match.overs * 6) - currentInnings.totalBalls;
+      if (ballsLeft > 0) {
+        rrr = (runsNeeded / (ballsLeft / 6)).toFixed(2);
+      }
+    }
 
-    // Safe recent balls query - handle missing innings (FIXED mongoose chain)
+    // Safe recent balls query - handle missing innings
     let recentBalls = [];
     let lastBall = null;
     try {
@@ -379,6 +505,7 @@ export const scoringService = {
       currentBowler: lastBall?.bowler || null,
       target: match.result?.target || null,
       requiredRuns: match.result?.requiredRuns || null,
+      requiredRunRate: rrr,
       powerplay: safePowerplay,
       initialized: !!(currentInnings.battingScorecard && currentInnings.battingScorecard.length > 0)
     };
@@ -479,10 +606,8 @@ export const scoringService = {
     // Check if target is chaseable for second innings
     if (inningsNumber === 2 && match.innings[0]) {
       const target = match.innings[0].totalRuns + 1;
-      match.result = {
-        ...match.result,
-        target
-      };
+      if (!match.result) match.result = {};
+      match.result.target = target;
     }
 
     // Create new innings
@@ -502,7 +627,13 @@ export const scoringService = {
       currentBatsmen: [],
       lastOverBalls: [],
       isCompleted: false,
-      startTime: new Date()
+      startTime: new Date(),
+      currentStriker: null,
+      currentNonStriker: null,
+      currentBowler: null,
+      currentOverNumber: 1,
+      currentBallNumber: 1,
+      currentPartnership: { runs: 0, balls: 0 }
     };
 
     // Add batting order for this innings
@@ -534,7 +665,6 @@ export const scoringService = {
       .populate('team2', 'name shortName');
   },
 
-
   // End innings
   endInnings: async (matchId, userId) => {
     const match = await Match.findById(matchId);
@@ -560,16 +690,14 @@ export const scoringService = {
       
       if (secondInningsRuns > firstInningsRuns) {
         const winner = match.innings[1].battingTeam;
-        match.result = {
-          winner,
-          margin: `${secondInningsRuns - firstInningsRuns} runs`,
-          method: 'by runs'
-        };
+        if (!match.result) match.result = {};
+        match.result.winner = winner;
+        match.result.margin = `${secondInningsRuns - firstInningsRuns} runs`;
+        match.result.method = 'by runs';
       } else if (secondInningsRuns === firstInningsRuns) {
-        match.result = {
-          margin: 'Tie',
-          method: 'tie'
-        };
+        if (!match.result) match.result = {};
+        match.result.margin = 'Tie';
+        match.result.method = 'tie';
       }
     }
 
@@ -587,14 +715,10 @@ export const scoringService = {
     const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
     if (!currentInnings) throw new ApiError(400, 'Innings not found');
 
-    // Update current batsmen
-    currentInnings.currentBatsmen = currentInnings.currentBatsmen.map(b => ({
-      ...b,
-      isOnStrike: b.batsman.toString() === batsmanId.toString()
-    }));
-
+    currentInnings.currentStriker = batsmanId;
     await match.save();
-    return currentInnings.currentBatsmen;
+    
+    return { currentStriker: batsmanId, currentNonStriker: currentInnings.currentNonStriker };
   },
 
   // Set non-striker
@@ -605,13 +729,10 @@ export const scoringService = {
     const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
     if (!currentInnings) throw new ApiError(400, 'Innings not found');
 
-    currentInnings.currentBatsmen = currentInnings.currentBatsmen.map(b => ({
-      ...b,
-      isOnStrike: b.batsman.toString() !== batsmanId.toString()
-    }));
-
+    currentInnings.currentNonStriker = batsmanId;
     await match.save();
-    return currentInnings.currentBatsmen;
+    
+    return { currentStriker: currentInnings.currentStriker, currentNonStriker: batsmanId };
   },
 
   // Set bowler
@@ -642,7 +763,7 @@ export const scoringService = {
 
     currentInnings.currentBowler = bowlerId;
     await match.save();
-    return currentInnings;
+    return { currentBowler: bowlerId };
   },
 
   // Get partnership details
@@ -653,23 +774,9 @@ export const scoringService = {
     const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
     if (!currentInnings) return null;
 
-    // Calculate current partnership
-    const onStrike = currentInnings.currentBatsmen.find(b => b.isOnStrike);
-    const offStrike = currentInnings.currentBatsmen.find(b => !b.isOnStrike);
-
-    if (!onStrike || !offStrike) return null;
-
-    // Find runs between these two
-    const partnership = currentInnings.partnerships.find(p =>
-      (p.batsman1.toString() === onStrike.batsman.toString() && p.batsman2.toString() === offStrike.batsman.toString()) ||
-      (p.batsman1.toString() === offStrike.batsman.toString() && p.batsman2.toString() === onStrike.batsman.toString())
-    );
-
-    return partnership || {
-      batsman1: onStrike.batsman,
-      batsman2: offStrike.batsman,
-      runs: onStrike.runs + offStrike.runs,
-      balls: onStrike.balls + offStrike.balls
+    return currentInnings.currentPartnership || {
+      runs: 0,
+      balls: 0
     };
   },
 
@@ -729,6 +836,39 @@ export const scoringService = {
       totalRuns: balls.reduce((sum, b) => sum + (b.runs || 0) + (b.extras || 0), 0),
       wickets: balls.filter(b => b.wicket).length
     };
+  },
+
+  // Get over summary data for all overs
+  getOverSummaryData: async (matchId) => {
+    const balls = await Ball.find({ match: matchId })
+      .sort({ innings: 1, overNumber: 1, ballNumber: 1 });
+    
+    const overMap = new Map();
+    
+    balls.forEach(ball => {
+      const key = `${ball.innings}-${ball.overNumber}`;
+      if (!overMap.has(key)) {
+        overMap.set(key, {
+          overNumber: ball.overNumber,
+          innings: ball.innings,
+          runs: 0,
+          wickets: 0,
+          balls: []
+        });
+      }
+      const over = overMap.get(key);
+      over.runs += (ball.runs || 0) + (ball.extras || 0);
+      if (ball.wicket) over.wickets += 1;
+      over.balls.push({
+        ballNumber: ball.ballNumber,
+        runs: ball.runs,
+        isWicket: ball.wicket,
+        isWide: ball.isWide,
+        isNoBall: ball.isNoBall
+      });
+    });
+    
+    return Array.from(overMap.values());
   },
 
   // Get match timeline
@@ -803,21 +943,23 @@ function calculateMatchStats(balls, match) {
   // Group balls by batsman
   const batsmanScores = {};
   balls.forEach(ball => {
-    const batsmanId = ball.batsman.toString();
-    if (!batsmanScores[batsmanId]) {
-      batsmanScores[batsmanId] = { runs: 0, balls: 0, fours: 0, sixes: 0 };
+    const batsmanId = ball.batsman?.toString();
+    if (batsmanId) {
+      if (!batsmanScores[batsmanId]) {
+        batsmanScores[batsmanId] = { runs: 0, balls: 0, fours: 0, sixes: 0 };
+      }
+      
+      if (!ball.isWide && !ball.isNoBall) {
+        batsmanScores[batsmanId].runs += ball.runs || 0;
+        batsmanScores[batsmanId].balls += 1;
+        if (ball.runs === 4) batsmanScores[batsmanId].fours += 1;
+        if (ball.runs === 6) batsmanScores[batsmanId].sixes += 1;
+      }
+      
+      if (ball.runs === 4) stats.totalFours += 1;
+      if (ball.runs === 6) stats.totalSixes += 1;
+      if (ball.extras > 0) stats.totalExtras += ball.extras;
     }
-    
-    if (!ball.isWide && !ball.isNoBall) {
-      batsmanScores[batsmanId].runs += ball.runs || 0;
-      batsmanScores[batsmanId].balls += 1;
-      if (ball.runs === 4) batsmanScores[batsmanId].fours += 1;
-      if (ball.runs === 6) batsmanScores[batsmanId].sixes += 1;
-    }
-    
-    if (ball.isFour) stats.totalFours += 1;
-    if (ball.isSix) stats.totalSixes += 1;
-    if (ball.extras > 0) stats.totalExtras += ball.extras;
   });
 
   // Find highest score

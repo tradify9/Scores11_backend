@@ -33,11 +33,14 @@ import bannerRoutes from './modules/banner/banner.routes.js';
 import featureToggleRoutes from './modules/featureToggle/featureToggle.routes.js';
 import dashboardRoutes from './modules/dashboard/dashboard.routes.js';
 import roleRoutes from './modules/role/role.routes.js';
+import chatRoutes from './modules/chat/chat.routes.js';
+
+// import matchRoutes from './modules/match/match.routes.js';
 
 const router = express.Router();
 
 router.use('/auth', authRoutes);
-router.use('/users', userRoutes);
+router.use('/user', userRoutes);
 router.use('/teams', teamRoutes);
 router.use('/players', playerRoutes);
 router.use('/matches', matchRoutes);
@@ -49,7 +52,7 @@ router.use('/wallet', walletRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/admin', adminRoutes);
 router.use('/roles', roleRoutes);
-router.use('/profiles', playerProfileRoutes);
+router.use('/player-profiles', playerProfileRoutes);
 router.use('/blogs', blogRoutes);
 router.use('/news', newsRoutes);
 router.use('/community', communityRoutes);
@@ -68,7 +71,9 @@ router.use('/live-streams', liveStreamRoutes);
 router.use('/search', searchRoutes);
 router.use('/banners', bannerRoutes);
 router.use('/feature-toggles', featureToggleRoutes);
+router.use('/chat', chatRoutes);
 router.use('/dashboard', dashboardRoutes);
+// router.use('/matches', matchRoutes);
 
 router.get('/', (req, res) => {
   res.json({

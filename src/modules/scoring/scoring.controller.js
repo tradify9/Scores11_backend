@@ -1,103 +1,178 @@
-import { scoringService } from './scoring.service.js';
-import ApiResponse from '../../utils/ApiResponse.js';
-import catchAsync from '../../utils/catchAsync.js';
+import scoringService from './scoring.service.js';
+import ApiError from '../../utils/ApiError.js';
+import { ROLES } from '../../constants/roles.js';
+import auth from '../../middleware/auth.middleware.js';
 
 export const scoringController = {
-  // Initialize match for live scoring
-  initializeMatch: catchAsync(async (req, res) => {
-    const { battingOrder } = req.body;
-    const match = await scoringService.initializeMatch(req.params.matchId, battingOrder, req.user.userId);
-    res.json(new ApiResponse(200, 'Match initialized successfully', match));
-  }),
+  // GET /match/:matchId/scorecard - Public scorecard (NO AUTH required)
+  getFullScorecard: async (req, res) => {
+    try {
+      const scorecard = await scoringService.getFullScorecard(req.params.matchId);
+      res.status(200).json({
+        success: true,
+        data: scorecard
+      });
+    } catch (error) {
+      console.error('Scorecard error:', error);
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || 'Failed to load scorecard'
+      });
+    }
+  },
 
-  // Add a ball with full tracking
-  addBall: catchAsync(async (req, res) => {
-    const result = await scoringService.addBall(req.params.matchId, req.body, req.user.userId);
-    res.json(new ApiResponse(200, 'Ball added successfully', result));
-  }),
+  // GET /match/:matchId/live - Public live score
+  getLiveScore: async (req, res) => {
+    try {
+      const liveData = await scoringService.getLiveScore(req.params.matchId);
+      res.status(200).json({
+        success: true,
+        data: liveData
+      });
+    } catch (error) {
+      console.error('Live score error:', error);
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || 'Failed to load live score'
+      });
+    }
+  },
 
-  // Get match scoring data (all balls)
-  getMatchScoring: catchAsync(async (req, res) => {
-    const scoring = await scoringService.getMatchScoring(req.params.matchId);
-    res.json(new ApiResponse(200, 'Scoring data retrieved', scoring));
-  }),
+  // POST /match/:matchId/initialize - Auth required
+  initializeMatch: async (req, res) => {
+    try {
+      const result = await scoringService.initializeMatch(
+        req.params.matchId, 
+        req.body, 
+        req.user.id
+      );
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
 
-  // Get live score
-  getLiveScore: catchAsync(async (req, res) => {
-    const score = await scoringService.getLiveScore(req.params.matchId);
-    res.json(new ApiResponse(200, 'Live score retrieved', score));
-  }),
+  // POST /match/:matchId/ball - Auth required  
+  addBall: async (req, res) => {
+    try {
+      const result = await scoringService.addBall(
+        req.params.matchId,
+        req.body,
+        req.user.id
+      );
+      res.status(201).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
 
-  // Get full scorecard
-  getFullScorecard: catchAsync(async (req, res) => {
-    const scorecard = await scoringService.getFullScorecard(req.params.matchId);
-    res.json(new ApiResponse(200, 'Scorecard retrieved', scorecard));
-  }),
+  // POST /match/:matchId/innings/start
+  startInnings: async (req, res) => {
+    try {
+      const result = await scoringService.startInnings(
+        req.params.matchId,
+        req.body.inningsNumber
+      );
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
 
-  // Start new innings
-  startInnings: catchAsync(async (req, res) => {
-    const { inningsNumber } = req.body;
-    const match = await scoringService.startInnings(req.params.matchId, inningsNumber || 1);
-    res.json(new ApiResponse(200, 'Innings started', match));
-  }),
+  // POST /match/:matchId/innings/end
+  endInnings: async (req, res) => {
+    try {
+      const result = await scoringService.endInnings(
+        req.params.matchId,
+        req.user.id
+      );
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
 
-  // End innings
-  endInnings: catchAsync(async (req, res) => {
-    const match = await scoringService.endInnings(req.params.matchId, req.user.userId);
-    res.json(new ApiResponse(200, 'Innings ended', match));
-  }),
+  // PATCH /match/:matchId/striker
+  setStriker: async (req, res) => {
+    try {
+      const result = await scoringService.setStriker(
+        req.params.matchId,
+        req.body.batsmanId
+      );
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
 
-  // Set striker
-  setStriker: catchAsync(async (req, res) => {
-    const { batsmanId } = req.body;
-    const result = await scoringService.setStriker(req.params.matchId, batsmanId);
-    res.json(new ApiResponse(200, 'Striker set', result));
-  }),
+  // PATCH /match/:matchId/non-striker  
+  setNonStriker: async (req, res) => {
+    try {
+      const result = await scoringService.setNonStriker(
+        req.params.matchId,
+        req.body.batsmanId
+      );
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
 
-  // Set non-striker
-  setNonStriker: catchAsync(async (req, res) => {
-    const { batsmanId } = req.body;
-    const result = await scoringService.setNonStriker(req.params.matchId, batsmanId);
-    res.json(new ApiResponse(200, 'Non-striker set', result));
-  }),
-
-  // Set bowler
-  setBowler: catchAsync(async (req, res) => {
-    const { bowlerId } = req.body;
-    const result = await scoringService.setBowler(req.params.matchId, bowlerId);
-    res.json(new ApiResponse(200, 'Bowler set', result));
-  }),
-
-  // Get partnership details
-  getPartnership: catchAsync(async (req, res) => {
-    const partnership = await scoringService.getPartnership(req.params.matchId);
-    res.json(new ApiResponse(200, 'Partnership retrieved', partnership));
-  }),
-
-  // Get fall of wickets
-  getFallOfWickets: catchAsync(async (req, res) => {
-    const fow = await scoringService.getFallOfWickets(req.params.matchId);
-    res.json(new ApiResponse(200, 'Fall of wickets retrieved', fow));
-  }),
-
-  // Update result
-  updateResult: catchAsync(async (req, res) => {
-    const result = await scoringService.updateResult(req.params.matchId, req.body);
-    res.json(new ApiResponse(200, 'Result updated', result));
-  }),
-
-  // Get over summary
-  getOverSummary: catchAsync(async (req, res) => {
-    const { overNumber } = req.params;
-    const summary = await scoringService.getOverSummary(req.params.matchId, parseInt(overNumber));
-    res.json(new ApiResponse(200, 'Over summary retrieved', summary));
-  }),
-
-  // Get match timeline
-  getMatchTimeline: catchAsync(async (req, res) => {
-    const timeline = await scoringService.getMatchTimeline(req.params.matchId);
-    res.json(new ApiResponse(200, 'Match timeline retrieved', timeline));
-  })
+  // PATCH /match/:matchId/bowler
+  setBowler: async (req, res) => {
+    try {
+      const result = await scoringService.setBowler(
+        req.params.matchId,
+        req.body.bowlerId
+      );
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
 };
 
 export default scoringController;
+

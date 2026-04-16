@@ -2,6 +2,13 @@ import User from './user.model.js';
 import { uploadImage, deleteImage } from '../../config/cloudinary.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
+<<<<<<< HEAD
+=======
+import { EXPERIENCE_POINTS } from '../../constants/userLevels.js';
+import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
+import { sendVerificationEmail } from '../../utils/sendVerificationEmail.js';
+>>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
 
 export const userService = {
   getUserByEmail: async (email) => {
@@ -82,6 +89,62 @@ export const userService = {
     return user;
   },
 
+<<<<<<< HEAD
+=======
+  // Registration & Authentication
+  createUser: async (userData) => {
+    const { email, password, username, fullName, phone } = userData;
+    
+    // Check if user exists
+    const existingUser = await User.findOne({
+      $or: [{ email }, { username }, { phone }]
+    });
+    
+    if (existingUser) {
+      if (existingUser.email === email) throw new ApiError(400, 'Email already registered');
+      if (existingUser.username === username) throw new ApiError(400, 'Username already taken');
+      if (existingUser.phone === phone) throw new ApiError(400, 'Phone number already registered');
+    }
+    
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Generate referral code
+    const referralCode = `${username}_${crypto.randomBytes(3).toString('hex')}`.toUpperCase();
+    
+    const user = await User.create({
+      email,
+      password: hashedPassword,
+      username,
+      fullName,
+      phone,
+      referralCode,
+      role: 'user',
+      isActive: true
+    });
+    
+    // Handle referral if provided
+    if (userData.referralCode) {
+      await userService.handleReferral(userData.referralCode, user._id);
+    }
+    
+    return user;
+  },
+
+  handleReferral: async (referralCode, newUserId) => {
+    const referrer = await User.findOne({ referralCode });
+    if (referrer) {
+      referrer.referredBy = newUserId;
+      referrer.referralEarnings += 50; // Add referral bonus
+      await referrer.save();
+      
+      // Add experience points to referrer
+      await this.addExperiencePoints(referrer._id, EXPERIENCE_POINTS.REFERRAL);
+    }
+  },
+
+  // Profile Management
+>>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
   updateProfile: async (userId, updateData) => {
     const allowedUpdates = ['name', 'phone', 'dateOfBirth', 'address', 'bio'];
     const updates = {};
@@ -135,6 +198,181 @@ export const userService = {
     return updatedUser;
   },
 
+<<<<<<< HEAD
+=======
+  uploadCoverPhoto: async (userId, file) => {
+    if (!file) {
+      throw new ApiError(400, 'No file uploaded');
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    if (user.coverPhoto?.publicId) {
+      await deleteImage(user.coverPhoto.publicId);
+    }
+
+    const uploadResult = await uploadImage(file.path, 'crickhero/covers', {
+      width: 1200,
+      height: 400,
+      crop: 'fill'
+    });
+    
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      {
+        coverPhoto: {
+          publicId: uploadResult.publicId,
+          url: uploadResult.url
+        }
+      },
+      { new: true }
+    );
+
+    return updatedUser;
+  },
+
+  // Experience & Leveling
+  addExperiencePoints: async (userId, points) => {
+    const user = await User.findById(userId);
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+    
+    user.experiencePoints += points;
+    await user.save();
+    
+    return {
+      newLevel: user.level,
+      newTitle: user.title,
+      experiencePoints: user.experiencePoints
+    };
+  },
+
+  getNextLevelExperience: (currentLevel, currentExp) => {
+    const levelRequirements = {
+      1: 100,
+      2: 500,
+      3: 1000,
+      4: 5000,
+      5: null
+    };
+    
+    const required = levelRequirements[currentLevel];
+    if (!required) return null;
+    
+    return {
+      required,
+      remaining: required - currentExp,
+      percentage: Math.round((currentExp / required) * 100)
+    };
+  },
+
+  // Social Features
+  followUser: async (userId, targetUserId) => {
+    if (userId === targetUserId) {
+      throw new ApiError(400, 'You cannot follow yourself');
+    }
+
+    const [user, targetUser] = await Promise.all([
+      User.findById(userId),
+      User.findById(targetUserId)
+    ]);
+
+    if (!targetUser) {
+      throw new ApiError(404, 'User to follow not found');
+    }
+
+    if (!user.following.includes(targetUserId)) {
+      user.following.push(targetUserId);
+      targetUser.followers.push(userId);
+      
+      await Promise.all([user.save(), targetUser.save()]);
+    }
+
+    return { message: 'User followed successfully' };
+  },
+
+  unfollowUser: async (userId, targetUserId) => {
+    const [user, targetUser] = await Promise.all([
+      User.findById(userId),
+      User.findById(targetUserId)
+    ]);
+
+    if (user && targetUser) {
+      user.following = user.following.filter(id => id.toString() !== targetUserId);
+      targetUser.followers = targetUser.followers.filter(id => id.toString() !== userId);
+      
+      await Promise.all([user.save(), targetUser.save()]);
+    }
+
+    return { message: 'User unfollowed successfully' };
+  },
+
+  getFollowers: async (userId, query) => {
+    const { page, limit, skip } = getPagination(query);
+    
+    const user = await User.findById(userId)
+      .populate({
+        path: 'followers',
+        select: 'username fullName avatar level title',
+        options: {
+          skip,
+          limit
+        }
+      });
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    const total = user.followers.length;
+
+    return {
+      followers: user.followers,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    };
+  },
+
+  getFollowing: async (userId, query) => {
+    const { page, limit, skip } = getPagination(query);
+    
+    const user = await User.findById(userId)
+      .populate({
+        path: 'following',
+        select: 'username fullName avatar level title',
+        options: {
+          skip,
+          limit
+        }
+      });
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    const total = user.following.length;
+
+    return {
+      following: user.following,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    };
+  },
+
+  // Search & Filter
+>>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
   getAllUsers: async (query) => {
     const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
     
@@ -365,7 +603,7 @@ export const userService = {
   },
 
   // Admin - Action on Report
-  actionOnReport: async (reportId, action, adminNote) => {
+  actionOnReport: async (reportId, action, adminNote, resolvedBy = null) => {
     const Report = (await import('../report/report.model.js')).default;
     
     const report = await Report.findByIdAndUpdate(
@@ -375,7 +613,7 @@ export const userService = {
         actionTaken: action,
         adminNote,
         resolvedAt: new Date(),
-        resolvedBy: this.currentUserId
+        resolvedBy
       },
       { new: true }
     );
@@ -386,7 +624,7 @@ export const userService = {
 
     // If action is ban, block the user
     if (action === 'ban') {
-      await this.banUser(report.reportedUser, adminNote);
+      await userService.banUser(report.reportedUser, adminNote);
     }
 
     return report;
@@ -728,8 +966,13 @@ export const userService = {
     user.emailVerificationExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
     await user.save();
 
-    // In production, send email here
-    // await sendVerificationEmail(user.email, verificationToken);
+    try {
+      await sendVerificationEmail(user.email, verificationToken);
+      console.log(`Verification email sent to: ${user.email}`);
+    } catch (error) {
+      console.error('Verification email failed:', error.message);
+      // Don't fail API if email fails
+    }
 
     return { message: 'Verification email sent' };
   },
@@ -761,6 +1004,19 @@ export const userService = {
 
     // Return achievements - this would be populated from various activities
     return user.achievements || [];
+  },
+
+  // Public avatar - returns Cloudinary URL or null
+  getUserAvatarPublic: async (userId) => {
+    const user = await User.findById(userId).select('avatar').lean();
+    if (!user || !user.avatar?.url || user.avatar.url === 'default-avatar-url') {
+      return null;
+    }
+    // Only return Cloudinary URLs (public)
+    if (user.avatar.url.includes('res.cloudinary.com')) {
+      return user.avatar.url;
+    }
+    return null;
   }
 };
 

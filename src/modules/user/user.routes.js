@@ -18,6 +18,7 @@ const router = express.Router();
 router.post('/register', validate(registerSchema), userController.register);
 router.get('/verify-email/:token', userController.verifyEmail);
 router.get('/profile/:username', userController.getProfileByUsername);
+router.get('/users/:id/avatar', userController.getUserAvatarPublic);
 router.get('/list', userController.getAllUsers);
 router.get('/leaderboard', userController.getLeaderboard);
 
@@ -28,6 +29,7 @@ router.use(authenticate);
 router.get('/me', userController.getProfile);
 router.put('/me', validate(updateProfileSchema), userController.updateProfile);
 router.get('/me/stats', userController.getUserStats);
+router.get('/stats', userController.getUserStats);
 
 /* ---------- MEDIA ---------- */
 

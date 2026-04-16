@@ -189,8 +189,66 @@ const userController = {
     res.json(new ApiResponse(200, "User verified"));
   }),
 
+<<<<<<< HEAD
   changeUserRole: catchAsync(async (req, res) => {
     res.json(new ApiResponse(200, "Role updated"));
+=======
+  updateEquipment: catchAsync(async (req, res) => {
+    const equipment = await userService.updateEquipment(req.user.userId, req.body);
+    res.json(new ApiResponse(200, 'Equipment updated successfully', equipment));
+  }),
+
+  updateNotificationPreferences: catchAsync(async (req, res) => {
+    const user = await userService.updateNotificationPreferences(req.user.userId, req.body);
+    res.json(new ApiResponse(200, 'Notification preferences updated', user));
+  }),
+
+  updateLanguage: catchAsync(async (req, res) => {
+    const user = await userService.updateLanguage(req.user.userId, req.body.language);
+    res.json(new ApiResponse(200, 'Language updated successfully', user));
+  }),
+
+  getPurchaseHistory: catchAsync(async (req, res) => {
+    const purchases = await userService.getPurchaseHistory(req.user.userId, req.query);
+    res.json(new ApiResponse(200, 'Purchase history retrieved', purchases));
+  }),
+
+  clearUserData: catchAsync(async (req, res) => {
+    await userService.clearUserData(req.user.userId);
+    res.json(new ApiResponse(200, 'User data cleared successfully'));
+  }),
+
+  deleteAccount: catchAsync(async (req, res) => {
+    await userService.deleteAccount(req.user.userId);
+    res.json(new ApiResponse(200, 'Account deleted successfully'));
+  }),
+
+  resendEmailVerification: catchAsync(async (req, res) => {
+    await userService.resendEmailVerification(req.user.userId);
+    res.json(new ApiResponse(200, 'Verification email sent'));
+  }),
+
+  getCricketStats: catchAsync(async (req, res) => {
+    const stats = await userService.getCricketStats(req.user.userId);
+    res.json(new ApiResponse(200, 'Cricket stats retrieved', stats));
+  }),
+
+  getAchievements: catchAsync(async (req, res) => {
+    const achievements = await userService.getAchievements(req.user.userId);
+    res.json(new ApiResponse(200, 'Achievements retrieved', achievements));
+  }),
+
+  // Public avatar endpoint - no auth required for img tags
+  getUserAvatarPublic: catchAsync(async (req, res) => {
+    const userId = req.params.id;
+    const avatar = await userService.getUserAvatarPublic(userId);
+    if (avatar) {
+      res.redirect(301, avatar);
+    } else {
+      // Return default avatar
+      res.redirect('https://via.placeholder.com/400x400/6B7280/FFFFFF?text=👤');
+    }
+>>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
   })
 
 };

@@ -32,8 +32,10 @@ import Leaderboard from '../modules/leaderboard/leaderboard.model.js';
 import Contest from '../modules/contest/contest.model.js';
 
 import { ROLES } from '../constants/roles.js';
-import { MATCH_STATUS, TOSS_DECISION } from '../constants/matchStatus.js';
+import { MATCH_STATUS } from '../constants/matchStatus.js';
+import { TOSS_DECISION } from '../constants/tossDecision.js';
 import { TOURNAMENT_STATUS, TOURNAMENT_FORMAT } from '../constants/tournamentStatus.js';
+import { MATCH_FORMAT, MATCH_TYPE } from '../constants/matchStatus.js';
 
 const seedAll = async () => {
   try {
@@ -66,7 +68,7 @@ const seedAll = async () => {
     await Leaderboard.deleteMany({});
     await Contest.deleteMany({});
 
-    console.log('🌱 Starting seed process...\n');
+    console.log('🌱 Starting seed process...');
 
     // 1. Create Users
     console.log('👤 Creating users...');
@@ -269,8 +271,7 @@ const seedAll = async () => {
         playerName: 'Rohit Sharma',
         jerseyNumber: 45,
         role: 'batsman',
-        battingStyle: 'right-hand bat',
-        bowlingStyle: 'right-arm medium',
+        battingStyle: 'right-hand',        bowlingStyle: 'right-arm-medium',
         dateOfBirth: new Date('1987-04-30'),
         placeOfBirth: 'Nagpur',
         height: '5.8',
@@ -287,8 +288,7 @@ const seedAll = async () => {
         playerName: 'Jasprit Bumrah',
         jerseyNumber: 93,
         role: 'bowler',
-        battingStyle: 'right-hand bat',
-        bowlingStyle: 'right-arm fast',
+        battingStyle: 'right-hand',        bowlingStyle: 'right-arm-fast',
         dateOfBirth: new Date('1993-03-06'),
         placeOfBirth: 'Ahmedabad',
         height: '6.0',
@@ -324,8 +324,7 @@ const seedAll = async () => {
         playerName: 'Ravindra Jadeja',
         jerseyNumber: 8,
         role: 'all-rounder',
-        battingStyle: 'left-hand bat',
-        bowlingStyle: 'left-arm medium',
+        battingStyle: 'left-hand',        bowlingStyle: 'left-arm-medium',
         dateOfBirth: new Date('1988-12-06'),
         placeOfBirth: 'Jamnavar',
         height: '5.10',
@@ -342,8 +341,7 @@ const seedAll = async () => {
         playerName: 'Virat Kohli',
         jerseyNumber: 18,
         role: 'batsman',
-        battingStyle: 'right-hand bat',
-        bowlingStyle: 'right-arm medium',
+        battingStyle: 'right-hand',        bowlingStyle: 'right-arm-medium',
         dateOfBirth: new Date('1988-11-05'),
         placeOfBirth: 'Delhi',
         height: '5.9',
@@ -515,7 +513,9 @@ const seedAll = async () => {
 
     // 5. Create Matches
     console.log('🎯 Creating matches...');
-    const matches = await Match.insertMany([
+    // FIXED: Sequential create to ensure unique matchId generation (was insertMany causing null duplicates)
+    console.log('   🔄 Creating matches sequentially to avoid matchId duplicate error...');
+    const matchDataArray = [
       {
         team1: teams[0]._id,
         team2: teams[1]._id,
@@ -590,7 +590,22 @@ const seedAll = async () => {
         status: MATCH_STATUS.CANCELLED,
         isActive: true
       }
-    ]);
+    ];
+    
+    const matches = [];
+    for(let i = 0; i < matchDataArray.length; i++) {
+      const matchData = matchDataArray[i];
+      try {
+        // Add seed prefix as extra safety
+        matchData.matchId = `SEED_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 4)}`;
+        const match = await Match.create(matchData);
+        matches.push(match);
+        console.log(`   ✅ Match ${i+1}/${matchDataArray.length} created: ${match.team1.name || 'Team1'} vs ${match.team2.name || 'Team2'}`);
+      } catch(err) {
+        console.error(`   ❌ Match ${i+1} failed:`, err.message);
+        throw err;
+      }
+    }
     console.log(`   ✅ Created ${matches.length} matches`);
 
     // 6. Create Blogs
@@ -1161,8 +1176,8 @@ const seedAll = async () => {
     ]);
     console.log(`   ✅ Created ${contests.length} contests`);
 
-    console.log('\n🎉 Seed completed successfully!');
-    console.log('\n📋 Summary:');
+    console.log('🎉 Seed completed successfully!');
+    console.log('📋 Summary:');
     console.log(`   - Users: ${allUsers.length} (including admin)`);
     console.log(`   - Teams: ${teams.length}`);
     console.log(`   - Players: ${players.length}`);
@@ -1183,13 +1198,19 @@ const seedAll = async () => {
     console.log(`   - Leaderboard: 1`);
     console.log(`   - Contests: ${contests.length}`);
 
-    console.log('\n🔑 Login Credentials:');
+    console.log('🔑 Login Credentials:');
     console.log(`   Admin: admin@crick11.com / password123`);
     console.log(`   Organizer: organizer@crick11.com / password123`);
     console.log(`   User: rahul.sharma@crick11.com / password123`);
 
+    console.log('\n🚀 NEXT STEPS:');
+    console.log('1. cd backend && npm start');
+    console.log('2. Login as admin@crick11.com');
+    console.log('3. Test Create Match with teams: Mumbai Indians vs Chennai Super Kings');
+    console.log('4. cd cric11_app && flutter run');
+
     await mongoose.disconnect();
-    console.log('\n🔌 Disconnected from MongoDB');
+    console.log('🔌 Disconnected from MongoDB');
     process.exit(0);
 
   } catch (error) {

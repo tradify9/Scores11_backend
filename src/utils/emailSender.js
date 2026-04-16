@@ -67,10 +67,3 @@ export const sendMatchReminderEmail = async (email, matchDetails) => {
   `;
   return sendEmail(email, subject, html);
 };
-
-export default {
-  sendEmail,
-  sendWelcomeEmail,
-  sendPasswordResetEmail,
-  sendMatchReminderEmail
-};

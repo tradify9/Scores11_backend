@@ -10,39 +10,6 @@ export const MATCH_STATUS = {
   WASHED_OUT: 'washed_out'
 };
 
-export const INNING_STATUS = {
-  PENDING: 'pending',
-  IN_PROGRESS: 'in_progress',
-  COMPLETED: 'completed',
-  DECLARED: 'declared'
-};
-
-export const OVER_STATUS = {
-  PENDING: 'pending',
-  IN_PROGRESS: 'in_progress',
-  COMPLETED: 'completed'
-};
-
-export const BALL_RESULT = {
-  RUNS: 'runs',
-  WICKET: 'wicket',
-  WIDE: 'wide',
-  NO_BALL: 'no_ball',
-  BYE: 'bye',
-  LEG_BYE: 'leg_bye'
-};
-
-export const WICKET_TYPE = {
-  BOWLED: 'bowled',
-  CAUGHT: 'caught',
-  STUMPED: 'stumped',
-  RUN_OUT: 'run_out',
-  LBW: 'lbw',
-  HIT_WICKET: 'hit_wicket',
-  HANDLED_BALL: 'handled_ball',
-  TIMED_OUT: 'timed_out'
-};
-
 export const MATCH_FORMAT = {
   T20: 't20',
   ODI: 'odi',
@@ -61,9 +28,24 @@ export const MATCH_TYPE = {
   FRIENDLY: 'friendly'
 };
 
-export const TOSS_DECISION = {
-  BAT: 'bat',
-  BOWL: 'bowl'
+export const WICKET_TYPE = {
+  BOWLED: 'bowled',
+  CAUGHT: 'caught',
+  STUMPED: 'stumped',
+  RUN_OUT: 'run_out',
+  LBW: 'lbw',
+  HIT_WICKET: 'hit_wicket',
+  HANDLED_BALL: 'handled_ball',
+  TIMED_OUT: 'timed_out'
+};
+
+export const BALL_RESULT = {
+  RUNS: 'runs',
+  WICKET: 'wicket',
+  WIDE: 'wide',
+  NO_BALL: 'no_ball',
+  BYE: 'bye',
+  LEG_BYE: 'leg_bye'
 };
 
 export default MATCH_STATUS;

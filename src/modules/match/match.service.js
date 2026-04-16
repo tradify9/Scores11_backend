@@ -10,23 +10,13 @@ import { emitToMatch } from "../../config/socket.js";
 
 export const matchService = {
   // Create a new match
- createMatch: async (matchData, userId) => {
-  try {
-    let { team1, team2, tournament } = matchData;
-
-    // ✅ convert to ObjectId (important)
-    team1 = new mongoose.Types.ObjectId(team1);
-    team2 = new mongoose.Types.ObjectId(team2);
-
-    // ✅ Validate teams exist
-    const [t1, t2] = await Promise.all([
-      Team.findById(team1),
-      Team.findById(team2),
-    ]);
-
-    if (!t1 || !t2) {
-      throw new ApiError(404, "Team not found");
-    }
+  createMatch: async (matchData, userId) => {
+    const { team1, team2, tournament } = matchData;
+    
+    // Validate teams exist
+    const t1 = await Team.findById(team1);
+    const t2 = await Team.findById(team2);
+    if (!t1 || !t2) throw new ApiError(404, 'Team not found');
 
     // ✅ Teams must be different
     if (team1.equals(team2)) {
@@ -153,29 +143,19 @@ export const matchService = {
     return updatedMatch;
   },
 
- // Get all matches with filters
-getAllMatches: async (query) => {
-  const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
-
-  const filter = { isActive: true };
-
-  // ✅ safe filters
-  if (query.status) filter.status = query.status;
-  if (query.tournament) filter.tournament = query.tournament;
-  if (query.format) filter.format = query.format;
-  if (query.matchType) filter.matchType = query.matchType;
-
-  // ✅ team filter (important fix)
-  if (query.team) {
-    filter.$or = [
-      { team1: query.team },
-      { team2: query.team }
-    ];
-  }
-
-  // ✅ safe sorting (fallback add)
-  const safeSortBy = sortBy || "createdAt";
-  const safeSortOrder = sortOrder === -1 ? -1 : 1;
+  // Get all matches with filters
+  getAllMatches: async (query) => {
+    const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
+    
+    const filter = { isActive: true };
+    if (query.status) filter.status = query.status;
+    if (query.tournament) filter.tournament = query.tournament;
+    if (query.format) filter.format = query.format;
+    if (query.matchType) filter.matchType = query.matchType;
+    
+    if (query.team) {
+      filter.$or = [{ team1: query.team }, { team2: query.team }];
+    }
 
   const [matches, total] = await Promise.all([
     Match.find(filter)

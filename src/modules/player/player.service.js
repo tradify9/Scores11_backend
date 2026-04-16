@@ -9,10 +9,11 @@ export const playerService = {
     const user = await User.findById(userId);
     if (!user) throw new ApiError(404, 'User not found');
 
-    const existingPlayer = await Player.findOne({ user: userId });
-    if (existingPlayer) {
-      throw new ApiError(400, 'Player profile already exists for this user');
-    }
+    // Duplicate check removed - always allow multiple players per user
+    // const existingPlayer = await Player.findOne({ user: userId });
+    // if (existingPlayer) {
+    //   throw new ApiError(400, 'Player profile already exists for this user');
+    // }
 
     const player = await Player.create({
       ...playerData,

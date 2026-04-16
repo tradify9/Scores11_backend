@@ -10,6 +10,7 @@ export const validate = (schema) => {
     });
 
     if (error) {
+<<<<<<< HEAD
 
       const errors = error.details.map((detail) => ({
         field: detail.path.join('.'),
@@ -17,6 +18,15 @@ export const validate = (schema) => {
       }));
 
       return next(new ApiError(400, 'Validation failed', errors));
+=======
+      console.error('Validation errors:', error.details);
+      const errors = error.details.map(detail => ({
+        field: detail.path.join('.'),
+        message: detail.message
+      }));
+      const errorMessage = errors.length > 0 ? `Validation Error: ${errors[0].message}` : 'Validation failed';
+      return next(new ApiError(400, errorMessage, { details: errors }));
+>>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
     }
 
     req.body = value;
@@ -33,6 +43,7 @@ export const validateQuery = (schema) => {
     });
 
     if (error) {
+<<<<<<< HEAD
 
       const errors = error.details.map((detail) => ({
         field: detail.path.join('.'),
@@ -40,6 +51,15 @@ export const validateQuery = (schema) => {
       }));
 
       return next(new ApiError(400, 'Validation failed', errors));
+=======
+      console.error('Query validation errors:', error.details);
+      const errors = error.details.map(detail => ({
+        field: detail.path.join('.'),
+        message: detail.message
+      }));
+      const errorMessage = errors.length > 0 ? `Query Validation Error: ${errors[0].message}` : 'Query validation failed';
+      return next(new ApiError(400, errorMessage, { details: errors }));
+>>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
     }
 
     req.query = value;
@@ -56,6 +76,7 @@ export const validateParams = (schema) => {
     });
 
     if (error) {
+<<<<<<< HEAD
 
       const errors = error.details.map((detail) => ({
         field: detail.path.join('.'),
@@ -63,6 +84,15 @@ export const validateParams = (schema) => {
       }));
 
       return next(new ApiError(400, 'Validation failed', errors));
+=======
+      console.error('Params validation errors:', error.details);
+      const errors = error.details.map(detail => ({
+        field: detail.path.join('.'),
+        message: detail.message
+      }));
+      const errorMessage = errors.length > 0 ? `Params Validation Error: ${errors[0].message}` : 'Params validation failed';
+      return next(new ApiError(400, errorMessage, { details: errors }));
+>>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
     }
 
     req.params = value;
