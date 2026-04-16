@@ -2,13 +2,10 @@ import User from './user.model.js';
 import { uploadImage, deleteImage } from '../../config/cloudinary.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
-<<<<<<< HEAD
-=======
 import { EXPERIENCE_POINTS } from '../../constants/userLevels.js';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { sendVerificationEmail } from '../../utils/sendVerificationEmail.js';
->>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
 
 export const userService = {
   getUserByEmail: async (email) => {
@@ -89,8 +86,6 @@ export const userService = {
     return user;
   },
 
-<<<<<<< HEAD
-=======
   // Registration & Authentication
   createUser: async (userData) => {
     const { email, password, username, fullName, phone } = userData;
@@ -144,7 +139,6 @@ export const userService = {
   },
 
   // Profile Management
->>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
   updateProfile: async (userId, updateData) => {
     const allowedUpdates = ['name', 'phone', 'dateOfBirth', 'address', 'bio'];
     const updates = {};
@@ -198,8 +192,6 @@ export const userService = {
     return updatedUser;
   },
 
-<<<<<<< HEAD
-=======
   uploadCoverPhoto: async (userId, file) => {
     if (!file) {
       throw new ApiError(400, 'No file uploaded');
@@ -372,7 +364,6 @@ export const userService = {
   },
 
   // Search & Filter
->>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
   getAllUsers: async (query) => {
     const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
     

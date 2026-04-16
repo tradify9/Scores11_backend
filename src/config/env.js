@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export default {
-  nodeEnv: process.env.NODE_ENV || 'development', 
+  nodeEnv: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT, 10) || 3000,
   
   jwt: {
@@ -16,41 +16,35 @@ export default {
     uri: process.env.NODE_ENV === 'production' 
       ? process.env.MONGODB_URI_PROD 
       : process.env.MONGODB_URI || 'mongodb://localhost:27017/crick11'
-  },  
-  
-  redis: {  
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT, 10) || 6379,
-    password: process.env.REDIS_PASSWORD || ''                 
   },
   
-  cloudinary: { 
+  redis: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT, 10) || 6379,
+    password: process.env.REDIS_PASSWORD || ''
+  },
+  
+  cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
     apiKey: process.env.CLOUDINARY_API_KEY,
     apiSecret: process.env.CLOUDINARY_API_SECRET
   },
-   
+  
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID,
     privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
     databaseUrl: process.env.FIREBASE_DATABASE_URL
   },
-   
+  
   email: {
     smtp: {
       host: process.env.SMTP_HOST || 'smtp.gmail.com',
       port: parseInt(process.env.SMTP_PORT, 10) || 587,
-<<<<<<< HEAD
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    }
-=======
       user: process.env.SMTP_USER || 'noreply@crick11.app',
       pass: process.env.SMTP_PASS || 'your-gmail-app-password-here-change-this'
     },
     from: process.env.EMAIL_FROM || '"Crick11" <noreply@crick11.app>'
->>>>>>> f92d10cd7fdb1170e84082534229e18b6b3a7575
   },
   
   cors: {
@@ -73,4 +67,3 @@ export default {
     minWithdrawal: parseInt(process.env.WALLET_MIN_WITHDRAWAL, 10) || 100
   }
 };
- 
