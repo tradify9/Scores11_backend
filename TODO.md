@@ -1,14 +1,8 @@
-# Backend README Complete API Documentation
-## Steps:
-- [x] Step 1: Create TODO.md ✅
-- [x] Step 2: Updated README TOC with complete API sections
-- [x] Step 3: Completed Auth & Dashboard tables
-- [ ] Step 4: Added Players, Matches, Scoring tables
-- [ ] Step 3: Complete Auth & Dashboard tables
-- [ ] Step 4: Add Players, Matches, Scoring tables
-- [ ] Step 5: Add Teams, Tournaments, Wallet tables
-- [ ] Step 6: Add LiveStreams, Chat, new features section
-- [ ] Step 7: Add remaining modules (Admin, Blogs, Banners, etc.)
-- [ ] Step 8: Add testing examples & complete
-- [ ] Step 9: attempt_completion
+# Backend README Update Progress
 
+## Steps:
+- [ ] 1. Create this TODO.md ✅
+- [x] 2. Rewrite backend/README.md with:\n  - Clean Markdown (fix encoding)\n  - Updated project structure diagram (all 30+ modules)\n  - Tech stack from package.json\n  - Features including scoring, liveStream, chat\n  - Installation with seed commands\n  - API tables for match, scoring, player, liveStream, chat\n  - Socket events, deployment notes
+- [ ] 3. Test backend: cd backend && npm install && npm run dev
+- [ ] 4. Run seeds: node src/seeds/all.seed.js
+- [ ] 5. Complete task ✅

@@ -161,6 +161,18 @@ export const playerService = {
         strikeRate: player.strikeRate || 0
       }
     };
+  },
+
+  deletePlayer: async (playerId, userId) => {
+    const player = await Player.findOne({ _id: playerId, user: userId });
+    if (!player) throw new ApiError(404, 'Player not found or not authorized');
+    
+    // Soft delete
+    player.isActive = false;
+    player.playerName = `[DELETED] ${player.playerName}`;
+    await player.save();
+    
+    return player;
   }
 };
 

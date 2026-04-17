@@ -18,6 +18,7 @@ router.get('/:id', authenticate, playerController.getPlayerById);
 router.get('/:id/stats', playerController.getPlayerStats);
 router.get('/:id/performance', playerController.getPlayerPerformance);
 router.put('/:id', authenticate, playerController.updatePlayer);
+router.delete('/:id', authenticate, playerController.deletePlayer);
 
 export default router;
 

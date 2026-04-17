@@ -79,6 +79,11 @@ export const playerController = {
       performances,
       stats
     }));
+  }),
+
+  deletePlayer: catchAsync(async (req, res) => {
+    await playerService.deletePlayer(req.params.id, req.user.userId);
+    res.json(new ApiResponse(200, 'Player deleted successfully'));
   })
 };
 
