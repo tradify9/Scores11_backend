@@ -5,7 +5,7 @@ export const createTournamentSchema = Joi.object({
   shortName: Joi.string().max(50),
   description: Joi.string().max(2000),
   type: Joi.string().valid('LEAGUE', 'KNOCKOUT', 'TABLE'),
-  format: Joi.string().valid('T20', 'ODI', 'TEST'),
+format: Joi.string().lowercase().valid('t20', 'odi', 'test'),
   overs: Joi.number().min(1).max(50),
   startDate: Joi.date().iso().required(),
   endDate: Joi.date().iso().required(),
