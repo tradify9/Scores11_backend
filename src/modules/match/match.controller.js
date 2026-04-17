@@ -7,6 +7,8 @@ export const matchController = {
   // Create a new match
   createMatch: catchAsync(async (req, res) => {
     console.log('📥 Match create request body:', JSON.stringify(req.body, null, 2));
+    console.log('🔍 team1/team2 - type:', typeof req.body.team1, typeof req.body.team2);
+    console.log('🔍 team1/team2 - value:', req.body.team1, req.body.team2);
     console.log('👤 User ID:', req.user.userId);
     
     const match = await matchService.createMatch(req.body, req.user.userId);

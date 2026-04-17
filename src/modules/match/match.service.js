@@ -15,22 +15,40 @@ export const matchService = {
     const { team1, team2, tournament } = matchData;
     
     console.log('🔍 Creating match with teams:', { team1, team2 });
+    console.log('🔍 Types - team1:', typeof team1, 'team2:', typeof team2);
     
-    // ✅ Explicit ObjectId conversion
-    const team1Id = new mongoose.Types.ObjectId(team1);
-    const team2Id = new mongoose.Types.ObjectId(team2);
+    // 🔥 PRIMARY FIX: Defensive ObjectId validation
+    const validateTeamId = (id, name) => {
+      if (!id || typeof id !== 'string') {
+        throw new ApiError(400, `${name} must be a valid string ID`);
+      }
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new ApiError(400, `${name} invalid ObjectId: ${id.substring(0, 10)}...`);
+      }
+      return new mongoose.Types.ObjectId(id);
+    };
     
-    // Validate teams exist
-    const t1 = await Team.findById(team1Id);
-    const t2 = await Team.findById(team2Id);
+    const team1Id = validateTeamId(team1, 'Team1');
+    const team2Id = validateTeamId(team2, 'Team2');
     
-    console.log('📋 Found teams:', { t1Id: t1?._id, t2Id: t2?._id });
+    // Validate teams exist (parallel fetch)
+    const [t1, t2] = await Promise.all([
+      Team.findById(team1Id).lean(),
+      Team.findById(team2Id).lean()
+    ]);
+    
+    console.log('📋 Found teams:', { 
+      t1Id: t1?._id?.toString(), 
+      t2Id: t2?._id?.toString(),
+      t1Name: t1?.name,
+      t2Name: t2?.name
+    });
     
     if (!t1 || !t2) {
-      throw new ApiError(404, `Team not found: team1=${team1}, team2=${team2}`);
+      throw new ApiError(404, `Team not found: Team1=${team1}, Team2=${team2}`);
     }
 
-    // ✅ Teams must be different (FIXED: use t1/t2 documents)
+    // ✅ SAFE: Both teams exist & have valid _id
     if (t1._id.equals(t2._id)) {
       throw new ApiError(400, "Team1 and Team2 must be different");
     }

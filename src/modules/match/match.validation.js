@@ -2,15 +2,19 @@
 import Joi from 'joi';
 
 export const createMatchSchema = Joi.object({
-  team1: Joi.string().required().messages({
+  team1: Joi.string().pattern(/^[0-9a-fA-F]{24}$/).required().messages({
+    'string.pattern.base': 'Team 1 must be valid 24-char ObjectId',
     'string.empty': 'Team 1 is required',
     'any.required': 'Team 1 is required'
   }),
-  team2: Joi.string().required().messages({
+  team2: Joi.string().pattern(/^[0-9a-fA-F]{24}$/).required().messages({
+    'string.pattern.base': 'Team 2 must be valid 24-char ObjectId',
     'string.empty': 'Team 2 is required',
     'any.required': 'Team 2 is required'
   }),
-  tournament: Joi.string().optional().allow(''),
+  tournament: Joi.string().pattern(/^[0-9a-fA-F]{24}$/).optional().allow('').messages({
+    'string.pattern.base': 'Tournament must be valid ObjectId'
+  }),
   venue: Joi.object({
     name: Joi.string().required().trim().min(2).max(100).messages({
       'string.empty': 'Venue name is required',
