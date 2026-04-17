@@ -29,9 +29,7 @@ export const createMatchSchema = Joi.object({
   startTime: Joi.string().optional().allow('').pattern(/^(?:[01]\d|2[0-3]):[0-5]\d$/).messages({
     'string.pattern.base': 'Start time must be HH:MM format'
   }),
-  format: Joi.any().valid('t20', 'odi', 'test', 't10', 'custom').default('t20').messages({
-    'any.only': 'Invalid format. Must be one of: t20, odi, test, t10, custom'
-  }),
+format: Joi.string().valid('t20', 'odi', 'test', 't10', 'custom', 'T20', 'ODI').lowercase().default('t20').messages({    'any.only': 'Invalid format. Must be one of: t20, odi, test, t10, custom, T20, ODI (case-insensitive)'  }),
   matchType: Joi.any().valid('league', 'knockout', 'quarter_final', 'semi_final', 'final', 'practice', 'friendly').default('league').messages({
     'any.only': 'Invalid match type. Must be one of: league, knockout, quarter_final, semi_final, final, practice, friendly'
   }),
