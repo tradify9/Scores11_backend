@@ -47,13 +47,24 @@ export const playerController = {
   }),
 
   searchPlayers: catchAsync(async (req, res) => {
-    const query = req.query.q || req.query.search;
-    const limit = parseInt(req.query.limit) || 10;
-    if (!query) {
-      return res.status(400).json(new ApiResponse(400, 'Search query is required'));
+    try {
+      const query = req.query.q || req.query.search;
+      const limit = parseInt(req.query.limit) || 10;
+      
+      console.log(`[PLAYER-SEARCH] Query="${query}" Limit=${limit} IP=${req.ip}`);
+      
+      if (!query) {
+        return res.status(400).json(new ApiResponse(400, 'Search query is required'));
+      }
+      
+      const players = await playerService.searchPlayers(query, limit);
+      console.log(`[PLAYER-SEARCH] Found ${players.length} results`);
+      
+      res.json(new ApiResponse(200, 'Search results retrieved', players));
+    } catch (error) {
+      console.error('[PLAYER-SEARCH-CONTROLLER] Error:', error);
+      throw error; // Let catchAsync handle
     }
-    const players = await playerService.searchPlayers(query, limit);
-    res.json(new ApiResponse(200, 'Search results retrieved', players));
   }),
 
   comparePlayers: catchAsync(async (req, res) => {

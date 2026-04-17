@@ -117,14 +117,49 @@ export const playerService = {
   },
 
   searchPlayers: async (query, limit = 10) => {
-    const players = await Player.find({
-      isActive: true,
-      playerName: { $regex: query, $options: 'i' }
-    })
-      .populate('user', 'name')
-      .populate('team', 'name shortName')
-      .limit(limit);
-    return players;
+    try {
+      if (!query || typeof query !== 'string' || query.trim().length === 0) {
+        console.log('Player search: Empty query, returning empty array');
+        return [];
+      }
+
+      const searchQuery = query.trim();
+      console.log(`Player search: "${searchQuery}" limit: ${limit}`);
+
+      const players = await Player.find({
+        isActive: true,
+        playerName: { $regex: searchQuery, $options: 'i' }
+      })
+        .populate({
+          path: 'user',
+          select: 'name',
+          match: { isActive: { $ne: false } }
+        })
+        .populate({
+          path: 'team',
+          select: 'name shortName',
+          match: { isActive: { $ne: false } }
+        })
+        .limit(limit)
+        .lean();
+
+      // Filter out docs where populate failed (null refs)
+      const validPlayers = players.filter(p => p && p.isActive);
+      
+      console.log(`Player search found ${validPlayers.length} valid players`);
+      return validPlayers;
+    } catch (error) {
+      console.error('Player search error:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+        query,
+        limit
+      });
+      
+      // Return empty array instead of crashing
+      return [];
+    }
   },
 
   comparePlayers: async (player1Id, player2Id) => {

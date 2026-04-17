@@ -39,7 +39,7 @@ async function seedMatchSchedules() {
     for (let i = 0; i < 20; i++) {
       const team1 = teams[i % teams.length];
       const team2 = teams[(i + 3 + i) % teams.length]; // Avoid same team
-      if (team1._id.equals(team2._id)) continue;
+      if (team1._id.toString() === team2._id.toString()) continue;
 
       const matchId = `SCH_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 5)}`;
 
