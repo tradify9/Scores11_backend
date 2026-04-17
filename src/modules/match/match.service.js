@@ -20,7 +20,7 @@ export const matchService = {
     if (!t1 || !t2) throw new ApiError(404, 'Team not found');
 
     // ✅ Teams must be different
-    if (team1.equals(team2)) {
+    if (team1._id.toString() === team2._id.toString()) {
       throw new ApiError(400, "Team1 and Team2 must be different");
     }
 
