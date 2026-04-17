@@ -5,6 +5,11 @@ import { authorize } from '../../middleware/role.middleware.js';
 import { ROLES } from '../../constants/roles.js';
 import { createMatchSchema } from './match.validation.js';
 
+const router = express.Router();
+
+// ===============================
+// ✅ VALIDATION MIDDLEWARE
+// ===============================
 const validateMatchCreate = (req, res, next) => {
   const { error } = createMatchSchema.validate(req.body);
   if (error) {
@@ -17,39 +22,61 @@ const validateMatchCreate = (req, res, next) => {
   next();
 };
 
-const router = express.Router();
-
-
-// 🔥 PUBLIC ROUTES - NO AUTH REQUIRED (for app home, listings)
+// ===============================
+// 🔥 PUBLIC ROUTES
+// ===============================
 router.get('/live', matchController.getLiveMatches);
 router.get('/upcoming', matchController.getUpcomingMatches);
 router.get('/completed', matchController.getCompletedMatches);
 router.get('/search', matchController.searchMatches);
+
+router.get('/public/list', matchController.getAllMatches);
 router.get('/public/:id', matchController.getMatchByIdPublic);
 
-// ✅ FIXED: Main matches list - PUBLIC 
-router.get('/', matchController.getAllMatches); 
-router.get('/list', matchController.getAllMatches); 
-router.get('/public/list', matchController.getAllMatches);  // 🔥 Test endpoint - explicitly public
+// main public list
+router.get('/', matchController.getAllMatches);
+router.get('/list', matchController.getAllMatches);
 
-// 🔒 PROTECTED ROUTES - AUTH REQUIRED  
-router.post('/', validateMatchCreate, authenticate, matchController.createMatch); // ✅ NO ROLE RESTRICTION - ALL USERS CAN CREATE
+// ===============================
+// 🔒 CREATE MATCH (ALL USERS)
+// ===============================
+router.post(
+  '/',
+  validateMatchCreate,
+  authenticate,
+  (req, res, next) => {
+    console.log("🔥 CREATE MATCH HIT");
+    console.log("USER:", req.user);
+    next();
+  },
+  matchController.createMatch
+);
+
+// ===============================
+// 🔒 OTHER AUTH ROUTES
+// ===============================
 router.get('/tournament/:tournamentId', authenticate, matchController.getTournamentMatches);
 router.get('/team/:teamId', authenticate, matchController.getMatchesByTeam);
-router.get('/:id', authenticate, matchController.getMatchById);
-
-router.put('/:id', authenticate, authorize(ROLES.ADMIN), matchController.updateMatch);
-router.delete('/:id', authenticate, authorize(ROLES.ADMIN), matchController.deleteMatch);
 router.get('/:id/timeline', authenticate, matchController.getMatchTimeline);
 
-// 🔒 Match actions - AUTH + roles
+// ===============================
+// 🔒 ADMIN ONLY
+// ===============================
+router.put('/:id', authenticate, authorize(ROLES.ADMIN), matchController.updateMatch);
+router.delete('/:id', authenticate, authorize(ROLES.ADMIN), matchController.deleteMatch);
+
+// ===============================
+// 🔒 MATCH ACTIONS
+// ===============================
 router.patch('/:id/status', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateMatchStatus);
 router.patch('/:id/schedule', authenticate, authorize(ROLES.ADMIN), matchController.scheduleMatch);
 router.patch('/:id/toss', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateToss);
 router.patch('/:id/result', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateResult);
 router.patch('/:id/officials', authenticate, authorize(ROLES.ADMIN), matchController.setOfficials);
 
-export default router;
+// ===============================
+// ⚠️ DYNAMIC ROUTE LAST (VERY IMPORTANT)
+// ===============================
+router.get('/:id', authenticate, matchController.getMatchById);
 
-// Test: curl http://68.178.171.95:3000/api/v1/matches 
-// Test: curl http://68.178.171.95:3000/api/v1/matches/public/list
+export default router;
