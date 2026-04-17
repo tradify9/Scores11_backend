@@ -14,13 +14,24 @@ export const matchService = {
   createMatch: async (matchData, userId) => {
     const { team1, team2, tournament } = matchData;
     
+    console.log('🔍 Creating match with teams:', { team1, team2 });
+    
+    // ✅ Explicit ObjectId conversion
+    const team1Id = new mongoose.Types.ObjectId(team1);
+    const team2Id = new mongoose.Types.ObjectId(team2);
+    
     // Validate teams exist
-    const t1 = await Team.findById(team1);
-    const t2 = await Team.findById(team2);
-    if (!t1 || !t2) throw new ApiError(404, 'Team not found');
+    const t1 = await Team.findById(team1Id);
+    const t2 = await Team.findById(team2Id);
+    
+    console.log('📋 Found teams:', { t1Id: t1?._id, t2Id: t2?._id });
+    
+    if (!t1 || !t2) {
+      throw new ApiError(404, `Team not found: team1=${team1}, team2=${team2}`);
+    }
 
-    // ✅ Teams must be different
-    if (team1._id.toString() === team2._id.toString()) {
+    // ✅ Teams must be different (FIXED: use t1/t2 documents)
+    if (t1._id.equals(t2._id)) {
       throw new ApiError(400, "Team1 and Team2 must be different");
     }
 
