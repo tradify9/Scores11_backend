@@ -33,7 +33,7 @@ router.get('/list', matchController.getAllMatches);
 router.get('/public/list', matchController.getAllMatches);  // 🔥 Test endpoint - explicitly public
 
 // 🔒 PROTECTED ROUTES - AUTH REQUIRED  
-router.post('/', validateMatchCreate, authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.MANAGER), matchController.createMatch);
+router.post('/', validateMatchCreate, authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.MANAGER, ROLES.SCORER, ROLES.CAPTAIN, ROLES.PLAYER), matchController.createMatch);
 router.get('/tournament/:tournamentId', authenticate, matchController.getTournamentMatches);
 router.get('/team/:teamId', authenticate, matchController.getMatchesByTeam);
 router.get('/:id', authenticate, matchController.getMatchById);
