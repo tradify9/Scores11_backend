@@ -48,8 +48,8 @@ export const matchService = {
       throw new ApiError(404, `Team not found: Team1=${team1}, Team2=${team2}`);
     }
 
-    // ✅ SAFE: Both teams exist & have valid _id
-    if (t1._id.equals(t2._id)) {
+    // 🔥 BULLETPROOF: String comparison (handles ANY _id state)
+    if (t1._id.toString() === t2._id.toString()) {
       throw new ApiError(400, "Team1 and Team2 must be different");
     }
 
