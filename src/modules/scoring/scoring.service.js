@@ -135,15 +135,31 @@ export const scoringService = {
     // Advance over/ball counters after creating ball
     const isValidDelivery = !isWide && !isNoBall;
     
-    // STRIKER ROTATION LOGIC (Professional)
-    const rotation = statCalculator.calculateStrikeRotation(innings.currentStriker, runs || 0, ballNumber === 6 && isValidDelivery);
+// STRIKER ROTATION LOGIC (Enhanced with odd runs)
+    let rotationReason = '';
+    let shouldRotate = false;
+    
+    // Rotate on odd runs (1,3,5) or end of over
+    if ((runs % 2 === 1 && runs > 0) || (ballNumber === 6 && isValidDelivery)) {
+      shouldRotate = true;
+      rotationReason = runs % 2 === 1 ? 'odd runs' : 'end of over';
+    }
+    
     let newStriker = innings.currentStriker;
     
-    if (rotation.shouldRotate) {
+    if (shouldRotate && innings.currentNonStriker) {
       // Swap striker/non-striker
       newStriker = innings.currentNonStriker;
       innings.currentNonStriker = innings.currentStriker;
-      console.log(`🔄 Striker rotated: ${rotation.reason}`);
+      console.log(`🔄 Striker rotated (${rotationReason}): ${innings.currentStriker} ↔ ${newStriker}`);
+      
+      // Emit turn update
+      emitToMatch(matchId, 'turnUpdate', {
+        matchId,
+        currentStriker: newStriker,
+        currentNonStriker: innings.currentNonStriker,
+        reason: rotationReason
+      });
     }
     
     // Advance ball counter

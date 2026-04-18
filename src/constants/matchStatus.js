@@ -1,5 +1,6 @@
 export const MATCH_STATUS = {
-  SCHEDULED: 'scheduled',
+SCHEDULED: 'scheduled',
+  TEAM_SELECTING: 'team_selecting',
   LIVE: 'live',
   PAUSED: 'paused',
   COMPLETED: 'completed',

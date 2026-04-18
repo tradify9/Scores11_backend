@@ -67,6 +67,7 @@ router.patch('/:id/result', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), 
 router.patch('/:id/officials', authenticate, authorize(ROLES.ADMIN), matchController.setOfficials);
 router.patch('/:id/score', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateScore);
 router.patch('/:id/change-innings', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.changeInnings);
+router.patch('/:id/lineups', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.setMatchLineups);
 router.patch('/:id/end-innings', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.endInnings);
 
 // ===============================

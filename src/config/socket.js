@@ -73,6 +73,9 @@ export const emitInningsEnd = (matchId, inningsData) => emitToMatch(matchId, 'in
 export const emitWicketFall = (matchId, wicketData) => emitToMatch(matchId, 'wicketFall', wicketData);
 export const emitBoundary = (matchId, boundaryData) => emitToMatch(matchId, 'boundary', boundaryData);
 
+export const emitLineupsUpdate = (matchId, lineups) => emitToMatch(matchId, 'lineupsUpdate', lineups);
+export const emitTurnUpdate = (matchId, turnData) => emitToMatch(matchId, 'turnUpdate', turnData);
+
 export const emitToTournament = (tournamentId, event, data) => {
   if (io && tournamentId) {
     io.to(`tournament:${tournamentId}`).emit(event, data);

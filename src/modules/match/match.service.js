@@ -430,14 +430,53 @@ export const matchService = {
       timestamp: new Date()
     };
     
-    // Auto-set to ready after toss
+// Auto-set to team selecting after toss
     if (match.status === MATCH_STATUS.SCHEDULED) {
-      match.status = MATCH_STATUS.READY;
+      match.status = MATCH_STATUS.TEAM_SELECTING;
     }
     
     await match.save();
     return await Match.findById(matchId)
       .populate('toss.winner', 'name shortName');
+  },
+
+// Set match lineups for team selection
+  setMatchLineups: async (matchId, lineupData) => {
+    const { team1Lineup, team2Lineup } = lineupData;
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+    if (match.status !== MATCH_STATUS.TEAM_SELECTING) throw new ApiError(400, 'Can only set lineups during team selecting phase');
+
+    // Validate team1Lineup
+    if (!Array.isArray(team1Lineup) || team1Lineup.length < 2 || team1Lineup.length > 11) {
+      throw new ApiError(400, 'Team1 lineup must have 2-11 players');
+    }
+    // Validate all in team1.players
+    const team1 = await Team.findById(match.team1).select('players');
+    const team1PlayerIds = team1.players.map(p => p.toString());
+    for (let p of team1Lineup) {
+      if (!team1PlayerIds.includes(p.toString())) throw new ApiError(400, `Invalid player in team1 lineup`);
+    }
+
+    // Validate team2Lineup similarly
+    if (!Array.isArray(team2Lineup) || team2Lineup.length < 2 || team2Lineup.length > 11) {
+      throw new ApiError(400, 'Team2 lineup must have 2-11 players');
+    }
+    const team2 = await Team.findById(match.team2).select('players');
+    const team2PlayerIds = team2.players.map(p => p.toString());
+    for (let p of team2Lineup) {
+      if (!team2PlayerIds.includes(p.toString())) throw new ApiError(400, `Invalid player in team2 lineup`);
+    }
+
+    // Set lineups and start match
+    match.team1Lineup = team1Lineup.map(id => new mongoose.Types.ObjectId(id));
+    match.team2Lineup = team2Lineup.map(id => new mongoose.Types.ObjectId(id));
+    match.status = MATCH_STATUS.LIVE;
+    await match.save();
+
+    const populated = await Match.findById(match._id).populate('team1 team2 team1Lineup team2Lineup', 'name shortName playerName');
+    emitToMatch(matchId, 'lineupsUpdate', populated);
+    return populated;
   },
 
   // Update match result

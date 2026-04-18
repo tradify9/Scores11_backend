@@ -179,6 +179,12 @@ export const matchController = {
     res.json(new ApiResponse(200, 'Match timeline retrieved', timeline));
   }),
 
+// Lineups
+  setMatchLineups: catchAsync(async (req, res) => {
+    const lineups = await matchService.setMatchLineups(req.params.id, req.body);
+    res.json(new ApiResponse(200, 'Match lineups set, game started', lineups));
+  }),
+
   // Search matches
   searchMatches: catchAsync(async (req, res) => {
     const matches = await matchService.searchMatches(req.query.q, req.query.limit);
