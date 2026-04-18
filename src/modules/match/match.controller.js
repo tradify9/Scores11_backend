@@ -12,13 +12,31 @@ export const matchController = {
     console.log('🔍 team1/team2 - value:', req.body.team1, req.body.team2);
     console.log('👤 User ID:', req.user.userId);
     
-    // 🔥 CRITICAL: Ensure IDs are passed as strings
+    // 🔥 ULTRA-SAFE ObjectId conversion + validation
+    const safeTeam1 = req.body.team1 ? String(req.body.team1).trim() : null;
+    const safeTeam2 = req.body.team2 ? String(req.body.team2).trim() : null;
+    const safeTournament = req.body.tournament ? String(req.body.tournament).trim() : null;
+    
+    // VALIDATE ObjectId format
+    const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
+    if (safeTeam1 && !isValidObjectId(safeTeam1)) {
+      throw new ApiError(400, `Invalid team1 ID: ${safeTeam1}`);
+    }
+    if (safeTeam2 && !isValidObjectId(safeTeam2)) {
+      throw new ApiError(400, `Invalid team2 ID: ${safeTeam2}`);
+    }
+    if (safeTeam1 === safeTeam2) {
+      throw new ApiError(400, 'Team1 and Team2 must be different');
+    }
+    
     const matchData = {
       ...req.body,
-      team1: req.body.team1 ? req.body.team1.toString() : null,
-      team2: req.body.team2 ? req.body.team2.toString() : null,
-      tournament: req.body.tournament ? req.body.tournament.toString() : null
+      team1: safeTeam1,
+      team2: safeTeam2,
+      tournament: safeTournament
     };
+    
+    console.log('🔒 SAFE PAYLOAD:', { team1: safeTeam1, team2: safeTeam2, tournament: safeTournament });
     
     const match = await matchService.createMatch(matchData, req.user.userId);
     console.log('✅ Match created:', match._id);
