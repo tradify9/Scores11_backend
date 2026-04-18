@@ -19,8 +19,8 @@ const { team1, team2, tournament } = matchData;
       throw new ApiError(400, 'Both Team1 and Team2 are required');
     }
     if (team1 === team2) {
-      throw new ApiError(400, 'Team1 and Team2 must be different teams');
-    }
+  throw new ApiError(400, "Teams must be different");
+}
     
     console.log('🔍 Creating match with teams:', { team1, team2 });
     console.log('🔍 Types - team1:', typeof team1, 'team2:', typeof team2);
@@ -31,9 +31,9 @@ const { team1, team2, tournament } = matchData;
       if (!id || typeof id !== 'string') {
         throw new ApiError(400, `${name} must be a valid string ID`);
       }
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        throw new ApiError(400, `${name} invalid ObjectId: ${id.substring(0, 10)}...`);
-      }
+     if (!mongoose.Types.ObjectId.isValid(id)) {
+  throw new ApiError(400, `${name} invalid ObjectId`);
+}
       return new mongoose.Types.ObjectId(id);
     };
     
@@ -72,13 +72,13 @@ const { team1, team2, tournament } = matchData;
       if (!tour) throw new ApiError(404, "Tournament not found");
 
       // ✅ check duplicate match (both directions)
-      const existingMatch = await Match.findOne({
-        tournament,
-        $or: [
-          { team1, team2 },
-          { team1: team2, team2: team1 },
-        ],
-      });
+     const existingMatch = await Match.findOne({
+  tournament: tournamentId,
+  $or: [
+    { team1: team1Id, team2: team2Id },
+    { team1: team2Id, team2: team1Id },
+  ],
+});
 
       if (existingMatch) {
         throw new ApiError(
@@ -99,14 +99,11 @@ const { team1, team2, tournament } = matchData;
 
     // ✅ create match
     const match = await Match.create({
-      ...matchData,
-      team1,
-      team2,
-      tournament,
-      matchNumber,
-      createdBy: userId,
-      status: matchData.status || MATCH_STATUS.SCHEDULED,
-    });
+  ...matchData,
+  team1: team1Id,
+  team2: team2Id,
+  tournament: tournamentId,
+});
 
     // ✅ add to tournament (safe)
     if (tournament) {
