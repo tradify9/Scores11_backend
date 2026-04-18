@@ -1,6 +1,7 @@
 import { matchService } from './match.service.js';
 import ApiResponse from '../../utils/ApiResponse.js';
 import catchAsync from '../../utils/catchAsync.js';
+import ApiError from '../../utils/ApiError.js';
 
 export const matchController = {
 
@@ -11,7 +12,15 @@ export const matchController = {
     console.log('🔍 team1/team2 - value:', req.body.team1, req.body.team2);
     console.log('👤 User ID:', req.user.userId);
     
-    const match = await matchService.createMatch(req.body, req.user.userId);
+    // 🔥 CRITICAL: Ensure IDs are passed as strings
+    const matchData = {
+      ...req.body,
+      team1: req.body.team1 ? req.body.team1.toString() : null,
+      team2: req.body.team2 ? req.body.team2.toString() : null,
+      tournament: req.body.tournament ? req.body.tournament.toString() : null
+    };
+    
+    const match = await matchService.createMatch(matchData, req.user.userId);
     console.log('✅ Match created:', match._id);
     
     res.status(201).json(new ApiResponse(201, 'Match created successfully', match));
@@ -35,24 +44,43 @@ export const matchController = {
     res.json(new ApiResponse(200, 'Match updated successfully', match));
   }),
 
-  // ✅ UPDATE SCORE (🔥 ADD THIS)
+  // Update score
   updateScore: catchAsync(async (req, res) => {
-    const match = await matchService.updateScore(
-      req.params.id,
-      req.body
-    );
-
+    const match = await matchService.updateScore(req.params.id, req.body);
     res.json(new ApiResponse(200, 'Score updated successfully', match));
   }),
 
-  // ✅ CHANGE INNINGS (🔥 ADD THIS)
+  // Change innings
   changeInnings: catchAsync(async (req, res) => {
-    const match = await matchService.changeInnings(
-      req.params.id,
-      req.body.innings
-    );
-
+    const match = await matchService.changeInnings(req.params.id, req.body.innings);
     res.json(new ApiResponse(200, 'Innings changed', match));
+  }),
+
+  // End innings
+  endInnings: catchAsync(async (req, res) => {
+    const matchId = req.params.id;
+
+    if (!matchId) {
+      throw new ApiError(400, "Match ID is required");
+    }
+
+    const match = await matchService.endInnings(matchId);
+
+    if (!match) {
+      throw new ApiError(404, "Match not found or cannot end innings");
+    }
+
+    try {
+      if (req.io) {
+        req.io.emit("matchUpdated", match);
+      }
+    } catch (socketError) {
+      console.log('Socket emit error (non-critical):', socketError.message);
+    }
+
+    return res.status(200).json(
+      new ApiResponse(200, "Innings ended successfully", match)
+    );
   }),
 
   // Get all matches
@@ -138,34 +166,6 @@ export const matchController = {
     const matches = await matchService.searchMatches(req.query.q, req.query.limit);
     res.json(new ApiResponse(200, 'Matches found', matches));
   }),
-
-
-endInnings: catchAsync(async (req, res) => {
-  const matchId = req.params.id;
-
-  // ✅ Validate ID
-  if (!matchId) {
-    throw new ApiError(400, "Match ID is required");
-  }
-
-  // ✅ Service call
-  const match = await matchService.endInnings(matchId);
-
-  // ❗ Agar service null return kare
-  if (!match) {
-    throw new ApiError(404, "Match not found or cannot end innings");
-  }
-
-  // ✅ Socket emit (safe)
-  if (req.io) {
-    req.io.emit("matchUpdated", match);
-  }
-
-  // ✅ Response (standard format)
-  return res.status(200).json(
-    new ApiResponse(200, "Innings ended successfully", match)
-  );
-}),
 };
 
 export default matchController;

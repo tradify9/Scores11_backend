@@ -9,72 +9,74 @@ import { MATCH_STATUS } from '../../constants/matchStatus.js';
 import { emitToMatch, emitToAll } from "../../config/socket.js";
 
 export const matchService = {
-  // Create a new match
+  // Create a new match - COMPLETELY FIXED
   createMatch: async (matchData, userId) => {
     const { team1, team2, tournament } = matchData;
 
-    // 🔥 BULLETPROOF STRING CHECK
+    // 🔥 VALIDATION - NO .equals() USED
     if (!team1 || !team2) {
       throw new ApiError(400, 'Both Team1 and Team2 are required');
     }
     
-    // Convert to string and compare (no .equals() used)
-    if (team1.toString() === team2.toString()) {
-      throw new ApiError(400, "Teams must be different");
+    // Convert to string for comparison
+    const team1Str = team1.toString();
+    const team2Str = team2.toString();
+    
+    if (team1Str === team2Str) {
+      throw new ApiError(400, "Team1 and Team2 must be different");
     }
     
-    console.log('🔍 Creating match with teams:', { team1, team2 });
+    console.log('🔍 Creating match with teams:', { team1: team1Str, team2: team2Str });
     
-    // 🔥 PRIMARY FIX: Defensive ObjectId validation
-    const validateTeamId = (id, name) => {
+    // 🔥 VALIDATE AND CONVERT OBJECTIDS
+    const validateObjectId = (id, fieldName) => {
       if (!id) {
-        throw new ApiError(400, `${name} is required`);
+        throw new ApiError(400, `${fieldName} is required`);
       }
       
-      // Convert to string if it's an ObjectId
       const idString = id.toString();
-      
       if (!mongoose.Types.ObjectId.isValid(idString)) {
-        throw new ApiError(400, `${name} invalid ObjectId`);
+        throw new ApiError(400, `Invalid ${fieldName} ID format`);
       }
+      
       return new mongoose.Types.ObjectId(idString);
     };
     
-    const team1Id = validateTeamId(team1, 'Team1');
-    const team2Id = validateTeamId(team2, 'Team2');
+    const team1Id = validateObjectId(team1, 'Team1');
+    const team2Id = validateObjectId(team2, 'Team2');
     
-    // Validate teams exist (parallel fetch)
+    // ✅ CHECK TEAMS EXIST
     const [t1, t2] = await Promise.all([
       Team.findById(team1Id).lean(),
       Team.findById(team2Id).lean()
     ]);
     
-    console.log('📋 Found teams:', { 
-      t1Id: t1?._id?.toString(), 
-      t2Id: t2?._id?.toString(),
-      t1Name: t1?.name,
-      t2Name: t2?.name
+    if (!t1) {
+      throw new ApiError(404, `Team with ID ${team1Str} not found`);
+    }
+    
+    if (!t2) {
+      throw new ApiError(404, `Team with ID ${team2Str} not found`);
+    }
+    
+    console.log('✅ Teams found:', { 
+      team1: t1.name, 
+      team2: t2.name 
     });
     
-    if (!t1 || !t2) {
-      throw new ApiError(404, `Team not found: Team1=${team1}, Team2=${team2}`);
-    }
-
-    // 🔥 BULLETPROOF: String comparison (handles ANY _id state)
-    if (t1._id.toString() === t2._id.toString()) {
-      throw new ApiError(400, "Team1 and Team2 must be different");
-    }
-
-    // ✅ Tournament validation
+    // ✅ TOURNAMENT VALIDATION
     let matchNumber = 1;
     let tournamentId = null;
-
-    if (tournament) {
-      tournamentId = new mongoose.Types.ObjectId(tournament.toString());
+    
+    if (tournament && tournament.toString().trim() !== '') {
+      tournamentId = validateObjectId(tournament, 'Tournament');
       const tour = await Tournament.findById(tournamentId).lean();
-      if (!tour) throw new ApiError(404, "Tournament not found");
-
-      // ✅ check duplicate match (both directions)
+      
+      if (!tour) {
+        throw new ApiError(404, 'Tournament not found');
+      }
+      
+      // Check for duplicate match
       const existingMatch = await Match.findOne({
         tournament: tournamentId,
         $or: [
@@ -82,53 +84,69 @@ export const matchService = {
           { team1: team2Id, team2: team1Id },
         ],
       });
-
+      
       if (existingMatch) {
-        throw new ApiError(
-          400,
-          "Match between these teams already exists in this tournament"
-        );
+        throw new ApiError(400, 'Match between these teams already exists in this tournament');
       }
-
-      // ✅ generate match number safely
+      
+      // Generate match number
       const lastMatch = await Match.findOne({ tournament: tournamentId })
         .sort({ matchNumber: -1 })
         .lean();
-
+      
       matchNumber = lastMatch?.matchNumber ? lastMatch.matchNumber + 1 : 1;
     }
-
-    // ✅ create match
-    const match = await Match.create({
-      ...matchData,
+    
+    // ✅ CREATE MATCH
+    const newMatchData = {
       team1: team1Id,
       team2: team2Id,
       tournament: tournamentId,
       matchNumber,
-      createdBy: userId
-    });
-
-    // ✅ add to tournament (safe)
+      createdBy: userId,
+      scheduledDate: matchData.scheduledDate || new Date(),
+      status: MATCH_STATUS.SCHEDULED,
+      format: matchData.format || 't20',
+      matchType: matchData.matchType || 'league',
+      venue: matchData.venue,
+      overs: matchData.overs || 20
+    };
+    
+    const match = await Match.create(newMatchData);
+    
+    // ✅ ADD TO TOURNAMENT IF NEEDED
     if (tournamentId) {
       await Tournament.findByIdAndUpdate(
         tournamentId,
         { $addToSet: { matches: match._id } }
       );
     }
-
+    
+    // ✅ POPULATE AND RETURN
     const populatedMatch = await Match.findById(match._id)
       .populate("team1", "name shortName logo")
       .populate("team2", "name shortName logo")
-      .populate("tournament", "name format");
-
-    // 🔥 SOCKET EMIT (LIVE MATCH LIST UPDATE)
-    emitToAll("matchesUpdated", populatedMatch);
-
+      .populate("tournament", "name format")
+      .lean();
+    
+    // Emit socket event if available
+    try {
+      if (emitToAll) {
+        emitToAll("matchesUpdated", populatedMatch);
+      }
+    } catch (socketError) {
+      console.log('Socket emit error (non-critical):', socketError.message);
+    }
+    
     return populatedMatch;
   },
 
   // Get match by ID with full details
   getMatchById: async (matchId) => {
+    if (!matchId || !mongoose.Types.ObjectId.isValid(matchId.toString())) {
+      throw new ApiError(400, 'Invalid match ID format');
+    }
+    
     const match = await Match.findById(matchId)
       .populate('team1', 'name shortName logo captain players')
       .populate('team2', 'name shortName logo captain players')
@@ -145,6 +163,10 @@ export const matchService = {
 
   // Get match by ID public (less details)
   getMatchByIdPublic: async (matchId) => {
+    if (!matchId || !mongoose.Types.ObjectId.isValid(matchId.toString())) {
+      throw new ApiError(400, 'Invalid match ID format');
+    }
+    
     const match = await Match.findById(matchId)
       .populate('team1', 'name shortName logo')
       .populate('team2', 'name shortName logo')
@@ -159,12 +181,10 @@ export const matchService = {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
 
-    // Can't update if match is live or completed
     if (match.status === MATCH_STATUS.LIVE || match.status === MATCH_STATUS.COMPLETED) {
       throw new ApiError(400, 'Cannot update match in current status');
     }
 
-    // Prevent changing teams after creation
     if (updateData.team1 || updateData.team2) {
       throw new ApiError(400, 'Cannot change teams after match creation');
     }
@@ -225,7 +245,8 @@ export const matchService = {
         .populate('team2', 'name shortName logo')
         .sort({ scheduledDate: 1, matchNumber: 1 })
         .skip(skip)
-        .limit(limit),
+        .limit(limit)
+        .lean(),
       Match.countDocuments({ tournament: tournamentId, isActive: true })
     ]);
 
@@ -252,7 +273,8 @@ export const matchService = {
         .populate('tournament', 'name')
         .sort({ [sortBy]: sortOrder })
         .skip(skip)
-        .limit(limit),
+        .limit(limit)
+        .lean(),
       Match.countDocuments(filter)
     ]);
 
@@ -271,7 +293,8 @@ export const matchService = {
       .populate('team1', 'name shortName logo')
       .populate('team2', 'name shortName logo')
       .populate('tournament', 'name')
-      .sort({ scheduledDate: 1 });
+      .sort({ scheduledDate: 1 })
+      .lean();
 
     return matches;
   },
@@ -292,7 +315,8 @@ export const matchService = {
         .populate('tournament', 'name')
         .sort({ scheduledDate: 1 })
         .skip(skip)
-        .limit(limit),
+        .limit(limit)
+        .lean(),
       Match.countDocuments({
         status: MATCH_STATUS.SCHEDULED,
         scheduledDate: { $gte: now },
@@ -318,7 +342,8 @@ export const matchService = {
         .populate('result.playerOfMatch', 'playerName')
         .sort({ [sortBy]: sortOrder })
         .skip(skip)
-        .limit(limit),
+        .limit(limit)
+        .lean(),
       Match.countDocuments({ status: MATCH_STATUS.COMPLETED, isActive: true })
     ]);
 
@@ -333,7 +358,6 @@ export const matchService = {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
 
-    // Validate status transitions
     const validTransitions = {
       [MATCH_STATUS.SCHEDULED]: [MATCH_STATUS.READY, MATCH_STATUS.CANCELLED],
       [MATCH_STATUS.READY]: [MATCH_STATUS.LIVE, MATCH_STATUS.CANCELLED],
@@ -347,7 +371,6 @@ export const matchService = {
 
     match.status = status;
     
-    // Set completed timestamp
     if (status === MATCH_STATUS.COMPLETED) {
       match.completedAt = new Date();
     }
@@ -355,7 +378,8 @@ export const matchService = {
     await match.save();
     return await Match.findById(matchId)
       .populate('team1', 'name shortName')
-      .populate('team2', 'name shortName');
+      .populate('team2', 'name shortName')
+      .lean();
   },
 
   // Schedule match
@@ -392,15 +416,18 @@ export const matchService = {
     }
 
     // Validate winner is one of the teams
-    if (tossData.winner.toString() !== match.team1.toString() && 
-        tossData.winner.toString() !== match.team2.toString()) {
+    const winnerStr = tossData.winner.toString();
+    const team1Str = match.team1.toString();
+    const team2Str = match.team2.toString();
+    
+    if (winnerStr !== team1Str && winnerStr !== team2Str) {
       throw new ApiError(400, 'Toss winner must be one of the playing teams');
     }
 
     match.toss = {
       winner: tossData.winner,
       decision: tossData.decision,
-      decidedAt: new Date()
+      timestamp: new Date()
     };
     
     // Auto-set to ready after toss
@@ -422,16 +449,14 @@ export const matchService = {
       throw new ApiError(400, 'Match must be live or paused to update result');
     }
 
-    // Update innings scores first if provided
-    if (resultData.innings) {
-      match.innings = resultData.innings;
-    }
-
     match.result = {
       winner: resultData.winner,
       margin: resultData.margin,
       method: resultData.method,
-      playerOfMatch: resultData.playerOfMatch
+      playerOfMatch: resultData.playerOfMatch,
+      target: resultData.target,
+      requiredRuns: resultData.requiredRuns,
+      requiredBalls: resultData.requiredBalls
     };
     
     match.status = MATCH_STATUS.COMPLETED;
@@ -491,7 +516,6 @@ export const matchService = {
     match.isActive = false;
     await match.save();
 
-    // Remove from tournament
     if (match.tournament) {
       await Tournament.findByIdAndUpdate(match.tournament, {
         $pull: { matches: matchId }
@@ -530,7 +554,8 @@ export const matchService = {
           .populate('team2', 'name shortName')
           .populate('tournament', 'name')
           .sort({ scheduledDate: -1 })
-          .limit(Number(limit));
+          .limit(Number(limit))
+          .lean();
       }
 
       const teams = await Team.find({
@@ -553,14 +578,15 @@ export const matchService = {
         .populate('team2', 'name shortName')
         .populate('tournament', 'name')
         .sort({ scheduledDate: -1 })
-        .limit(Number(limit));
+        .limit(Number(limit))
+        .lean();
 
     } catch (error) {
       throw new ApiError(500, error.message);
     }
   },
 
-  // 🔥 FIXED UPDATE SCORE FUNCTION
+  // Update score
   updateScore: async (matchId, data) => {
     try {
       const match = await Match.findById(matchId);
@@ -569,9 +595,6 @@ export const matchService = {
       const key = match.currentInnings === 1 ? "team1" : "team2";
       const updateQuery = {};
 
-      // =========================
-      // ✅ RUN / WICKET ADD (SAFE)
-      // =========================
       if (data.type) {
         updateQuery.$inc = {};
 
@@ -588,9 +611,6 @@ export const matchService = {
         }
       }
 
-      // =========================
-      // ✅ MANUAL UPDATE (SAFE)
-      // =========================
       if (!data.type) {
         updateQuery.$set = {};
 
@@ -607,15 +627,11 @@ export const matchService = {
         }
       }
 
-      // =========================
-      // ✅ OVER UPDATE (ONLY WHEN SENT)
-      // =========================
       if (data.overNumber !== undefined && data.ballNumber !== undefined) {
         if (!updateQuery.$set) updateQuery.$set = {};
         updateQuery.$set[`score.${key}.overs`] = `${data.overNumber}.${data.ballNumber}`;
       }
 
-      // 🧹 cleanup
       if (updateQuery.$inc && Object.keys(updateQuery.$inc).length === 0) {
         delete updateQuery.$inc;
       }
@@ -630,7 +646,12 @@ export const matchService = {
         { new: true }
       );
 
-      emitToMatch(matchId, "scoreUpdated", updatedMatch);
+      try {
+        emitToMatch(matchId, "scoreUpdated", updatedMatch);
+      } catch (socketError) {
+        console.log('Socket emit error (non-critical):', socketError.message);
+      }
+
       return updatedMatch;
 
     } catch (error) {
@@ -639,9 +660,8 @@ export const matchService = {
     }
   },
 
-  // 🔥 FIXED END INNINGS FUNCTION
+  // End innings
   endInnings: async (matchId) => {
-    // ✅ Validate
     if (!matchId) {
       throw new ApiError(400, "Match ID is required");
     }
@@ -659,12 +679,10 @@ export const matchService = {
       throw new ApiError(400, "Innings already ended or invalid state");
     }
 
-    // ✅ Ensure score object
     if (!match.score) {
       match.score = {};
     }
 
-    // ✅ Ensure team1 exists
     if (!match.score.team1) {
       throw new ApiError(400, "First innings not started properly");
     }
@@ -673,20 +691,15 @@ export const matchService = {
     const overs = team1.overs ?? "0.0";
     const runs = team1.runs ?? 0;
 
-    // ✅ Prevent empty innings end
     if (overs === "0.0" && runs === 0) {
       throw new ApiError(400, "Cannot end innings before any play");
     }
 
     console.log("🚀 Ending 1st innings:", matchId);
 
-    // ✅ Switch innings
     match.currentInnings = 2;
-
-    // ✅ Set target
     match.target = runs + 1;
 
-    // 🔥 ONLY INIT team2 (NO overwrite)
     if (!match.score.team2) {
       match.score.team2 = {
         runs: 0,
@@ -695,7 +708,6 @@ export const matchService = {
       };
     }
 
-    // ✅ IMPORTANT (nested update save fix)
     match.markModified("score");
     await match.save();
 
@@ -705,6 +717,17 @@ export const matchService = {
     ]);
 
     console.log("✅ Innings switched → Target:", match.target);
+    return match;
+  },
+
+  // Change innings
+  changeInnings: async (matchId, inningsNumber) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+    
+    match.currentInnings = inningsNumber;
+    await match.save();
+    
     return match;
   }
 };

@@ -29,11 +29,8 @@ router.get('/live', matchController.getLiveMatches);
 router.get('/upcoming', matchController.getUpcomingMatches);
 router.get('/completed', matchController.getCompletedMatches);
 router.get('/search', matchController.searchMatches);
-
 router.get('/public/list', matchController.getAllMatches);
 router.get('/public/:id', matchController.getMatchByIdPublic);
-
-// main public list
 router.get('/', matchController.getAllMatches);
 router.get('/list', matchController.getAllMatches);
 
@@ -44,11 +41,6 @@ router.post(
   '/',
   validateMatchCreate,
   authenticate,
-  (req, res, next) => {
-    console.log("🔥 CREATE MATCH HIT");
-    console.log("USER:", req.user);
-    next();
-  },
   matchController.createMatch
 );
 
@@ -73,6 +65,9 @@ router.patch('/:id/schedule', authenticate, authorize(ROLES.ADMIN), matchControl
 router.patch('/:id/toss', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateToss);
 router.patch('/:id/result', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateResult);
 router.patch('/:id/officials', authenticate, authorize(ROLES.ADMIN), matchController.setOfficials);
+router.patch('/:id/score', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateScore);
+router.patch('/:id/change-innings', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.changeInnings);
+router.patch('/:id/end-innings', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.endInnings);
 
 // ===============================
 // ⚠️ DYNAMIC ROUTE LAST (VERY IMPORTANT)
