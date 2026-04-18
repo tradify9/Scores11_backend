@@ -8,33 +8,36 @@ import { getPagination } from '../../utils/pagination.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
 import { emitToMatch, emitToAll } from "../../config/socket.js";
 
-
 export const matchService = {
   // Create a new match
   createMatch: async (matchData, userId) => {
-const { team1, team2, tournament } = matchData;
+    const { team1, team2, tournament } = matchData;
 
-    // 🔥 BULLETPROOF STRING CHECK (eliminates .equals error)
+    // 🔥 BULLETPROOF STRING CHECK
     if (!team1 || !team2) {
       throw new ApiError(400, 'Both Team1 and Team2 are required');
     }
-    if (team1 === team2) {
-  throw new ApiError(400, "Teams must be different");
-}
+    
+    // Convert to string and compare (no .equals() used)
+    if (team1.toString() === team2.toString()) {
+      throw new ApiError(400, "Teams must be different");
+    }
     
     console.log('🔍 Creating match with teams:', { team1, team2 });
-    console.log('🔍 Types - team1:', typeof team1, 'team2:', typeof team2);
-    console.log('✅ String comparison PASSED - No .equals() used');
     
     // 🔥 PRIMARY FIX: Defensive ObjectId validation
     const validateTeamId = (id, name) => {
-      if (!id || typeof id !== 'string') {
-        throw new ApiError(400, `${name} must be a valid string ID`);
+      if (!id) {
+        throw new ApiError(400, `${name} is required`);
       }
-     if (!mongoose.Types.ObjectId.isValid(id)) {
-  throw new ApiError(400, `${name} invalid ObjectId`);
-}
-      return new mongoose.Types.ObjectId(id);
+      
+      // Convert to string if it's an ObjectId
+      const idString = id.toString();
+      
+      if (!mongoose.Types.ObjectId.isValid(idString)) {
+        throw new ApiError(400, `${name} invalid ObjectId`);
+      }
+      return new mongoose.Types.ObjectId(idString);
     };
     
     const team1Id = validateTeamId(team1, 'Team1');
@@ -64,21 +67,21 @@ const { team1, team2, tournament } = matchData;
 
     // ✅ Tournament validation
     let matchNumber = 1;
+    let tournamentId = null;
 
     if (tournament) {
-      tournament = new mongoose.Types.ObjectId(tournament);
-
-      const tour = await Tournament.findById(tournament);
+      tournamentId = new mongoose.Types.ObjectId(tournament.toString());
+      const tour = await Tournament.findById(tournamentId).lean();
       if (!tour) throw new ApiError(404, "Tournament not found");
 
       // ✅ check duplicate match (both directions)
-     const existingMatch = await Match.findOne({
-  tournament: tournamentId,
-  $or: [
-    { team1: team1Id, team2: team2Id },
-    { team1: team2Id, team2: team1Id },
-  ],
-});
+      const existingMatch = await Match.findOne({
+        tournament: tournamentId,
+        $or: [
+          { team1: team1Id, team2: team2Id },
+          { team1: team2Id, team2: team1Id },
+        ],
+      });
 
       if (existingMatch) {
         throw new ApiError(
@@ -88,28 +91,28 @@ const { team1, team2, tournament } = matchData;
       }
 
       // ✅ generate match number safely
-      const lastMatch = await Match.findOne({ tournament })
+      const lastMatch = await Match.findOne({ tournament: tournamentId })
         .sort({ matchNumber: -1 })
         .lean();
 
-      matchNumber = lastMatch?.matchNumber
-        ? lastMatch.matchNumber + 1
-        : 1;
+      matchNumber = lastMatch?.matchNumber ? lastMatch.matchNumber + 1 : 1;
     }
 
     // ✅ create match
     const match = await Match.create({
-  ...matchData,
-  team1: team1Id,
-  team2: team2Id,
-  tournament: tournamentId,
-});
+      ...matchData,
+      team1: team1Id,
+      team2: team2Id,
+      tournament: tournamentId,
+      matchNumber,
+      createdBy: userId
+    });
 
     // ✅ add to tournament (safe)
-    if (tournament) {
+    if (tournamentId) {
       await Tournament.findByIdAndUpdate(
-        tournament,
-        { $addToSet: { matches: match._id } } // 🔥 avoid duplicates
+        tournamentId,
+        { $addToSet: { matches: match._id } }
       );
     }
 
@@ -123,7 +126,6 @@ const { team1, team2, tournament } = matchData;
 
     return populatedMatch;
   },
-
 
   // Get match by ID with full details
   getMatchById: async (matchId) => {
@@ -190,30 +192,27 @@ const { team1, team2, tournament } = matchData;
       filter.$or = [{ team1: query.team }, { team2: query.team }];
     }
 
-    // Already destructured from getPagination(query) above
+    const [matches, total] = await Promise.all([
+      Match.find(filter)
+        .populate('team1', 'name shortName logo')
+        .populate('team2', 'name shortName logo')
+        .populate('tournament', 'name format')
+        .sort({ [sortBy]: sortOrder })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Match.countDocuments(filter)
+    ]);
 
-  const [matches, total] = await Promise.all([
-    Match.find(filter)
-      .populate('team1', 'name shortName logo')
-      .populate('team2', 'name shortName logo')
-      .populate('tournament', 'name format')
-      .sort({ [sortBy]: sortOrder })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-
-    Match.countDocuments(filter)
-  ]);
-
-  return {
-    matches,
-    pagination: {
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit)
-    }
-  };
+    return {
+      matches,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    };
   },
 
   // Get matches for a tournament
@@ -561,174 +560,153 @@ const { team1, team2, tournament } = matchData;
     }
   },
 
+  // 🔥 FIXED UPDATE SCORE FUNCTION
+  updateScore: async (matchId, data) => {
+    try {
+      const match = await Match.findById(matchId);
+      if (!match) throw new Error("Match not found");
 
+      const key = match.currentInnings === 1 ? "team1" : "team2";
+      const updateQuery = {};
 
+      // =========================
+      // ✅ RUN / WICKET ADD (SAFE)
+      // =========================
+      if (data.type) {
+        updateQuery.$inc = {};
 
+        if (data.type === "run") {
+          updateQuery.$inc[`score.${key}.runs`] = data.runs || 0;
+        }
 
+        if (data.type === "wide" || data.type === "noball") {
+          updateQuery.$inc[`score.${key}.runs`] = data.runs || 1;
+        }
 
-   // 🔥 ADD THIS FUNCTION INSIDE OBJECT
- // 🔥 FIXED FUNCTION
-updateScore: async (matchId, data) => {
-  try {
+        if (data.type === "wicket") {
+          updateQuery.$inc[`score.${key}.wickets`] = 1;
+        }
+      }
+
+      // =========================
+      // ✅ MANUAL UPDATE (SAFE)
+      // =========================
+      if (!data.type) {
+        updateQuery.$set = {};
+
+        if (data.runs !== undefined) {
+          updateQuery.$set[`score.${key}.runs`] = Number(data.runs);
+        }
+
+        if (data.wickets !== undefined) {
+          updateQuery.$set[`score.${key}.wickets`] = Number(data.wickets);
+        }
+
+        if (data.overs !== undefined) {
+          updateQuery.$set[`score.${key}.overs`] = data.overs;
+        }
+      }
+
+      // =========================
+      // ✅ OVER UPDATE (ONLY WHEN SENT)
+      // =========================
+      if (data.overNumber !== undefined && data.ballNumber !== undefined) {
+        if (!updateQuery.$set) updateQuery.$set = {};
+        updateQuery.$set[`score.${key}.overs`] = `${data.overNumber}.${data.ballNumber}`;
+      }
+
+      // 🧹 cleanup
+      if (updateQuery.$inc && Object.keys(updateQuery.$inc).length === 0) {
+        delete updateQuery.$inc;
+      }
+
+      if (updateQuery.$set && Object.keys(updateQuery.$set).length === 0) {
+        delete updateQuery.$set;
+      }
+
+      const updatedMatch = await Match.findByIdAndUpdate(
+        matchId,
+        updateQuery,
+        { new: true }
+      );
+
+      emitToMatch(matchId, "scoreUpdated", updatedMatch);
+      return updatedMatch;
+
+    } catch (error) {
+      console.error("updateScore error:", error);
+      throw new Error(error.message);
+    }
+  },
+
+  // 🔥 FIXED END INNINGS FUNCTION
+  endInnings: async (matchId) => {
+    // ✅ Validate
+    if (!matchId) {
+      throw new ApiError(400, "Match ID is required");
+    }
+
     const match = await Match.findById(matchId);
-
-    if (!match) throw new Error("Match not found");
-
-    const key = match.currentInnings === 1 ? "team1" : "team2";
-
-    const updateQuery = {};
-
-    // =========================
-    // ✅ RUN / WICKET ADD (SAFE)
-    // =========================
-    if (data.type) {
-      updateQuery.$inc = {};
-
-      if (data.type === "run") {
-        updateQuery.$inc[`score.${key}.runs`] = data.runs || 0;
-      }
-
-      if (data.type === "wide" || data.type === "noball") {
-        updateQuery.$inc[`score.${key}.runs`] = data.runs || 1;
-      }
-
-      if (data.type === "wicket") {
-        updateQuery.$inc[`score.${key}.wickets`] = 1;
-      }
+    if (!match) {
+      throw new ApiError(404, "Match not found");
     }
 
-    // =========================
-    // ✅ MANUAL UPDATE (SAFE)
-    // =========================
-    if (!data.type) {
-      updateQuery.$set = {};
-
-      if (data.runs !== undefined) {
-        updateQuery.$set[`score.${key}.runs`] = Number(data.runs);
-      }
-
-      if (data.wickets !== undefined) {
-        updateQuery.$set[`score.${key}.wickets`] = Number(data.wickets);
-      }
-
-      // ✅ 🔥 IMPORTANT FIX
-      if (data.overs !== undefined) {
-        updateQuery.$set[`score.${key}.overs`] = data.overs;
-      }
+    if (match.status !== MATCH_STATUS.LIVE) {
+      throw new ApiError(400, "Match is not live");
     }
 
-    // =========================
-    // ✅ OVER UPDATE (ONLY WHEN SENT)
-    // =========================
-    if (data.overNumber !== undefined && data.ballNumber !== undefined) {
-      if (!updateQuery.$set) updateQuery.$set = {};
-
-      updateQuery.$set[`score.${key}.overs`] =
-        `${data.overNumber}.${data.ballNumber}`;
+    if (Number(match.currentInnings) !== 1) {
+      throw new ApiError(400, "Innings already ended or invalid state");
     }
 
-    // 🧹 cleanup
-    if (updateQuery.$inc && Object.keys(updateQuery.$inc).length === 0) {
-      delete updateQuery.$inc;
+    // ✅ Ensure score object
+    if (!match.score) {
+      match.score = {};
     }
 
-    if (updateQuery.$set && Object.keys(updateQuery.$set).length === 0) {
-      delete updateQuery.$set;
+    // ✅ Ensure team1 exists
+    if (!match.score.team1) {
+      throw new ApiError(400, "First innings not started properly");
     }
 
-    const updatedMatch = await Match.findByIdAndUpdate(
-      matchId,
-      updateQuery,
-      { new: true }
-    );
+    const team1 = match.score.team1;
+    const overs = team1.overs ?? "0.0";
+    const runs = team1.runs ?? 0;
 
-    emitToMatch(matchId, "scoreUpdated", updatedMatch);
+    // ✅ Prevent empty innings end
+    if (overs === "0.0" && runs === 0) {
+      throw new ApiError(400, "Cannot end innings before any play");
+    }
 
-    return updatedMatch;
+    console.log("🚀 Ending 1st innings:", matchId);
 
-  } catch (error) {
-    console.error("updateScore error:", error);
-    throw new Error(error.message);
+    // ✅ Switch innings
+    match.currentInnings = 2;
+
+    // ✅ Set target
+    match.target = runs + 1;
+
+    // 🔥 ONLY INIT team2 (NO overwrite)
+    if (!match.score.team2) {
+      match.score.team2 = {
+        runs: 0,
+        wickets: 0,
+        overs: "0.0"
+      };
+    }
+
+    // ✅ IMPORTANT (nested update save fix)
+    match.markModified("score");
+    await match.save();
+
+    await match.populate([
+      { path: "team1", select: "name shortName" },
+      { path: "team2", select: "name shortName" }
+    ]);
+
+    console.log("✅ Innings switched → Target:", match.target);
+    return match;
   }
-},
-
-
-
-
-
-
-endInnings: async (matchId) => {
-  // ✅ Validate
-  if (!matchId) {
-    throw new ApiError(400, "Match ID is required");
-  }
-
-  const match = await Match.findById(matchId);
-
-  if (!match) {
-    throw new ApiError(404, "Match not found");
-  }
-
-  if (match.status !== MATCH_STATUS.LIVE) {
-    throw new ApiError(400, "Match is not live");
-  }
-
-  if (Number(match.currentInnings) !== 1) {
-    throw new ApiError(400, "Innings already ended or invalid state");
-  }
-
-  // ✅ Ensure score object
-  if (!match.score) {
-    match.score = {};
-  }
-
-  // ✅ Ensure team1 exists
-  if (!match.score.team1) {
-    throw new ApiError(400, "First innings not started properly");
-  }
-
-  const team1 = match.score.team1;
-
-  const overs = team1.overs ?? "0.0";
-  const runs = team1.runs ?? 0;
-
-  // ✅ Prevent empty innings end
-  if (overs === "0.0" && runs === 0) {
-    throw new ApiError(400, "Cannot end innings before any play");
-  }
-
-  console.log("🚀 Ending 1st innings:", matchId);
-
-  // ✅ Switch innings
-  match.currentInnings = 2;
-
-  // ✅ Set target
-  match.target = runs + 1;
-
-  // 🔥 ONLY INIT team2 (NO overwrite)
-  if (!match.score.team2) {
-    match.score.team2 = {
-      runs: 0,
-      wickets: 0,
-      overs: "0.0"
-    };
-  }
-
-  // ✅ IMPORTANT (nested update save fix)
-  match.markModified("score");
-
-  await match.save();
-
-  await match.populate([
-    { path: "team1", select: "name shortName" },
-    { path: "team2", select: "name shortName" }
-  ]);
-
-  console.log("✅ Innings switched → Target:", match.target);
-
-  return match;
-}
 };
 
 export default matchService;
- 
