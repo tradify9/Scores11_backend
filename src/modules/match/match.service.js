@@ -12,10 +12,19 @@ import { emitToMatch, emitToAll } from "../../config/socket.js";
 export const matchService = {
   // Create a new match
   createMatch: async (matchData, userId) => {
-    const { team1, team2, tournament } = matchData;
+const { team1, team2, tournament } = matchData;
+
+    // 🔥 BULLETPROOF STRING CHECK (eliminates .equals error)
+    if (!team1 || !team2) {
+      throw new ApiError(400, 'Both Team1 and Team2 are required');
+    }
+    if (team1 === team2) {
+      throw new ApiError(400, 'Team1 and Team2 must be different teams');
+    }
     
     console.log('🔍 Creating match with teams:', { team1, team2 });
     console.log('🔍 Types - team1:', typeof team1, 'team2:', typeof team2);
+    console.log('✅ String comparison PASSED - No .equals() used');
     
     // 🔥 PRIMARY FIX: Defensive ObjectId validation
     const validateTeamId = (id, name) => {
