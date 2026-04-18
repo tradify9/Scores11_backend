@@ -27,7 +27,7 @@ const validateMatchCreate = (req, res, next) => {
 // ===============================
 router.get('/live', matchController.getLiveMatches);
 router.get('/upcoming', matchController.getUpcomingMatches);
-router.get('/scheduled', matchController.getAllMatches);
+router.get('/scheduled', matchController.getScheduledMatches);
 router.get('/completed', matchController.getCompletedMatches);
 router.get('/search', matchController.searchMatches);
 router.get('/public/list', matchController.getAllMatches);

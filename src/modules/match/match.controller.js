@@ -190,6 +190,12 @@ export const matchController = {
     const matches = await matchService.searchMatches(req.query.q, req.query.limit);
     res.json(new ApiResponse(200, 'Matches found', matches));
   }),
+
+  // Get scheduled matches
+  getScheduledMatches: catchAsync(async (req, res) => {
+    const { matches, pagination } = await matchService.getScheduledMatches(req.query);
+    res.json(new ApiResponse(200, 'Scheduled matches retrieved', matches, pagination));
+  }),
 };
 
 export default matchController;

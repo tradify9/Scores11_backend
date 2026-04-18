@@ -767,7 +767,41 @@ export const matchService = {
     match.currentInnings = inningsNumber;
     await match.save();
     
-    return match;
+  },
+
+  // Get scheduled matches - dedicated method for /scheduled route
+  getScheduledMatches: async (query) => {
+    const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
+    
+    const filter = { 
+      status: 'scheduled', 
+      isActive: true 
+    };
+    
+    if (query.tournament) filter.tournament = query.tournament;
+    if (query.format) filter.format = query.format;
+    
+    const [matches, total] = await Promise.all([
+      Match.find(filter)
+        .populate('team1', 'name shortName logo')
+        .populate('team2', 'name shortName logo')
+        .populate('tournament', 'name format')
+        .sort({ [sortBy]: sortOrder })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Match.countDocuments(filter)
+    ]);
+
+    return {
+      matches,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    };
   }
 };
 
