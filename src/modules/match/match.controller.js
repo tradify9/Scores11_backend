@@ -196,6 +196,12 @@ export const matchController = {
     const { matches, pagination } = await matchService.getScheduledMatches(req.query);
     res.json(new ApiResponse(200, 'Scheduled matches retrieved', matches, pagination));
   }),
+
+  // Start match (triggers toss phase)
+  startMatch: catchAsync(async (req, res) => {
+    const match = await matchService.startMatch(req.params.id, req.user.userId);
+    res.json(new ApiResponse(200, 'Match started - proceed to toss', match));
+  }),
 };
 
 export default matchController;

@@ -802,6 +802,38 @@ export const matchService = {
         pages: Math.ceil(total / limit)
       }
     };
+  },
+
+  // Start match - transition to toss/team selecting phase
+  startMatch: async (matchId, userId) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+    
+    if (match.status !== MATCH_STATUS.SCHEDULED) {
+      throw new ApiError(400, 'Match must be scheduled to start');
+    }
+
+    // Log start action
+    console.log(`🚀 Starting match ${match._id} by user ${userId}`);
+
+    // Transition to team selecting (toss phase)
+    match.status = MATCH_STATUS.TEAM_SELECTING;
+    match.startedBy = userId;
+    match.actualStartTime = new Date();
+    await match.save();
+
+    // Populate for emit
+    const populated = await Match.findById(match._id)
+      .populate('team1', 'name shortName logo')
+      .populate('team2', 'name shortName logo')
+      .populate('tournament', 'name')
+      .lean();
+
+    // Emit real-time update
+    emitToMatch(matchId, 'matchStarted', populated);
+    emitToAll('matchesUpdated', populated);
+
+    return populated;
   }
 };
 
