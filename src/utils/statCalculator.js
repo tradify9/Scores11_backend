@@ -127,7 +127,7 @@ export const calculateBattingStats = (innings) => {
 // Bowling Economy = Runs Conceded / Overs Bowled
 export const calculateBowlingEconomy = (runsConceded, oversBowled) => {
   if (oversBowled === 0) return 0;
-  return (runsConceded / oversBowled).toFixed(2);
+  return Number((runsConceded / oversBowled).toFixed(2));
 };
 
 // Bowling Average = Runs Conceded / Wickets Taken
@@ -173,7 +173,7 @@ export const calculateBowlingStats = (overs) => {
 // Run Rate = Total Runs / Overs Played
 export const calculateRunRate = (totalRuns, oversPlayed) => {
   if (oversPlayed === 0) return 0;
-  return (totalRuns / oversPlayed).toFixed(2);
+  return Number((totalRuns / oversPlayed).toFixed(2));
 };
 
 // Net Run Rate (NRR) = (Runs Scored / Overs Faced) - (Runs Conceded / Overs Bowled)

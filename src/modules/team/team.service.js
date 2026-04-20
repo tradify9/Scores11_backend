@@ -115,6 +115,10 @@ export const teamService = {
 
     const [teams, total] = await Promise.all([
       Team.find(filter)
+        .populate({
+          path: 'players',
+          populate: { path: 'role', model: 'Player' }
+        })
         .populate('owner', 'name email')
         .populate('captain', 'playerName')
         .populate('viceCaptain', 'playerName')
