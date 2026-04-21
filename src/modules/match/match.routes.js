@@ -61,8 +61,8 @@ router.delete('/:id', authenticate, authorize(ROLES.ADMIN), matchController.dele
 // ===============================
 // 🔒 MATCH ACTIONS
 // ===============================
-router.patch('/:id/status', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateMatchStatus);
-router.patch('/:id/start', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.startMatch);
+router.patch('/:id/status', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.PLAYER), matchController.updateMatchStatus);
+router.patch('/:id/start', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.PLAYER), matchController.startMatch);
 router.patch('/:id/schedule', authenticate, authorize(ROLES.ADMIN), matchController.scheduleMatch);
 router.patch('/:id/toss', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateToss);
 router.patch('/:id/result', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateResult);
