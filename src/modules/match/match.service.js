@@ -176,11 +176,15 @@ export const matchService = {
     return match;
   },
 
-  // Update match details
+  // Update match details - OWNER ONLY
   updateMatch: async (matchId, updateData, userId) => {
     const match = await Match.findById(matchId);
     if (!match || !match.isActive) {
       throw new ApiError(404, 'Match not found or inactive');
+    }
+    
+    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
+      throw new ApiError(403, 'Access denied: Not match owner');
     }
 
     if (match.status === MATCH_STATUS.LIVE || match.status === MATCH_STATUS.COMPLETED) {
@@ -199,6 +203,7 @@ export const matchService = {
 
     return updatedMatch;
   },
+
 
   // Get all matches with filters
   getAllMatches: async (query) => {
@@ -443,11 +448,16 @@ export const matchService = {
       .populate('toss.winner', 'name shortName');
   },
 
-// Set match lineups for team selection
-  setMatchLineups: async (matchId, lineupData) => {
+// Set match lineups for team selection - OWNER ONLY
+  setMatchLineups: async (matchId, lineupData, userId) => {
     const { team1Lineup, team2Lineup } = lineupData;
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
+    
+    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
+      throw new ApiError(403, 'Access denied: Not match owner');
+    }
+    
     if (match.status !== MATCH_STATUS.TEAM_SELECTING) throw new ApiError(400, 'Can only set lineups during team selecting phase');
 
     // Validate team1Lineup
@@ -481,6 +491,7 @@ export const matchService = {
     emitToMatch(matchId, 'lineupsUpdate', populated);
     return populated;
   },
+
 
   // Update match result
   updateResult: async (matchId, resultData) => {
@@ -546,10 +557,14 @@ export const matchService = {
       .populate('officials.referee', 'name');
   },
 
-  // Delete match (soft delete)
+  // Delete match (soft delete) - OWNER ONLY
   deleteMatch: async (matchId, userId) => {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
+    
+    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
+      throw new ApiError(403, 'Access denied: Not match owner');
+    }
 
     if (match.status === MATCH_STATUS.LIVE) {
       throw new ApiError(400, 'Cannot delete live match');
@@ -564,6 +579,7 @@ export const matchService = {
       });
     }
   },
+
 
   // Get match timeline
   getMatchTimeline: async (matchId) => {
@@ -807,7 +823,7 @@ export const matchService = {
     };
   },
 
-  // Start match - transition to toss/team selecting phase
+  // Start match - OWNER ONLY
 startMatch: async (matchId, userId) => {
     console.log(`🔍 startMatch called for ID: ${matchId} by user: ${userId}`);
     
@@ -818,12 +834,19 @@ startMatch: async (matchId, userId) => {
       id: matchId,
       active: match?.isActive,
       status: match?.status,
-      scheduledDate: match?.scheduledDate
+      scheduledDate: match?.scheduledDate,
+      owner: match?.createdBy,
+      caller: userId
     });
     
     if (!match) {
       console.error(`❌ Match NOT FOUND: ${matchId}`);
       throw new ApiError(404, `Match not found in database (ID: ${matchId})`);
+    }
+    
+    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
+      console.error(`❌ NOT OWNER: match ${matchId}, owner: ${match.createdBy}, user: ${userId}`);
+      throw new ApiError(403, 'Access denied: Only match owner can start');
     }
     
     if (!match.isActive) {
@@ -837,7 +860,7 @@ startMatch: async (matchId, userId) => {
     }
 
     // Log start action
-    console.log(`🚀 Starting VALID match ${match._id} (${match.team1?.name || 'T1'} vs ${match.team2?.name || 'T2'})`);
+    console.log(`🚀 OWNER Starting match ${match._id} (${match.team1?.name || 'T1'} vs ${match.team2?.name || 'T2'})`);
 
     // Transition to team selecting (toss phase)
     match.status = MATCH_STATUS.TEAM_SELECTING;
@@ -860,9 +883,44 @@ startMatch: async (matchId, userId) => {
       console.warn('Socket emit failed (non-critical):', socketErr.message);
     }
 
-    console.log(`✅ Match started successfully: ${match._id}`);
+    console.log(`✅ OWNER Match started successfully: ${match._id}`);
     return populated;
+  },
+
+  // Get user's own matches - NEW PRIVATE ENDPOINT
+  getMyMatches: async (userId, query) => {
+    const { page = 1, limit = 10, status, sortBy = 'scheduledDate', sortOrder = -1 } = query;
+    const skip = (page - 1) * limit;
+    
+    const filter = { 
+      createdBy: userId,
+      isActive: true 
+    };
+    if (status) filter.status = status;
+
+    const [matches, total] = await Promise.all([
+      Match.find(filter)
+        .populate('team1', 'name shortName logo')
+        .populate('team2', 'name shortName logo')
+        .populate('tournament', 'name format')
+        .sort({ [sortBy]: sortOrder })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      Match.countDocuments(filter)
+    ]);
+
+    return {
+      matches,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    };
   }
 };
+
 
 export default matchService;

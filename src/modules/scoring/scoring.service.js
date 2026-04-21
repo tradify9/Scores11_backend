@@ -14,9 +14,14 @@ export const scoringService = {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
     
+    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
+      throw new ApiError(403, 'Access denied: Not match owner');
+    }
+    
     if (match.status !== MATCH_STATUS.SCHEDULED && match.status !== MATCH_STATUS.READY) {
       throw new ApiError(400, 'Match cannot be initialized in current status');
     }
+
 
     // Set batting order
     match.battingOrder = battingOrder;
@@ -80,14 +85,27 @@ export const scoringService = {
 
   // Add a ball with full tracking (PROFESSIONAL REAL-TIME LOGIC)
   addBall: async (matchId, ballData, userId) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+    
+    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
+      throw new ApiError(403, 'Access denied: Not match owner');
+    }
+    
     // Validate input
     const { error } = scoringValidation.validateBallData(ballData);
     if (error) throw new ApiError(400, `Invalid ball data: ${error.details[0].message}`);
 
+
     const expectedVersion = ballData.expectedVersion;
 
     // Find and lock match with version check for concurrency
-    const match = await Match.findOne(expectedVersion ? { _id: matchId, __v: expectedVersion } : { _id: matchId });
+    const lockedMatch = await Match.findOne(expectedVersion ? { _id: matchId, __v: expectedVersion } : { _id: matchId });
+    if (!lockedMatch) {
+      if (expectedVersion) throw new ApiError(409, 'Match state changed by another scorer');
+      throw new ApiError(404, 'Match not found');
+    }
+
     if (!match) {
       if (expectedVersion) throw new ApiError(409, 'Match state changed by another scorer');
       throw new ApiError(404, 'Match not found');
@@ -685,6 +703,11 @@ export const scoringService = {
   endInnings: async (matchId, userId) => {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
+    
+    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
+      throw new ApiError(403, 'Access denied: Not match owner');
+    }
+
 
     const currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match.currentInnings);
     if (currentInningsIndex === -1) throw new ApiError(400, 'Innings not found');

@@ -179,10 +179,16 @@ export const matchController = {
     res.json(new ApiResponse(200, 'Match timeline retrieved', timeline));
   }),
 
-// Lineups
+// Lineups - OWNER
   setMatchLineups: catchAsync(async (req, res) => {
-    const lineups = await matchService.setMatchLineups(req.params.id, req.body);
+    const lineups = await matchService.setMatchLineups(req.params.id, req.body, req.user.userId);
     res.json(new ApiResponse(200, 'Match lineups set, game started', lineups));
+  }),
+
+  // User's own matches - PRIVATE
+  getMyMatches: catchAsync(async (req, res) => {
+    const { matches, pagination } = await matchService.getMyMatches(req.user.userId, req.query);
+    res.json(new ApiResponse(200, 'Your matches retrieved', matches, pagination));
   }),
 
   // Search matches
@@ -191,11 +197,19 @@ export const matchController = {
     res.json(new ApiResponse(200, 'Matches found', matches));
   }),
 
-  // Get scheduled matches
+
+  // Get user's scheduled matches - PRIVATE
+  getMyMatches: catchAsync(async (req, res) => {
+    const { matches, pagination } = await matchService.getMyMatches(req.user.userId, req.query);
+    res.json(new ApiResponse(200, 'Your matches retrieved', matches, pagination));
+  }),
+
+  // Get scheduled matches (public)
   getScheduledMatches: catchAsync(async (req, res) => {
     const { matches, pagination } = await matchService.getScheduledMatches(req.query);
     res.json(new ApiResponse(200, 'Scheduled matches retrieved', matches, pagination));
   }),
+
 
   // Start match (triggers toss phase)
   startMatch: catchAsync(async (req, res) => {
