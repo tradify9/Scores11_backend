@@ -152,7 +152,7 @@ export const matchController = {
   // Update toss
   updateToss: catchAsync(async (req, res) => {
     const match = await matchService.updateToss(req.params.id, req.body);
-    res.json(new ApiResponse(200, 'Toss updated', match));
+    res.json(new ApiResponse(200, 'Toss completed - proceed to team selection', match));
   }),
 
   // Update result
@@ -200,8 +200,8 @@ export const matchController = {
   // Start match (triggers toss phase)
   startMatch: catchAsync(async (req, res) => {
     const match = await matchService.startMatch(req.params.id, req.user.userId);
-    res.json(new ApiResponse(200, 'Match started - proceed to toss', match));
-  }),
+    res.json(new ApiResponse(200, 'Match started successfully - toss phase active', match));
+  })
 };
 
 export default matchController;

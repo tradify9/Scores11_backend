@@ -179,7 +179,9 @@ export const matchService = {
   // Update match details
   updateMatch: async (matchId, updateData, userId) => {
     const match = await Match.findById(matchId);
-    if (!match) throw new ApiError(404, 'Match not found');
+    if (!match || !match.isActive) {
+      throw new ApiError(404, 'Match not found or inactive');
+    }
 
     if (match.status === MATCH_STATUS.LIVE || match.status === MATCH_STATUS.COMPLETED) {
       throw new ApiError(400, 'Cannot update match in current status');
@@ -409,7 +411,8 @@ export const matchService = {
   // Update toss
   updateToss: async (matchId, tossData) => {
     const match = await Match.findById(matchId);
-    if (!match) throw new ApiError(404, 'Match not found');
+    if (!match || !match.isActive) throw new ApiError(404, 'Match not found or inactive');
+    if (match.toss) throw new ApiError(400, 'Toss already completed for this match');
 
     if (match.status !== MATCH_STATUS.SCHEDULED && match.status !== MATCH_STATUS.READY) {
       throw new ApiError(400, 'Toss can only be updated for scheduled or ready matches');
@@ -810,7 +813,7 @@ export const matchService = {
     if (!match) throw new ApiError(404, 'Match not found');
     
     if (match.status !== MATCH_STATUS.SCHEDULED) {
-      throw new ApiError(400, 'Match must be scheduled to start');
+      throw new ApiError(400, `Cannot start match. Current status: ${match.status}`);
     }
 
     // Log start action
