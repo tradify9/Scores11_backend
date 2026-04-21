@@ -142,12 +142,20 @@ export const matchService = {
   },
 
   // Get match by ID with full details
-  getMatchById: async (matchId) => {
-    if (!matchId || !mongoose.Types.ObjectId.isValid(matchId.toString())) {
-      throw new ApiError(400, 'Invalid match ID format');
+getMatchById: async (matchId) => {
+    // ✅ FIXED: Robust validation - trim & log before mongoose check
+    const idStr = matchId ? String(matchId).trim() : '';
+    if (!idStr) {
+      console.warn('⚠️ getMatchById: Empty matchId');
+      throw new ApiError(400, 'Match ID is required');
     }
     
-    const match = await Match.findById(matchId)
+    if (!mongoose.Types.ObjectId.isValid(idStr)) {
+      console.warn(`⚠️ getMatchById: Invalid ObjectId format: "${idStr.substring(0,10)}..."`);
+      throw new ApiError(400, `Invalid match ID format: ${idStr}`);
+    }
+    
+    const match = await Match.findById(idStr)
       .populate('team1', 'name shortName logo captain players')
       .populate('team2', 'name shortName logo captain players')
       .populate('tournament', 'name format')
@@ -163,11 +171,19 @@ export const matchService = {
 
   // Get match by ID public (less details)
   getMatchByIdPublic: async (matchId) => {
-    if (!matchId || !mongoose.Types.ObjectId.isValid(matchId.toString())) {
-      throw new ApiError(400, 'Invalid match ID format');
+    // ✅ FIXED: Same robust validation
+    const idStr = matchId ? String(matchId).trim() : '';
+    if (!idStr) {
+      console.warn('⚠️ getMatchByIdPublic: Empty matchId');
+      throw new ApiError(400, 'Match ID is required');
     }
     
-    const match = await Match.findById(matchId)
+    if (!mongoose.Types.ObjectId.isValid(idStr)) {
+      console.warn(`⚠️ getMatchByIdPublic: Invalid ObjectId: "${idStr.substring(0,10)}..."`);
+      throw new ApiError(400, `Invalid match ID format: ${idStr}`);
+    }
+    
+    const match = await Match.findById(idStr)
       .populate('team1', 'name shortName logo')
       .populate('team2', 'name shortName logo')
       .populate('tournament', 'name');
@@ -175,6 +191,7 @@ export const matchService = {
     if (!match) throw new ApiError(404, 'Match not found');
     return match;
   },
+
 
   // Update match details - OWNER ONLY
   updateMatch: async (matchId, updateData, userId) => {
