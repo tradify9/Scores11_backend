@@ -808,16 +808,36 @@ export const matchService = {
   },
 
   // Start match - transition to toss/team selecting phase
-  startMatch: async (matchId, userId) => {
+startMatch: async (matchId, userId) => {
+    console.log(`🔍 startMatch called for ID: ${matchId} by user: ${userId}`);
+    
     const match = await Match.findById(matchId);
-    if (!match) throw new ApiError(404, 'Match not found');
+    
+    console.log(`🔍 Match lookup result:`, {
+      exists: !!match,
+      id: matchId,
+      active: match?.isActive,
+      status: match?.status,
+      scheduledDate: match?.scheduledDate
+    });
+    
+    if (!match) {
+      console.error(`❌ Match NOT FOUND: ${matchId}`);
+      throw new ApiError(404, `Match not found in database (ID: ${matchId})`);
+    }
+    
+    if (!match.isActive) {
+      console.error(`❌ Match INACTIVE: ${matchId}, status: ${match.status}`);
+      throw new ApiError(403, `Match is inactive/deleted (ID: ${matchId})`);
+    }
     
     if (match.status !== MATCH_STATUS.SCHEDULED) {
-      throw new ApiError(400, `Cannot start match. Current status: ${match.status}`);
+      console.error(`❌ Wrong STATUS: ${match.status} (expected: scheduled), ID: ${matchId}`);
+      throw new ApiError(400, `Cannot start match. Expected status 'scheduled', got '${match.status}' (ID: ${matchId})`);
     }
 
     // Log start action
-    console.log(`🚀 Starting match ${match._id} by user ${userId}`);
+    console.log(`🚀 Starting VALID match ${match._id} (${match.team1?.name || 'T1'} vs ${match.team2?.name || 'T2'})`);
 
     // Transition to team selecting (toss phase)
     match.status = MATCH_STATUS.TEAM_SELECTING;
@@ -833,9 +853,14 @@ export const matchService = {
       .lean();
 
     // Emit real-time update
-    emitToMatch(matchId, 'matchStarted', populated);
-    emitToAll('matchesUpdated', populated);
+    try {
+      emitToMatch(matchId, 'matchStarted', populated);
+      emitToAll('matchesUpdated', populated);
+    } catch (socketErr) {
+      console.warn('Socket emit failed (non-critical):', socketErr.message);
+    }
 
+    console.log(`✅ Match started successfully: ${match._id}`);
     return populated;
   }
 };
