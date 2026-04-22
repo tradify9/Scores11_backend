@@ -8,17 +8,35 @@ import { getPagination } from '../../utils/pagination.js';
 export const teamService = {
   // Create a new team
   createTeam: async (teamData, userId) => {
+    const { matchId } = teamData;
 
-    // Check duplicate team name
-    const existingTeam = await Team.findOne({ name: teamData.name });
-    if (existingTeam) {
-      throw new ApiError(400, "Team with this name already exists");
-    }
+    // ✅ MULTIPLE TEAMS: Check duplicate per match per user (allow same name different matches)
+    if (matchId) {
+      const existingTeamSameMatch = await Team.findOne({ 
+        matchId, 
+        owner: userId, 
+        name: teamData.name,
+        isActive: true 
+      });
+      if (existingTeamSameMatch) {
+        throw new ApiError(400, "Team with this name already exists for this match");
+      }
 
-    // Check if user already has a team
-    const userTeam = await Team.findOne({ owner: userId });
-    if (userTeam) {
-      throw new ApiError(400, "You already created a team");
+      // ✅ Limit: Max 10 teams per match per user
+      const userTeamsCount = await Team.countDocuments({ 
+        matchId, 
+        owner: userId, 
+        isActive: true 
+      });
+      if (userTeamsCount >= 10) {
+        throw new ApiError(400, "Maximum 10 teams allowed per match");
+      }
+    } else {
+      // Fallback: Global uniqueness if no matchId (for non-fantasy teams)
+      const existingTeam = await Team.findOne({ name: teamData.name, isActive: true });
+      if (existingTeam) {
+        throw new ApiError(400, "Team with this name already exists");
+      }
     }
 
     // Create team
