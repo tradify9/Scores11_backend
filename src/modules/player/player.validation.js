@@ -11,7 +11,8 @@ export const createPlayerSchema = Joi.object({
   height: Joi.string(),
   weight: Joi.string(),
   bio: Joi.string().max(1000),
-  team: Joi.string()
+team: Joi.string(),
+  teamName: Joi.string().optional().allow('')
 });
 
 export const updatePlayerSchema = Joi.object({

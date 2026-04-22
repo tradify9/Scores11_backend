@@ -461,8 +461,22 @@ getMatchById: async (matchId) => {
     }
     
     await match.save();
-    return await Match.findById(matchId)
-      .populate('toss.winner', 'name shortName');
+
+    // Emit socket events for real-time updates
+    try {
+      const populated = await Match.findById(matchId)
+        .populate('team1', 'name shortName logo')
+        .populate('team2', 'name shortName logo')
+        .populate('toss.winner', 'name shortName')
+        .lean();
+      emitToMatch(matchId, 'tossUpdate', populated);
+      emitToAll('matchesUpdated', populated);
+      return populated;
+    } catch (socketErr) {
+      console.warn('Socket emit failed (non-critical):', socketErr.message);
+      return await Match.findById(matchId)
+        .populate('toss.winner', 'name shortName');
+    }
   },
 
 // Set match lineups for team selection - OWNER ONLY
