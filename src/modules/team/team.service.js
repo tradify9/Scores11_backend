@@ -12,15 +12,16 @@ export const teamService = {
 
     // ✅ MULTIPLE TEAMS: Check duplicate per match per user (allow same name different matches)
     if (matchId) {
-      const existingTeamSameMatch = await Team.findOne({ 
-        matchId, 
-        owner: userId, 
-        name: teamData.name,
-        isActive: true 
-      });
-      if (existingTeamSameMatch) {
-        throw new ApiError(400, "Team with this name already exists for this match");
-      }
+     // ❌ remove name restriction
+const userTeamsCount = await Team.countDocuments({ 
+  matchId, 
+  owner: userId, 
+  isActive: true 
+});
+
+if (userTeamsCount >= 10) {
+  throw new ApiError(400, "Maximum 10 teams allowed per match");
+}
 
       // ✅ Limit: Max 10 teams per match per user
       const userTeamsCount = await Team.countDocuments({ 
