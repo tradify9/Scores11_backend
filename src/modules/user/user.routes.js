@@ -19,7 +19,7 @@ router.post('/register', validate(registerSchema), userController.register);
 router.get('/verify-email/:token', userController.verifyEmail);
 router.get('/profile/:username', userController.getProfileByUsername);
 router.get('/users/:id/avatar', userController.getUserAvatarPublic);
-router.get('/user/list', userController.getAllUsers);
+router.get('/list', userController.getAllUsers);
 router.get('/leaderboard', userController.getLeaderboard);
 
 /* ---------- AUTHENTICATED ROUTES ---------- */
