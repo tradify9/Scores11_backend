@@ -12,24 +12,13 @@ export const teamService = {
 
     // ✅ MULTIPLE TEAMS: Check duplicate per match per user (allow same name different matches)
     if (matchId) {
-     // ❌ remove name restriction
-const userTeamsCount = await Team.countDocuments({ 
-  matchId, 
-  owner: userId, 
-  isActive: true 
-});
-
-if (userTeamsCount >= 10) {
-  throw new ApiError(400, "Maximum 10 teams allowed per match");
-}
-
-      // ✅ Limit: Max 10 teams per match per user
-      const userTeamsCount = await Team.countDocuments({ 
+      // ✅ Max 10 teams per match per user
+      const userTeamsForMatch = await Team.countDocuments({ 
         matchId, 
         owner: userId, 
         isActive: true 
       });
-      if (userTeamsCount >= 10) {
+      if (userTeamsForMatch >= 10) {
         throw new ApiError(400, "Maximum 10 teams allowed per match");
       }
     } else {
