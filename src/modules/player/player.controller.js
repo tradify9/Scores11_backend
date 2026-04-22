@@ -31,7 +31,7 @@ export const playerController = {
   }),
 
   getAllPlayers: catchAsync(async (req, res) => {
-    const { players, pagination } = await playerService.getAllPlayers(req.query);
+const { players, pagination } = await playerService.getAllPlayers(req.query, req.user?.userId);
     res.json(new ApiResponse(200, 'Players retrieved', players, pagination));
   }),
 

@@ -75,10 +75,13 @@ export const playerService = {
     return player;
   },
 
-  getAllPlayers: async (query) => {
+getAllPlayers: async (query, userId = null) => {
     const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
     
-    const filter = { isActive: true };
+const filter = { isActive: true };
+if (userId) {
+  filter.user = userId;
+}
     if (query.role) filter.role = query.role;
     if (query.team) filter.team = query.team;
     if (query.search) {

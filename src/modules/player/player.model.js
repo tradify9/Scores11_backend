@@ -10,7 +10,8 @@ bowlingStyle: { type: String, enum: ['right-arm-fast', 'right-arm-medium', 'left
   dateOfBirth: Date,
   nationality: { type: String, default: 'India' },
   profileImage: { publicId: String, url: String },
-  team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+  teamName: { type: String, trim: true },
   stats: {
     matches: { type: Number, default: 0 },
     runs: { type: Number, default: 0 },
