@@ -76,12 +76,12 @@ export const playerService = {
   },
 
 getAllPlayers: async (query, userId = null) => {
-    const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
+    const { page, limit, skip, sortBy, sortOrder, all } = getPagination(query);
     
-const filter = { isActive: true };
-if (userId) {
-  filter.user = userId;
-}
+    const filter = { isActive: true };
+    if (!all && userId) {
+      filter.user = userId;
+    }
     if (query.role) filter.role = query.role;
     if (query.team) filter.team = query.team;
     if (query.search) {

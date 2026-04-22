@@ -8,6 +8,7 @@ const router = express.Router();
 router.get('/trending', playerController.getTrendingPlayers);
 router.get('/compare', playerController.comparePlayers);
 router.get('/search', playerController.searchPlayers);
+router.get('/public', playerController.getAllPlayers);
 router.get('/public/:id', playerController.getPlayerByIdPublic);
 
 // Protected routes - require authentication
