@@ -1,5 +1,4 @@
 import Joi from 'joi';
-import { MATCH_FORMAT, MATCH_TYPE } from '../../constants/matchStatus.js';
 
 export const createMatchSchema = Joi.object({
   team1: Joi.string().required().messages({
@@ -30,44 +29,24 @@ export const createMatchSchema = Joi.object({
     'date.greater': 'Scheduled date must be in the future',
     'any.required': 'Scheduled date is required'
   }),
-
-  startTime: Joi.string()
-    .optional()
-    .allow('')
-    .pattern(/^(?:[01]\d|2[0-3]):[0-5]\d$/)
-    .messages({
-      'string.pattern.base': 'Start time must be HH:MM format'
-    }),
-
-  // ✅ FIXED (removed transform)
-  format: Joi.string()
-    .lowercase()
-    .valid('t20', 'odi', 'test', 't10', 'custom')
-    .default('t20')
-    .messages({
-      'any.only': 'Invalid format. Must be one of: t20, odi, test, t10, custom'
-    }),
-
-  // ✅ FIXED (removed transform)
-  matchType: Joi.string()
-    .lowercase()
-    .valid('league', 'knockout', 'quarter_final', 'semi_final', 'final', 'practice', 'friendly')
-    .default('league')
-    .messages({
-      'any.only': 'Invalid match type'
-    }),
-
-  overs: Joi.number()
-    .integer()
-    .min(1)
-    .max(100)
-    .optional()
-    .messages({
-      'number.min': 'Overs must be at least 1',
-      'number.max': 'Overs cannot exceed 100'
-    })
+  startTime: Joi.string().optional().allow('').pattern(/^(?:[01]\d|2[0-3]):[0-5]\d$/).messages({
+    'string.pattern.base': 'Start time must be HH:MM format'
+  }),
+  format: Joi.any().valid('t20', 'odi', 'test', 't10', 'custom').default('t20').messages({
+    'any.only': 'Invalid format. Must be one of: t20, odi, test, t10, custom'
+  }),
+  matchType: Joi.any().valid('league', 'knockout', 'quarter_final', 'semi_final', 'final', 'practice', 'friendly').default('league').messages({
+    'any.only': 'Invalid match type. Must be one of: league, knockout, quarter_final, semi_final, final, practice, friendly'
+  }),
+  overs: Joi.number().integer().min(1).max(100).optional().messages({
+    'number.min': 'Overs must be at least 1',
+    'number.max': 'Overs cannot exceed 100'
+  })
 });
 
 export default {
   createMatchSchema
 };
+
+
+

@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Match from './match.model.js';
 import Tournament from '../tournament/tournament.model.js';
 import Team from '../team/team.model.js';
@@ -5,7 +6,7 @@ import Player from '../player/player.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
-import { emitToMatch } from "../../config/socket.js";
+import { emitToMatch, emitToAll } from "../../config/socket.js";
 
 
 export const matchService = {
@@ -14,11 +15,9 @@ export const matchService = {
   try {
     let { team1, team2, tournament } = matchData;
 
-    // ✅ convert to ObjectId (important)
     team1 = new mongoose.Types.ObjectId(team1);
     team2 = new mongoose.Types.ObjectId(team2);
 
-    // ✅ Validate teams exist
     const [t1, t2] = await Promise.all([
       Team.findById(team1),
       Team.findById(team2),
@@ -28,12 +27,10 @@ export const matchService = {
       throw new ApiError(404, "Team not found");
     }
 
-    // ✅ Teams must be different
     if (team1.equals(team2)) {
       throw new ApiError(400, "Team1 and Team2 must be different");
     }
 
-    // ✅ Tournament validation
     let matchNumber = 1;
 
     if (tournament) {
@@ -42,7 +39,6 @@ export const matchService = {
       const tour = await Tournament.findById(tournament);
       if (!tour) throw new ApiError(404, "Tournament not found");
 
-      // ✅ check duplicate match (both directions)
       const existingMatch = await Match.findOne({
         tournament,
         $or: [
@@ -56,9 +52,8 @@ export const matchService = {
           400,
           "Match between these teams already exists in this tournament"
         );
-      }
+      } // ✅ comma removed
 
-      // ✅ generate match number safely
       const lastMatch = await Match.findOne({ tournament })
         .sort({ matchNumber: -1 })
         .lean();
@@ -66,9 +61,8 @@ export const matchService = {
       matchNumber = lastMatch?.matchNumber
         ? lastMatch.matchNumber + 1
         : 1;
-    }
+    } // ✅ comma removed
 
-    // ✅ create match
     const match = await Match.create({
       ...matchData,
       team1,
@@ -79,11 +73,10 @@ export const matchService = {
       status: matchData.status || MATCH_STATUS.SCHEDULED,
     });
 
-    // ✅ add to tournament (safe)
     if (tournament) {
       await Tournament.findByIdAndUpdate(
         tournament,
-        { $addToSet: { matches: match._id } } // 🔥 avoid duplicates
+        { $addToSet: { matches: match._id } }
       );
     }
 
@@ -92,15 +85,15 @@ export const matchService = {
       .populate("team2", "name shortName logo")
       .populate("tournament", "name format");
 
-    // 🔥 SOCKET EMIT (LIVE MATCH LIST UPDATE)
     emitToAll("matchesUpdated", populatedMatch);
 
     return populatedMatch;
 
-  } catch (error) {
-    throw new ApiError(500, error.message);
+  } catch (error) {   // ✅ ADD THIS (missing tha)
+    throw error;
   }
 },
+
 
   // Get match by ID with full details
   getMatchById: async (matchId) => {
@@ -177,15 +170,17 @@ getAllMatches: async (query) => {
   const safeSortBy = sortBy || "createdAt";
   const safeSortOrder = sortOrder === -1 ? -1 : 1;
 
+    // Already destructured from getPagination(query) above
+
   const [matches, total] = await Promise.all([
     Match.find(filter)
       .populate('team1', 'name shortName logo')
       .populate('team2', 'name shortName logo')
       .populate('tournament', 'name format')
-      .sort({ [safeSortBy]: safeSortOrder })
+      .sort({ [sortBy]: sortOrder })
       .skip(skip)
       .limit(limit)
-      .lean(), // 🔥 performance boost
+      .lean(),
 
     Match.countDocuments(filter)
   ]);
@@ -199,7 +194,7 @@ getAllMatches: async (query) => {
       pages: Math.ceil(total / limit)
     }
   };
-},
+  },
 
   // Get matches for a tournament
   getTournamentMatches: async (tournamentId, query) => {
@@ -509,47 +504,16 @@ getAllMatches: async (query) => {
 
   // Search matches
   searchMatches: async (searchTerm, limit = 10) => {
-    const teams = await Team.find({
-      $or: [
-        { name: { $regex: searchTerm, $options: 'i' } },
-        { shortName: { $regex: searchTerm, $options: 'i' } }
-      ]
-    }).select('_id');
-
-    const teamIds = teams.map(t => t._id);
-
-    const matches = await Match.find({
-      isActive: true,
-      $or: [
-        { team1: { $in: teamIds } },
-        { team2: { $in: teamIds } }
-      ]
-    })
-      .populate('team1', 'name shortName')
-      .populate('team2', 'name shortName')
-      .populate('tournament', 'name')
-      .sort({ scheduledDate: -1 })
-      .limit(limit);
-
-    return matches;
-  },
-
-
-  searchMatches: async (searchTerm, limit = 10) => {
     try {
-      // ✅ agar searchTerm empty hai
       if (!searchTerm) {
-        const matches = await Match.find({ isActive: true })
+        return await Match.find({ isActive: true })
           .populate('team1', 'name shortName')
           .populate('team2', 'name shortName')
           .populate('tournament', 'name')
           .sort({ scheduledDate: -1 })
           .limit(Number(limit));
-
-        return matches;
       }
 
-      // ✅ TEAM SEARCH
       const teams = await Team.find({
         $or: [
           { name: { $regex: searchTerm, $options: 'i' } },
@@ -557,10 +521,9 @@ getAllMatches: async (query) => {
         ]
       }).select('_id');
 
-      const teamIds = teams.map((t) => t._id);
+      const teamIds = teams.map(t => t._id);
 
-      // ✅ MATCH SEARCH
-      const matches = await Match.find({
+      return await Match.find({
         isActive: true,
         $or: [
           { team1: { $in: teamIds } },
@@ -573,10 +536,8 @@ getAllMatches: async (query) => {
         .sort({ scheduledDate: -1 })
         .limit(Number(limit));
 
-      return matches;
-
     } catch (error) {
-      throw new Error(error.message);
+      throw new ApiError(500, error.message);
     }
   },
 
