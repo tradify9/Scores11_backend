@@ -18,7 +18,7 @@ export const authorize = (...allowedRoles) => {
       }
 
     // ❌ If role not included (FIXED: allow player & user roles everywhere)
-      if (!allowedRoles.includes(req.user.role) && req.user.role !== 'player' && req.user.role !== 'user') {
+if (!allowedRoles.includes(req.user.role)) {
         return next(
           new ApiError(
             403,
