@@ -12,6 +12,9 @@ router.get('/compare', playerController.comparePlayers);
 router.get('/search', playerController.searchPlayers);
 router.get('/public', playerController.getAllPlayers);
 router.get('/public/:id', playerController.getPlayerByIdPublic);
+router.get('/public/:id/matches', playerController.getPlayerMatches); // 🔥 NEW: Player-specific matches (public)
+
+
 
 /* =========================
    🔥 USER-SPECIFIC ROUTES (VERY IMPORTANT ABOVE :id)

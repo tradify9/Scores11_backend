@@ -115,6 +115,13 @@ export const playerController = {
     }));
   }),
 
+  // 🔥 NEW: Get player matches (public)
+  getPlayerMatches: catchAsync(async (req, res) => {
+    const { playerMatchesService } = await import('./playerMatches.service.js');
+    const matchesData = await playerMatchesService.getPlayerMatches(req.params.id, req.query);
+    res.json(new ApiResponse(200, 'Player matches retrieved', matchesData));
+  }),
+
   deletePlayer: catchAsync(async (req, res) => {
     await playerService.deletePlayer(req.params.id, req.user.userId);
     res.json(new ApiResponse(200, 'Player deleted successfully'));
