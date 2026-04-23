@@ -31,8 +31,31 @@ export const playerController = {
   }),
 
   getAllPlayers: catchAsync(async (req, res) => {
-const { players, pagination } = await playerService.getAllPlayers(req.query, req.user?.userId);
+    const { players, pagination } = await playerService.getAllPlayers(req.query, req.user?.userId);
     res.json(new ApiResponse(200, 'Players retrieved', players, pagination));
+  }),
+
+  // 🔥 NEW: Get MY players (user-specific)
+  getMyPlayers: catchAsync(async (req, res) => {
+    const { players, pagination } = await playerService.getMyPlayers(req.query, req.user.userId);
+    res.json(new ApiResponse(200, 'Your players retrieved', players, pagination));
+  }),
+
+  // 🔥 NEW: Search MY players
+  searchMyPlayers: catchAsync(async (req, res) => {
+    const query = req.query.q || req.query.search;
+    const limit = parseInt(req.query.limit) || 10;
+    
+    console.log(`[MY-PLAYER-SEARCH] Query="${query}" Limit=${limit} User=${req.user.userId}`);
+    
+    if (!query) {
+      return res.status(400).json(new ApiResponse(400, 'Search query is required'));
+    }
+    
+    const players = await playerService.searchMyPlayers(query, limit, req.user.userId);
+    console.log(`[MY-PLAYER-SEARCH] Found ${players.length} your players`);
+    
+    res.json(new ApiResponse(200, 'Your player search results', players));
   }),
 
   getPlayersByTeam: catchAsync(async (req, res) => {

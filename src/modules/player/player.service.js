@@ -35,7 +35,7 @@ export const playerService = {
 
   getPlayerById: async (playerId) => {
     const player = await Player.findById(playerId)
-      .populate('user', 'name email phone')
+      .populate('user', 'name email')
       .populate('team', 'name shortName');
     
     if (!player) throw new ApiError(404, 'Player not found');
@@ -75,7 +75,7 @@ export const playerService = {
     return player;
   },
 
-getAllPlayers: async (query, userId = null) => {
+  getAllPlayers: async (query, userId = null) => {
     const { page, limit, skip, sortBy, sortOrder, all } = getPagination(query);
     
     const filter = { isActive: true };
@@ -102,6 +102,45 @@ getAllPlayers: async (query, userId = null) => {
       players,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) }
     };
+  },
+
+  // 🔥 NEW: Get MY players (user-specific, paginated)
+  getMyPlayers: async (query, userId) => {
+    query.user = userId;  // Force user filter
+    return playerService.getAllPlayers(query, userId);
+  },
+
+  // 🔥 NEW: Search MY players only
+  searchMyPlayers: async (query, limit, userId) => {
+    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+      console.log('My player search: Empty query');
+      return [];
+    }
+
+    const searchQuery = query.trim();
+    console.log(`My player search: "${searchQuery}" limit: ${limit} user: ${userId}`);
+
+    const players = await Player.find({
+      isActive: true,
+      user: userId,  // 🔥 Only user's players
+      playerName: { $regex: searchQuery, $options: 'i' }
+    })
+      .populate({
+        path: 'user',
+        select: 'name',
+        match: { isActive: { $ne: false } }
+      })
+      .populate({
+        path: 'team',
+        select: 'name shortName',
+        match: { isActive: { $ne: false } }
+      })
+      .limit(limit)
+      .lean();
+
+    const validPlayers = players.filter(p => p && p.isActive);
+    console.log(`My player search found ${validPlayers.length} results`);
+    return validPlayers;
   },
 
   getPlayersByTeam: async (teamId) => {
