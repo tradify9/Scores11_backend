@@ -14,9 +14,8 @@ export const scoringService = {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
     
-    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
-      throw new ApiError(403, 'Access denied: Not match owner');
-    }
+    // ✅ FIXED: LiveControl access allowed for all authenticated users
+    console.log(`[SCORING] Initialize match ${matchId} by user ${userId} (owner: ${match.createdBy})`);
     
     if (match.status !== MATCH_STATUS.SCHEDULED && match.status !== MATCH_STATUS.READY) {
       throw new ApiError(400, 'Match cannot be initialized in current status');
@@ -88,9 +87,8 @@ export const scoringService = {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
     
-    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
-      throw new ApiError(403, 'Access denied: Not match owner');
-    }
+    // ✅ FIXED: LiveControl access allowed for all authenticated users
+    console.log(`[SCORING] Ball added to ${matchId} by user ${userId} (owner: ${match.createdBy})`);
     
     // Validate input
     const { error } = scoringValidation.validateBallData(ballData);
@@ -704,9 +702,8 @@ export const scoringService = {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
     
-    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
-      throw new ApiError(403, 'Access denied: Not match owner');
-    }
+    // ✅ FIXED: LiveControl access allowed for all authenticated users
+    console.log(`[SCORING] Ending innings ${matchId} by user ${userId} (owner: ${match.createdBy})`);
 
 
     const currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match.currentInnings);
