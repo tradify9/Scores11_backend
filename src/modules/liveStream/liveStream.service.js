@@ -9,8 +9,14 @@ import crypto from 'crypto';
 import RtcTokenBuilder from 'agora-access-token';
 
 export const createLiveStream = async (userId, streamData) => {
-  console.log(`[${new Date().toISOString()}] [LIVESTREAM-SERVICE] createLiveStream userId:${userId}`);
+  console.log(`[${new Date().toISOString()}] [LIVESTREAM-SERVICE] createLiveStream userId: ${userId} (type: ${typeof userId}, length: ${userId ? userId.length : 'null'})`);
+  console.log(`[${new Date().toISOString()}] [LIVESTREAM-SERVICE] Full userId object: ${JSON.stringify(userId)}`);
+  if (!userId) {
+    console.error('[LIVESTREAM-SERVICE] CRITICAL: userId is null/undefined!');
+    throw new ApiError(400, 'Invalid user ID - authentication required');
+  }
   const user = await User.findById(userId);
+  console.log(`[${new Date().toISOString()}] [LIVESTREAM-SERVICE] User.findById result: ${user ? 'FOUND' : 'NOT FOUND'}`);
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
