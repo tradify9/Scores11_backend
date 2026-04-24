@@ -224,6 +224,15 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     // Update innings.currentStriker for next ball
     innings.currentStriker = newStriker;
 
+    // 🔧 FIX: Define rotation object for socket emit (prevents "rotation is not defined")
+    const rotation = {
+      occurred: shouldRotate,
+      reason: rotationReason || null,
+      newStriker: newStriker,
+      previousStriker: innings.currentStriker,
+      timestamp: new Date().toISOString()
+    };
+
     // Validate ball sequence
     if (ballNumber > 6 && !isWide && !isNoBall) throw new ApiError(400, 'Invalid ball number sequence');
 
