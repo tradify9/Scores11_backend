@@ -21,7 +21,9 @@ const app = express();
 ------------------------- */
 
 app.use(cors({
-  origin: config.cors.origin,
+  origin: function (origin, callback) {
+    callback(null, true);
+  },
   credentials: true
 }));
 
