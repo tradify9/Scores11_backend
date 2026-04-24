@@ -854,8 +854,51 @@ getMatchById: async (matchId) => {
     };
   },
 
+  // Make match READY for scoring - called after lineups (OWNER ONLY)
+  readyMatch: async (matchId, userId) => {
+    console.log(`🔍 readyMatch called for ID: ${matchId} by user: ${userId}`);
+    
+    const match = await Match.findById(matchId);
+    
+    if (!match) {
+      throw new ApiError(404, `Match not found: ${matchId}`);
+    }
+    
+    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
+      throw new ApiError(403, 'Only match owner can prepare for scoring');
+    }
+    
+    if (!['team_selecting', 'live'].includes(match.status)) {
+      throw new ApiError(400, `Match must be team_selecting/live, got: ${match.status}`);
+    }
+    
+    // Validate lineups exist
+    if (!match.team1Lineup?.length || !match.team2Lineup?.length) {
+      throw new ApiError(400, 'Set team lineups first');
+    }
+    
+    // Validate toss done
+    if (!match.toss) {
+      throw new ApiError(400, 'Complete toss first');
+    }
+    
+    console.log(`✅ Setting match ${matchId} READY for scoring`);
+    
+    match.status = 'ready';
+    match.readyForScoring = new Date();
+    await match.save();
+    
+    const populated = await Match.findById(matchId)
+      .populate('team1 team2 toss.winner team1Lineup team2Lineup', 'name shortName playerName')
+      .lean();
+    
+    emitToMatch(matchId, 'matchReady', populated);
+    
+    return populated;
+  },
+
   // Start match - OWNER ONLY
-startMatch: async (matchId, userId) => {
+  startMatch: async (matchId, userId) => {
     console.log(`🔍 startMatch called for ID: ${matchId} by user: ${userId}`);
     
     const match = await Match.findById(matchId);

@@ -17,13 +17,33 @@ export const scoringService = {
     // ✅ FIXED: LiveControl access allowed for all authenticated users
     console.log(`[SCORING] Initialize match ${matchId} by user ${userId} (owner: ${match.createdBy})`);
     
-    if (match.status !== MATCH_STATUS.SCHEDULED && match.status !== MATCH_STATUS.READY) {
-      throw new ApiError(400, 'Match cannot be initialized in current status');
-    }
+if (!['scheduled', 'team_selecting', 'live', 'ready'].includes(match.status)) {
+  console.log(`[SCORING] Init blocked: status=${match.status}`);
+  throw new ApiError(400, `Match cannot be initialized in current status: ${match.status}`);
+}
+console.log(`[SCORING] Init allowed: status=${match.status}, user=${userId}`);
 
 
-    // Set batting order
-    match.battingOrder = battingOrder;
+// Auto-generate lineups if missing
+if (!match.team1Lineup?.length || !match.team2Lineup?.length) {
+  console.log('[SCORING] Auto-generating lineups from team players');
+  const [team1, team2] = await Promise.all([
+    Team.findById(match.team1).select('players').lean(),
+    Team.findById(match.team2).select('players').lean()
+  ]);
+  match.team1Lineup = team1?.players?.slice(0, 11) || [];
+  match.team2Lineup = team2?.players?.slice(0, 11) || [];
+}
+
+// Set batting order (use provided or auto from toss)
+if (!match.battingOrder || !battingOrder.length) {
+  const battingTeamId = match.toss?.winner || match.team1;
+  const battingTeamLineup = battingTeamId.toString() === match.team1.toString() 
+    ? match.team1Lineup : match.team2Lineup;
+  match.battingOrder = [{ team: battingTeamId, players: battingTeamLineup }];
+}
+match.battingOrder = battingOrder.length ? battingOrder : match.battingOrder;
+console.log('[SCORING] Batting order set:', match.battingOrder.length, 'teams');
     
     // Initialize first innings
     match.currentInnings = 1;
@@ -453,10 +473,17 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
 
   // Get live score with current state - ENHANCED PROFESSIONAL VERSION
   getLiveScore: async (matchId) => {
-    const match = await Match.findById(matchId)
+const match = await Match.findById(matchId)
       .populate('team1', 'name shortName logo')
       .populate('team2', 'name shortName logo')
-      .lean();  // Use lean for better perf
+      .populate('toss.winner', 'name shortName logo')
+      .lean();
+console.log('[LIVE] getLiveScore populated:', {
+  team1: match.team1?.name,
+  team2: match.team2?.name,
+  tossWinner: match.toss?.winner?.name,
+  status: match.status
+});
     
     if (!match) throw new ApiError(404, 'Match not found');
 
