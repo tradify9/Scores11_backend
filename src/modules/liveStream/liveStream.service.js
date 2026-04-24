@@ -21,14 +21,16 @@ export const createLiveStream = async (userId, streamData) => {
     throw new ApiError(404, 'User not found');
   }
 
+  const streamKey = `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const agoraChannel = `channel_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
   const liveStream = new LiveStream({
     ...streamData,
     userId,
-    streamKey: `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    agoraChannel: `channel_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`,
+    streamKey,
+    agoraChannel,
     rtmpUrl: process.env.RTMP_URL || 'rtmp://68.178.171.95/live',
     hlsUrl: process.env.HLS_URL || 'http://68.178.171.95:3000/live',
-    streamUrl: `${process.env.STREAM_URL || 'http://68.178.171.95:3000'}/live/${this.streamKey}`
+    streamUrl: `${process.env.STREAM_URL || 'http://68.178.171.95:3000'}/live/${streamKey}`
   });
 
   await liveStream.save();
