@@ -27,7 +27,7 @@ async function createScores11User() {
       username: 'scores11',
       fullName: 'Scores11 Admin',
       phone: '+919876543210',
-      role: 'admin',
+      role: 'user',
       isEmailVerified: true,
       isPhoneVerified: true,
       isActive: true,
