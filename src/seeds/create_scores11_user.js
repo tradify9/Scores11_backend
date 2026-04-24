@@ -1,7 +1,7 @@
-import mongoose from 'mongoose';
-import User from '../../modules/user/user.model.js';
-import bcrypt from 'bcryptjs';
-import Wallet from '../../modules/wallet/wallet.model.js';
+const mongoose = require('mongoose');
+const User = require('../../src/modules/user/user.model.js');
+const bcrypt = require('bcryptjs');
+const Wallet = require('../../src/modules/wallet/wallet.model.js');
 
 async function createScores11User() {
   try {

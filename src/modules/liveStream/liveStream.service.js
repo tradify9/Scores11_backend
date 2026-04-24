@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import RtcTokenBuilder from 'agora-access-token';
 
 export const createLiveStream = async (userId, streamData) => {
+  console.log(`[${new Date().toISOString()}] [LIVESTREAM-SERVICE] createLiveStream userId:${userId}`);
   const user = await User.findById(userId);
   if (!user) {
     throw new ApiError(404, 'User not found');
@@ -31,6 +32,7 @@ export const createLiveStream = async (userId, streamData) => {
 };
 
 export const getLiveStreams = async (query) => {
+  console.log(`[${new Date().toISOString()}] [LIVESTREAM-SERVICE] getLiveStreams query:${JSON.stringify(query)}`);
   const { 
     status, 
     category, 
@@ -64,6 +66,7 @@ export const getLiveStreams = async (query) => {
 };
 
 export const getLiveStreamById = async (streamId) => {
+  console.log(`[${new Date().toISOString()}] [LIVESTREAM-SERVICE] getLiveStreamById streamId:${streamId}`);
   const stream = await LiveStream.findById(streamId)
     .populate('userId', 'name email avatar')
     .populate('viewers.userId', 'name avatar')
@@ -77,6 +80,7 @@ export const getLiveStreamById = async (streamId) => {
 };
 
 export const updateLiveStream = async (streamId, userId, updateData) => {
+  console.log(`[${new Date().toISOString()}] [LIVESTREAM-SERVICE] updateLiveStream userId:${userId} streamId:${streamId}`);
   const stream = await LiveStream.findOne({ _id: streamId, userId });
   
   if (!stream) {
@@ -101,6 +105,7 @@ export const deleteLiveStream = async (streamId, userId) => {
 };
 
 export const startLiveStream = async (streamId, userId) => {
+  console.log(`[${new Date().toISOString()}] [LIVESTREAM-SERVICE] startLiveStream userId:${userId} streamId:${streamId}`);
   const stream = await LiveStream.findOne({ _id: streamId, userId });
   
   if (!stream) {
@@ -121,6 +126,7 @@ export const startLiveStream = async (streamId, userId) => {
 };
 
 export const endLiveStream = async (streamId, userId) => {
+  console.log(`[${new Date().toISOString()}] [LIVESTREAM-SERVICE] endLiveStream userId:${userId} streamId:${streamId}`);
   const stream = await LiveStream.findOne({ _id: streamId, userId });
   
   if (!stream) {

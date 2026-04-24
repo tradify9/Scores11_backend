@@ -34,7 +34,8 @@ async function seedMatchSchedules() {
     ];
 
     const matchData = [];
-    const startDate = new Date('2024-10-01');
+const now = new Date();
+const startDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
 
     for (let i = 0; i < 20; i++) {
       const team1 = teams[i % teams.length];

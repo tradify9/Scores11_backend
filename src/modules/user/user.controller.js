@@ -22,8 +22,10 @@ const userController = {
 
   /* ---------- PROFILE ---------- */
 
-  getProfile: catchAsync(async (req, res) => {
+getProfile: catchAsync(async (req, res) => {
+    console.log(`[${new Date().toISOString()}] [USER-CONTROLLER] getProfile userId:${req.user.userId}`);
     const user = await userService.getUserById(req.user.userId);
+    console.log(`[${new Date().toISOString()}] [USER-CONTROLLER] getProfile SUCCESS userId:${req.user.userId}`);
     res.json(new ApiResponse(200, "Profile fetched", user));
   }),
 
