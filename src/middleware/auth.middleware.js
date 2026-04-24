@@ -24,9 +24,9 @@ export const auth = async (req, res, next) => {
       throw new ApiError(401, 'User account is deactivated');
     }
 
-    req.user = decoded;
-    req.user.userId = decoded.userId;
-    console.log(`[${new Date().toISOString()}] [AUTH] SUCCESS userId: ${decoded.userId}`);
+    req.user = user;  // FIXED: Attach full User document for req.user._id access
+    req.userId = user._id;
+    console.log(`[${new Date().toISOString()}] [AUTH] SUCCESS userId: ${user._id} (${user.name || 'Unnamed'})`);
     next();
   } catch (error) {
     console.log(`[${new Date().toISOString()}] [AUTH] ERROR: ${error.message}`);
