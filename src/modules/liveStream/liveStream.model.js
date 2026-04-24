@@ -17,7 +17,7 @@ const liveStreamSchema = new mongoose.Schema({
   },
   streamType: {
     type: String,
-    enum: ['mobile', 'professional', 'session', 'watch'],
+    enum: ['mobile', 'professional', 'session', 'watch', 'camera'],
     required: true
   },
   streamQuality: {
