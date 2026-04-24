@@ -17,10 +17,13 @@ export const scoringService = {
     // ✅ FIXED: LiveControl access allowed for all authenticated users
     console.log(`[SCORING] Initialize match ${matchId} by user ${userId} (owner: ${match.createdBy})`);
     
-if (!['scheduled', 'team_selecting', 'live', 'ready'].includes(match.status)) {
-  console.log(`[SCORING] Init blocked: status=${match.status}`);
-  throw new ApiError(400, `Match cannot be initialized in current status: ${match.status}`);
+const validStatuses = ['scheduled', 'team_selecting', 'live', 'ready'];
+if (!validStatuses.includes(match.status)) {
+  console.warn(`[SCORING] ⚠️ Auto-transitioning status from '${match.status}' → 'ready' for scoring`);
+  match.status = 'ready';
+  match.readyForScoring = new Date();
 }
+console.log(`[SCORING] ✅ Init OK: status='${match.status}', user=${userId}`);
 console.log(`[SCORING] Init allowed: status=${match.status}, user=${userId}`);
 
 
@@ -186,7 +189,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     let shouldRotate = false;
     
     // Rotate on odd runs (1,3,5) or end of over
-    if ((runs % 2 === 1 && runs > 0) || (ballNumber === 6 && isValidDelivery)) {
+    if ((runs % 2 === 1 && runs > 0) || (ballNumber === 6 && isValidDelivery)) {  
       shouldRotate = true;
       rotationReason = runs % 2 === 1 ? 'odd runs' : 'end of over';
     }

@@ -961,7 +961,7 @@ getMatchById: async (matchId) => {
     return populated;
   },
 
-  // Get user's own matches - NEW PRIVATE ENDPOINT
+// Get user's own matches - NEW PRIVATE ENDPOINT
   getMyMatches: async (userId, query) => {
     const { page = 1, limit = 10, status, sortBy = 'scheduledDate', sortOrder = -1 } = query;
     const skip = (page - 1) * limit;
@@ -993,8 +993,81 @@ getMatchById: async (matchId) => {
         pages: Math.ceil(total / limit)
       }
     };
+  },
+
+  // 🔥 NEW: Prepare match for scoring (Step 2/6)
+  prepareForScoring: async (matchId, userId) => {
+    console.log(`🎯 prepareForScoring called for ${matchId} by ${userId}`);
+    
+    const match = await Match.findById(matchId).populate('team1 team2');
+    if (!match || !match.isActive) {
+      throw new ApiError(404, 'Match not found or inactive');
+    }
+    
+    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
+      throw new ApiError(403, 'Only match owner can prepare for scoring');
+    }
+    
+    const changes = [];
+    
+    // 1. Ensure proper status
+    if (!['scheduled', 'team_selecting', 'ready', 'live'].includes(match.status)) {
+      console.log(`🔧 Auto-fixing status '${match.status}' → 'ready'`);
+      match.status = 'ready';
+      match.readyForScoring = new Date();
+      changes.push('status → ready');
+    }
+    
+    // 2. Auto-generate lineups if missing
+    if (!match.team1Lineup?.length || !match.team2Lineup?.length) {
+      console.log('🔧 Auto-generating lineups');
+      const [team1, team2] = await Promise.all([
+        Team.findById(match.team1).select('players').lean(),
+        Team.findById(match.team2).select('players').lean()
+      ]);
+      match.team1Lineup = team1?.players?.slice(0, 11).map(p => p._id) || [];
+      match.team2Lineup = team2?.players?.slice(0, 11).map(p => p._id) || [];
+      changes.push('auto-generated lineups');
+    }
+    
+    // 3. Create default toss if missing
+    if (!match.toss) {
+      console.log('🔧 Creating default toss (Team1 wins toss, elects to bat)');
+      match.toss = {
+        winner: match.team1,
+        decision: 'bat',
+        timestamp: new Date()
+      };
+      changes.push('default toss created');
+    }
+    
+    // 4. Create default batting order
+    if (!match.battingOrder?.length) {
+      console.log('🔧 Creating default batting order');
+      match.battingOrder = [
+        { team: match.team1, players: match.team1Lineup.slice(0, 11) },
+        { team: match.team2, players: match.team2Lineup.slice(0, 11) }
+      ];
+      changes.push('default batting order');
+    }
+    
+    // 5. Save changes
+    await match.save();
+    
+    const populated = await Match.findById(matchId)
+      .populate('team1 team2 toss.winner team1Lineup team2Lineup', 'name shortName playerName')
+      .lean();
+    
+    console.log(`✅ prepareForScoring SUCCESS: ${changes.join(', ') || 'no changes'}`);
+    
+    return {
+      match: populated,
+      changesMade: changes.length,
+      changes: changes,
+      readyForScoring: true,
+      nextStep: 'Call POST /scoring/match/:id/initialize'
+    };
   }
 };
-
 
 export default matchService;
