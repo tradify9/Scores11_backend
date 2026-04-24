@@ -124,8 +124,18 @@ export const scoringService = {
       comment 
     } = ballData;
 
-    const currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match.currentInnings);
-    if (currentInningsIndex === -1) throw new ApiError(400, 'Current innings not found');
+let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match.currentInnings);
+    if (currentInningsIndex === -1) {
+      // 🛡️ AUTO-INITIALIZE: Fix "Current innings not found" error
+      console.log(`⚠️ Auto-initializing innings for match ${matchId}`);
+      await scoringService.initializeMatch(matchId, match.battingOrder || [], userId);
+      // Refresh match with new innings
+      const refreshedMatch = await Match.findById(matchId);
+      currentInningsIndex = refreshedMatch.innings.findIndex(i => i.inningsNumber === refreshedMatch.currentInnings);
+      if (currentInningsIndex === -1) throw new ApiError(500, 'Auto-init failed - contact support');
+      match.innings = refreshedMatch.innings;
+      match.currentInnings = refreshedMatch.currentInnings;
+    }
 
     const innings = match.innings[currentInningsIndex];
 
@@ -706,8 +716,17 @@ export const scoringService = {
     console.log(`[SCORING] Ending innings ${matchId} by user ${userId} (owner: ${match.createdBy})`);
 
 
-    const currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match.currentInnings);
-    if (currentInningsIndex === -1) throw new ApiError(400, 'Innings not found');
+let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match.currentInnings);
+    if (currentInningsIndex === -1) {
+      // 🛡️ AUTO-INITIALIZE for endInnings too
+      console.log(`⚠️ Auto-initializing for endInnings ${matchId}`);
+      await scoringService.initializeMatch(matchId, match.battingOrder || [], userId);
+      const refreshedMatch = await Match.findById(matchId);
+      currentInningsIndex = refreshedMatch.innings.findIndex(i => i.inningsNumber === refreshedMatch.currentInnings);
+      if (currentInningsIndex === -1) throw new ApiError(500, 'Auto-init failed');
+      match.innings = refreshedMatch.innings;
+      match.currentInnings = refreshedMatch.currentInnings;
+    }
 
     match.innings[currentInningsIndex].isCompleted = true;
     match.innings[currentInningsIndex].endTime = new Date();
