@@ -62,7 +62,7 @@ export const teamService = {
     const team = await Team.findById(teamId)
       .populate('captain', 'playerName jerseyNumber role')
       .populate('viceCaptain', 'playerName jerseyNumber role')
-      .populate('players', 'playerName jerseyNumber role');
+      .populate('players', 'playerName name jerseyNumber role');
     
     if (!team) {
       throw new ApiError(404, 'Team not found');
@@ -174,7 +174,7 @@ export const teamService = {
     await Player.findByIdAndUpdate(playerId, { team: teamId });
 
     return await Team.findById(teamId)
-      .populate('players', 'playerName jerseyNumber role');
+      .populate('players', 'playerName name jerseyNumber role');
   },
 
   // Remove player from team
@@ -197,7 +197,7 @@ export const teamService = {
     await Player.findByIdAndUpdate(playerId, { team: null });
 
     return await Team.findById(teamId)
-      .populate('players', 'playerName jerseyNumber role');
+      .populate('players', 'playerName name jerseyNumber role');
   },
 
   // Set team captain
