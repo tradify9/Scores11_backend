@@ -103,7 +103,7 @@ export const matchService = {
       team2: team2Id,
       tournament: tournamentId,
       matchNumber,
-      createdBy: userId,
+      createdBy: userId, // Make sure userId is provided
       scheduledDate: matchData.scheduledDate || new Date(),
       status: MATCH_STATUS.SCHEDULED,
       format: matchData.format || 't20',
@@ -142,7 +142,7 @@ export const matchService = {
   },
 
   // Get match by ID with full details
-getMatchById: async (matchId) => {
+  getMatchById: async (matchId) => {
     // ✅ FIXED: Robust validation - trim & log before mongoose check
     const idStr = matchId ? String(matchId).trim() : '';
     if (!idStr) {
@@ -192,7 +192,6 @@ getMatchById: async (matchId) => {
     return match;
   },
 
-
   // Update match details - OWNER ONLY
   updateMatch: async (matchId, updateData, userId) => {
     const match = await Match.findById(matchId);
@@ -220,7 +219,6 @@ getMatchById: async (matchId) => {
 
     return updatedMatch;
   },
-
 
   // Get all matches with filters
   getAllMatches: async (query) => {
@@ -455,7 +453,7 @@ getMatchById: async (matchId) => {
       timestamp: new Date()
     };
     
-// Auto-set to team selecting after toss
+    // Auto-set to team selecting after toss
     if (match.status === MATCH_STATUS.SCHEDULED) {
       match.status = MATCH_STATUS.TEAM_SELECTING;
     }
@@ -479,7 +477,7 @@ getMatchById: async (matchId) => {
     }
   },
 
-// Set match lineups for team selection - OWNER ONLY
+  // Set match lineups for team selection - OWNER ONLY
   setMatchLineups: async (matchId, lineupData, userId) => {
     const { team1Lineup, team2Lineup } = lineupData;
     const match = await Match.findById(matchId);
@@ -522,7 +520,6 @@ getMatchById: async (matchId) => {
     emitToMatch(matchId, 'lineupsUpdate', populated);
     return populated;
   },
-
 
   // Update match result
   updateResult: async (matchId, resultData) => {
@@ -610,7 +607,6 @@ getMatchById: async (matchId) => {
       });
     }
   },
-
 
   // Get match timeline
   getMatchTimeline: async (matchId) => {
@@ -897,9 +893,15 @@ getMatchById: async (matchId) => {
     return populated;
   },
 
-  // Start match - OWNER ONLY
+  // Start match - OWNER ONLY - COMPLETELY FIXED
   startMatch: async (matchId, userId) => {
     console.log(`🔍 startMatch called for ID: ${matchId} by user: ${userId}`);
+    
+    // Validate userId
+    if (!userId) {
+      console.error(`❌ No userId provided to startMatch`);
+      throw new ApiError(401, 'User ID is required');
+    }
     
     const match = await Match.findById(matchId)
       .populate('team1', 'name shortName logo')
@@ -913,7 +915,7 @@ getMatchById: async (matchId) => {
       active: match?.isActive,
       status: match?.status,
       scheduledDate: match?.scheduledDate,
-      owner: match?.createdBy ? match.createdBy.toString() : 'MISSING',
+      owner: match?.createdBy ? match.createdBy._id?.toString() || match.createdBy.toString() : 'MISSING',
       caller: userId
     });
     
@@ -922,20 +924,25 @@ getMatchById: async (matchId) => {
       throw new ApiError(404, `Match not found in database (ID: ${matchId})`);
     }
     
-    // 🔥 NEW: Validate createdBy exists
-    // 🔥 NEW: Validate teams exist after population
-    if (!match.team1 || !match.team2) {
-      console.error(`❌ Invalid teams for match ${matchId}: team1=${!!match.team1}, team2=${!!match.team2}`);
-      throw new ApiError(400, `Match has invalid/missing teams (ID: ${matchId}) - recreate if needed`);
-    }
-    
+    // VALIDATE createdBy with proper null checks
     if (!match.createdBy) {
       console.error(`❌ Match ${matchId} missing createdBy field`);
-      throw new ApiError(400, `Match missing creator (ID: ${matchId}). Create match as logged-in user first.`);
+      throw new ApiError(400, `Match missing creator. Please delete and recreate this match.`);
     }
     
-    if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
-      console.error(`❌ NOT OWNER: match ${matchId}, owner: ${match.createdBy}, user: ${userId}`);
+    // Safe toString conversion with null checks
+    let matchOwnerId;
+    try {
+      matchOwnerId = match.createdBy._id ? match.createdBy._id.toString() : match.createdBy.toString();
+    } catch (err) {
+      console.error(`❌ Failed to convert createdBy to string:`, err);
+      throw new ApiError(500, `Invalid owner data in match. Please recreate match.`);
+    }
+    
+    const callerId = userId.toString();
+    
+    if (matchOwnerId !== callerId) {
+      console.error(`❌ NOT OWNER: match ${matchId}, owner: ${matchOwnerId}, user: ${callerId}`);
       throw new ApiError(403, 'Access denied: Only match owner can start');
     }
     
@@ -949,8 +956,14 @@ getMatchById: async (matchId) => {
       throw new ApiError(400, `Cannot start match. Expected status 'scheduled', got '${match.status}' (ID: ${matchId})`);
     }
 
+    // Check if teams are properly populated
+    if (!match.team1 || !match.team2) {
+      console.error(`❌ Invalid teams for match ${matchId}: team1=${!!match.team1}, team2=${!!match.team2}`);
+      throw new ApiError(400, `Match has invalid/missing teams (ID: ${matchId}) - recreate if needed`);
+    }
+
     // Log start action
-    console.log(`🚀 OWNER Starting match ${matchId} (${match.team1?.name || 'Team1'} vs ${match.team2?.name || 'Team2'})`);
+    console.log(`🚀 OWNER Starting match ${matchId} (${match.team1.name} vs ${match.team2.name})`);
 
     // Transition to team selecting (toss phase)
     match.status = MATCH_STATUS.TEAM_SELECTING;
@@ -967,8 +980,8 @@ getMatchById: async (matchId) => {
 
     // Emit real-time update
     try {
-      emitToMatch(matchId, 'matchStarted', populated);
-      emitToAll('matchesUpdated', populated);
+      if (emitToMatch) emitToMatch(matchId, 'matchStarted', populated);
+      if (emitToAll) emitToAll('matchesUpdated', populated);
     } catch (socketErr) {
       console.warn('Socket emit failed (non-critical):', socketErr.message);
     }
@@ -977,7 +990,7 @@ getMatchById: async (matchId) => {
     return populated;
   },
 
-// Get user's own matches - NEW PRIVATE ENDPOINT
+  // Get user's own matches - NEW PRIVATE ENDPOINT
   getMyMatches: async (userId, query) => {
     const { page = 1, limit = 10, status, sortBy = 'scheduledDate', sortOrder = -1 } = query;
     const skip = (page - 1) * limit;
