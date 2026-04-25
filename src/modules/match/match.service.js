@@ -909,13 +909,19 @@ getMatchById: async (matchId) => {
       active: match?.isActive,
       status: match?.status,
       scheduledDate: match?.scheduledDate,
-      owner: match?.createdBy,
+      owner: match?.createdBy ? match.createdBy.toString() : 'MISSING',
       caller: userId
     });
     
     if (!match) {
       console.error(`❌ Match NOT FOUND: ${matchId}`);
       throw new ApiError(404, `Match not found in database (ID: ${matchId})`);
+    }
+    
+    // 🔥 NEW: Validate createdBy exists
+    if (!match.createdBy) {
+      console.error(`❌ Match ${matchId} missing createdBy field`);
+      throw new ApiError(400, `Match missing creator (ID: ${matchId}). Create match as logged-in user first.`);
     }
     
     if (!match.createdBy || match.createdBy.toString() !== userId.toString()) {
