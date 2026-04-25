@@ -901,7 +901,11 @@ getMatchById: async (matchId) => {
   startMatch: async (matchId, userId) => {
     console.log(`🔍 startMatch called for ID: ${matchId} by user: ${userId}`);
     
-    const match = await Match.findById(matchId);
+    const match = await Match.findById(matchId)
+      .populate('team1', 'name shortName logo')
+      .populate('team2', 'name shortName logo')
+      .populate('tournament', 'name')
+      .populate('createdBy', 'name');
     
     console.log(`🔍 Match lookup result:`, {
       exists: !!match,
@@ -919,6 +923,12 @@ getMatchById: async (matchId) => {
     }
     
     // 🔥 NEW: Validate createdBy exists
+    // 🔥 NEW: Validate teams exist after population
+    if (!match.team1 || !match.team2) {
+      console.error(`❌ Invalid teams for match ${matchId}: team1=${!!match.team1}, team2=${!!match.team2}`);
+      throw new ApiError(400, `Match has invalid/missing teams (ID: ${matchId}) - recreate if needed`);
+    }
+    
     if (!match.createdBy) {
       console.error(`❌ Match ${matchId} missing createdBy field`);
       throw new ApiError(400, `Match missing creator (ID: ${matchId}). Create match as logged-in user first.`);
@@ -940,7 +950,7 @@ getMatchById: async (matchId) => {
     }
 
     // Log start action
-    console.log(`🚀 OWNER Starting match ${match._id} (${match.team1?.name || 'T1'} vs ${match.team2?.name || 'T2'})`);
+    console.log(`🚀 OWNER Starting match ${matchId} (${match.team1?.name || 'Team1'} vs ${match.team2?.name || 'Team2'})`);
 
     // Transition to team selecting (toss phase)
     match.status = MATCH_STATUS.TEAM_SELECTING;
@@ -949,7 +959,7 @@ getMatchById: async (matchId) => {
     await match.save();
 
     // Populate for emit
-    const populated = await Match.findById(match._id)
+    const populated = await Match.findById(matchId)
       .populate('team1', 'name shortName logo')
       .populate('team2', 'name shortName logo')
       .populate('tournament', 'name')
