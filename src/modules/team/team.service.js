@@ -49,7 +49,7 @@ export const teamService = {
       .populate('owner', 'name email phone avatar')
       .populate('captain', 'playerName jerseyNumber role avatar')
       .populate('viceCaptain', 'playerName jerseyNumber role avatar')
-      .populate('players', 'playerName jerseyNumber role battingStyle bowlingStyle avatar stats');
+.populate('players', 'playerName name jerseyNumber role battingStyle bowlingStyle avatar stats')
     
     if (!team) {
       throw new ApiError(404, 'Team not found');
@@ -123,10 +123,8 @@ export const teamService = {
 
     const [teams, total] = await Promise.all([
       Team.find(filter)
-        .populate({
-          path: 'players',
-          populate: { path: 'role', model: 'Player' }
-        })
+.populate('players', 'playerName name jerseyNumber role')
+
         .populate('owner', 'name email')
         .populate('captain', 'playerName')
         .populate('viceCaptain', 'playerName')
@@ -147,7 +145,7 @@ export const teamService = {
     const teams = await Team.find({ owner: userId, isActive: true })
       .populate('captain', 'playerName')
       .populate('viceCaptain', 'playerName')
-      .populate('players', 'playerName');
+.populate('players', 'playerName name jerseyNumber role')
     return teams;
   },
 
