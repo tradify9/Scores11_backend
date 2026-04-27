@@ -26,6 +26,7 @@ export const auth = async (req, res, next) => {
 
     req.user = user;  // FIXED: Attach full User document for req.user._id access
     req.userId = user._id;
+    req.user.userId = user._id; // Legacy compatibility
     console.log(`[${new Date().toISOString()}] [AUTH] SUCCESS userId: ${user._id} (${user.name || 'Unnamed'})`);
     next();
   } catch (error) {

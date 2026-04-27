@@ -23,9 +23,14 @@ const userController = {
   /* ---------- PROFILE ---------- */
 
 getProfile: catchAsync(async (req, res) => {
-    console.log(`[${new Date().toISOString()}] [USER-CONTROLLER] getProfile userId:${req.user.userId}`);
-    const user = await userService.getUserById(req.user.userId);
-    console.log(`[${new Date().toISOString()}] [USER-CONTROLLER] getProfile SUCCESS userId:${req.user.userId}`);
+    const userId = req.user._id || req.userId;
+    if (!userId) {
+      console.error('❌ NO USER ID in req.user:', req.user);
+      throw new ApiError(400, 'Missing user ID');
+    }
+    console.log(`[${new Date().toISOString()}] [USER-CONTROLLER] getProfile userId:${userId}`);
+    const user = await userService.getUserById(userId);
+    console.log(`[${new Date().toISOString()}] [USER-CONTROLLER] getProfile SUCCESS userId:${userId}`);
     res.json(new ApiResponse(200, "Profile fetched", user));
   }),
 
