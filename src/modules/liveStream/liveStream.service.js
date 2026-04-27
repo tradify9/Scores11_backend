@@ -3,6 +3,8 @@ import User from '../user/user.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { paginate } from '../../utils/pagination.js';
 import { getIO } from '../../config/socket.js';
+import config from '../../config/env.js';
+import axios from 'axios';
 
 export const createLiveStream = async (userId, streamData) => {
   console.log(`[LIVESTREAM-SERVICE] createLiveStream userId: ${userId}`);
@@ -17,10 +19,49 @@ export const createLiveStream = async (userId, streamData) => {
     userId
   });
 
+  // Generate real ZenStream URLs using API secret
+  await generateRealZenUrls(liveStream);
+
   await liveStream.save();
   await liveStream.populate('userId', 'name email avatar');
   
   return liveStream;
+};
+
+export const generateRealZenUrls = async (stream) => {
+  if (!config.zenstream.apiSecret) {
+    console.warn('[ZENSTREAM] API secret not configured, using fallback URLs');
+    // Fallback to dummy (already in model)
+    return stream;
+  }
+
+  try {
+    const streamKey = `scores11_${stream._id}_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    
+    // Call ZenStream API to create authenticated stream (assumed endpoint)
+    const response = await axios.post(`${config.zenstream.baseUrl}/streams`, {
+      stream_key: streamKey,
+      title: stream.title,
+      description: stream.description || '',
+      secret: config.zenstream.apiSecret
+    }, {
+      headers: { 'Authorization': `Secret ${config.zenstream.apiSecret}` }
+    });
+
+    stream.zenstreamStreamKey = response.data.stream_key || streamKey;
+    stream.zenstreamRtmpUrl = `rtmp://${config.zenstream.ingestDomain}/live/${stream.zenstreamStreamKey}`;
+    stream.zenstreamPlayerUrl = `https://${config.zenstream.playerDomain}/${stream.zenstreamStreamKey}`;
+    stream.streamUrl = stream.zenstreamPlayerUrl;
+
+    console.log(`[ZENSTREAM] Real URLs generated for stream ${stream._id}`);
+  } catch (error) {
+    console.error('[ZENSTREAM] API call failed:', error.response?.data || error.message);
+    // Fallback to model-generated dummy URLs
+    stream.zenstreamRtmpUrl = `rtmp://${config.zenstream.ingestDomain}/live/${stream.zenstreamStreamKey}`;
+    stream.zenstreamPlayerUrl = `https://${config.zenstream.playerDomain}/${stream.zenstreamStreamKey}`;
+  }
+
+  return stream;
 };
 
 export const getLiveStreams = async (query) => {

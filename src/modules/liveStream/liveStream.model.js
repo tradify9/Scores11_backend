@@ -104,24 +104,22 @@ const liveStreamSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Zenstream auto-generation pre-save hook
-liveStreamSchema.pre('save', function(next) {
-  if (!this.streamKey) {
-    this.streamKey = `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+// Zenstream auto-generation pre-save hook (now uses real API via service)
+liveStreamSchema.pre('save', async function(next) {
+  try {
+    // Generate basic keys first
+    if (!this.streamKey) {
+      this.streamKey = `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    if (!this.zenstreamStreamKey) {
+      this.zenstreamStreamKey = `zen_${this._id || 'new'}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    }
+    
+    // Service will populate real URLs on create/update
+    next();
+  } catch (error) {
+    next(error);
   }
-  if (!this.zenstreamStreamKey) {
-    this.zenstreamStreamKey = `zen_${this._id || 'new'}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-  }
-  if (!this.zenstreamRtmpUrl) {
-    this.zenstreamRtmpUrl = `rtmp://ingest.zenstream.live/live/${this.zenstreamStreamKey}`;
-  }
-  if (!this.zenstreamPlayerUrl) {
-    this.zenstreamPlayerUrl = `https://player.zenstream.live/${this.zenstreamStreamKey}`;
-  }
-  if (!this.streamUrl) {
-    this.streamUrl = this.zenstreamPlayerUrl;
-  }
-  next();
 });
 
 // Indexes
