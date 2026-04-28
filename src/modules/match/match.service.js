@@ -103,7 +103,7 @@ export const matchService = {
       team2: team2Id,
       tournament: tournamentId,
       matchNumber,
-      createdBy: userId, // Make sure userId is provided
+      createdBy: userId,
       scheduledDate: matchData.scheduledDate || new Date(),
       status: MATCH_STATUS.SCHEDULED,
       format: matchData.format || 't20',
@@ -131,11 +131,7 @@ export const matchService = {
     emitToAll("matchesUpdated", populatedMatch);
 
     return populatedMatch;
-
-  } catch (error) {   // ✅ ADD THIS (missing tha)
-    throw error;
-  }
-},
+  },
 
   // Get match by ID with full details
   getMatchById: async (matchId) => {
@@ -216,36 +212,36 @@ export const matchService = {
     return updatedMatch;
   },
 
- // Get all matches with filters
-getAllMatches: async (query) => {
-  const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
+  // Get all matches with filters
+  getAllMatches: async (query) => {
+    const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
 
-  const filter = { isActive: true };
+    const filter = { isActive: true };
 
-  // ✅ safe filters
-  if (query.status) filter.status = query.status;
-  if (query.tournament) filter.tournament = query.tournament;
-  if (query.format) filter.format = query.format;
-  if (query.matchType) filter.matchType = query.matchType;
+    // ✅ safe filters
+    if (query.status) filter.status = query.status;
+    if (query.tournament) filter.tournament = query.tournament;
+    if (query.format) filter.format = query.format;
+    if (query.matchType) filter.matchType = query.matchType;
 
-  // ✅ team filter (important fix)
-  if (query.team) {
-    filter.$or = [
-      { team1: query.team },
-      { team2: query.team }
-    ];
-  }
+    // ✅ team filter (important fix)
+    if (query.team) {
+      filter.$or = [
+        { team1: query.team },
+        { team2: query.team }
+      ];
+    }
 
-  // ✅ safe sorting (fallback add)
-  const safeSortBy = sortBy || "createdAt";
-  const safeSortOrder = sortOrder === -1 ? -1 : 1;
+    // ✅ safe sorting (fallback add)
+    const safeSortBy = sortBy || "createdAt";
+    const safeSortOrder = sortOrder === -1 ? -1 : 1;
 
     const [matches, total] = await Promise.all([
       Match.find(filter)
         .populate('team1', 'name shortName logo')
         .populate('team2', 'name shortName logo')
         .populate('tournament', 'name format')
-        .sort({ [sortBy]: sortOrder })
+        .sort({ [safeSortBy]: safeSortOrder })
         .skip(skip)
         .limit(limit)
         .lean(),
