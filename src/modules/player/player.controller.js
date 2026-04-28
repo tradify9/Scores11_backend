@@ -31,8 +31,31 @@ export const playerController = {
   }),
 
   getAllPlayers: catchAsync(async (req, res) => {
-    const { players, pagination } = await playerService.getAllPlayers(req.query);
+    const { players, pagination } = await playerService.getAllPlayers(req.query, req.user?.userId);
     res.json(new ApiResponse(200, 'Players retrieved', players, pagination));
+  }),
+
+  // 🔥 NEW: Get MY players (user-specific)
+  getMyPlayers: catchAsync(async (req, res) => {
+    const { players, pagination } = await playerService.getMyPlayers(req.query, req.user.userId);
+    res.json(new ApiResponse(200, 'Your players retrieved', players, pagination));
+  }),
+
+  // 🔥 NEW: Search MY players
+  searchMyPlayers: catchAsync(async (req, res) => {
+    const query = req.query.q || req.query.search;
+    const limit = parseInt(req.query.limit) || 10;
+    
+    console.log(`[MY-PLAYER-SEARCH] Query="${query}" Limit=${limit} User=${req.user.userId}`);
+    
+    if (!query) {
+      return res.status(400).json(new ApiResponse(400, 'Search query is required'));
+    }
+    
+    const players = await playerService.searchMyPlayers(query, limit, req.user.userId);
+    console.log(`[MY-PLAYER-SEARCH] Found ${players.length} your players`);
+    
+    res.json(new ApiResponse(200, 'Your player search results', players));
   }),
 
   getPlayersByTeam: catchAsync(async (req, res) => {
@@ -47,13 +70,24 @@ export const playerController = {
   }),
 
   searchPlayers: catchAsync(async (req, res) => {
-    const query = req.query.q || req.query.search;
-    const limit = parseInt(req.query.limit) || 10;
-    if (!query) {
-      return res.status(400).json(new ApiResponse(400, 'Search query is required'));
+    try {
+      const query = req.query.q || req.query.search;
+      const limit = parseInt(req.query.limit) || 10;
+      
+      console.log(`[PLAYER-SEARCH] Query="${query}" Limit=${limit} IP=${req.ip}`);
+      
+      if (!query) {
+        return res.status(400).json(new ApiResponse(400, 'Search query is required'));
+      }
+      
+      const players = await playerService.searchPlayers(query, limit);
+      console.log(`[PLAYER-SEARCH] Found ${players.length} results`);
+      
+      res.json(new ApiResponse(200, 'Search results retrieved', players));
+    } catch (error) {
+      console.error('[PLAYER-SEARCH-CONTROLLER] Error:', error);
+      throw error; // Let catchAsync handle
     }
-    const players = await playerService.searchPlayers(query, limit);
-    res.json(new ApiResponse(200, 'Search results retrieved', players));
   }),
 
   comparePlayers: catchAsync(async (req, res) => {
@@ -79,6 +113,18 @@ export const playerController = {
       performances,
       stats
     }));
+  }),
+
+  // 🔥 NEW: Get player matches (public)
+  getPlayerMatches: catchAsync(async (req, res) => {
+    const { playerMatchesService } = await import('./playerMatches.service.js');
+    const matchesData = await playerMatchesService.getPlayerMatches(req.params.id, req.query);
+    res.json(new ApiResponse(200, 'Player matches retrieved', matchesData));
+  }),
+
+  deletePlayer: catchAsync(async (req, res) => {
+    await playerService.deletePlayer(req.params.id, req.user.userId);
+    res.json(new ApiResponse(200, 'Player deleted successfully'));
   })
 };
 

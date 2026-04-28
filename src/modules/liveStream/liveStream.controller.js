@@ -4,6 +4,8 @@ import catchAsync from '../../utils/catchAsync.js';
 import { getIO } from '../../config/socket.js';
 
 export const createLiveStream = catchAsync(async (req, res) => {
+  console.log(`[${new Date().toISOString()}] [LIVESTREAM-CONTROLLER] createLiveStream req.user._id: ${req.user._id} (${typeof req.user._id})`);
+  console.log(`[${new Date().toISOString()}] [LIVESTREAM-CONTROLLER] req.user: ${JSON.stringify(req.user)}`);
   const stream = await liveStreamService.createLiveStream(req.user._id, req.body);
   ApiResponse.created(res, stream, 'Live stream created successfully');
 });
@@ -142,12 +144,4 @@ export const getMyStreams = catchAsync(async (req, res) => {
   ApiResponse.success(res, streams, 'My streams fetched successfully');
 });
 
-export const getRtcToken = catchAsync(async (req, res) => {
-  const { uid, role = 'publisher' } = req.body;
-  const tokenData = await liveStreamService.getRtcToken(
-    req.params.streamId,
-    uid,
-    role
-  );
-  ApiResponse.success(res, tokenData, 'RTC token generated');
-});
+

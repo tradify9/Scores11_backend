@@ -17,7 +17,7 @@ const liveStreamSchema = new mongoose.Schema({
   },
   streamType: {
     type: String,
-    enum: ['mobile', 'professional', 'session', 'watch'],
+    enum: ['mobile', 'professional', 'session', 'watch', 'camera'],
     required: true
   },
   streamQuality: {
@@ -32,8 +32,6 @@ const liveStreamSchema = new mongoose.Schema({
     sparse: true
   },
   streamUrl: String,
-  rtmpUrl: String,
-  hlsUrl: String,
   status: {
     type: String,
     enum: ['pending', 'live', 'ended', 'scheduled'],
@@ -65,44 +63,6 @@ const liveStreamSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  location: {
-    type: {
-      type: String,
-      enum: ['Point'],
-      default: 'Point'
-    },
-    coordinates: {
-      type: [Number],
-      default: [0, 0]
-    },
-    address: String
-  },
-  pricing: {
-    type: {
-      type: String,
-      enum: ['free', 'paid'],
-      default: 'free'
-    },
-    amount: {
-      type: Number,
-      default: 0
-    },
-    currency: {
-      type: String,
-      default: 'INR'
-    }
-  },
-  equipment: {
-    camera: String,
-    microphone: String,
-    lighting: String,
-    other: String
-  },
-  lookingFor: [{
-    type: String,
-    enum: ['co-host', 'commentator', 'analyst', 'viewer', 'player']
-  }],
-  requirements: String,
   isFeatured: {
     type: Boolean,
     default: false
@@ -132,34 +92,34 @@ const liveStreamSchema = new mongoose.Schema({
       default: Date.now
     }
   }],
-  // Agora specific fields
-  agoraChannel: {
+  // Zenstream RTMP fields (auto-generated)
+  zenstreamStreamKey: {
     type: String,
     unique: true,
     sparse: true
-  }
+  },
+  zenstreamRtmpUrl: String,
+  zenstreamPlayerUrl: String
 }, {
   timestamps: true
 });
 
-// Generate stream key and channel name before save
+// Zenstream auto-generation pre-save hook (now uses real API via service)
 liveStreamSchema.pre('save', async function(next) {
-  if (!this.streamKey) {
-    this.streamKey = `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  try {
+    // Generate basic keys first
+    if (!this.streamKey) {
+      this.streamKey = `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+    if (!this.zenstreamStreamKey) {
+      this.zenstreamStreamKey = `zen_${this._id || 'new'}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    }
+    
+    // Service will populate real URLs on create/update
+    next();
+  } catch (error) {
+    next(error);
   }
-  if (!this.agoraChannel) {
-    this.agoraChannel = `channel_${this._id}_${Date.now()}`;
-  }
-  if (!this.streamUrl) {
-    this.streamUrl = `${process.env.STREAM_URL || 'http://68.178.171.95:3000'}/live/${this.streamKey}`;
-  }
-  if (!this.rtmpUrl) {
-    this.rtmpUrl = process.env.RTMP_URL || 'rtmp://68.178.171.95/live';
-  }
-  if (!this.hlsUrl) {
-    this.hlsUrl = process.env.HLS_URL || 'http://68.178.171.95:3000/live';
-  }
-  next();
 });
 
 // Indexes
@@ -170,3 +130,4 @@ liveStreamSchema.index({ userId: 1, createdAt: -1 });
 
 const LiveStream = mongoose.model('LiveStream', liveStreamSchema);
 export default LiveStream;
+

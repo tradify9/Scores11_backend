@@ -1,4 +1,5 @@
 import User from './user.model.js';
+import mongoose from 'mongoose';
 import { uploadImage, deleteImage } from '../../config/cloudinary.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
@@ -79,8 +80,12 @@ export const userService = {
 },
 
   getUserById: async (userId) => {
-    const user = await User.findById(userId);
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      throw new ApiError(400, 'Invalid user ID format');
+    }
+    const user = await User.findById(userId).select('-password');
     if (!user) {
+      console.error(`User not found for ID: ${userId}`);
       throw new ApiError(404, 'User not found');
     }
     return user;

@@ -10,8 +10,9 @@ export const createPlayerSchema = Joi.object({
   placeOfBirth: Joi.string(),
   height: Joi.string(),
   weight: Joi.string(),
-  bio: Joi.string().max(1000),
-  team: Joi.string()
+  bio: Joi.string().max(1000),// Optional bio field for player description
+team: Joi.string(),// Optional team field for player association    
+  teamName: Joi.string().optional().allow('') // Allow empty string for teamName when team is provided
 });
 
 export const updatePlayerSchema = Joi.object({

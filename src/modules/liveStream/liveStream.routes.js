@@ -19,7 +19,6 @@ router.post('/:streamId/join', auth, liveStreamController.joinLiveStream);
 router.post('/:streamId/leave', auth, liveStreamController.leaveLiveStream);
 router.post('/:streamId/chat', auth, liveStreamController.sendChatMessage);
 router.post('/:streamId/like', auth, liveStreamController.likeLiveStream);
-router.post('/:streamId/token', auth, liveStreamController.getRtcToken);
 router.get('/my/streams', auth, liveStreamController.getMyStreams);
 
 export default router;

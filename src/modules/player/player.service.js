@@ -35,7 +35,7 @@ export const playerService = {
 
   getPlayerById: async (playerId) => {
     const player = await Player.findById(playerId)
-      .populate('user', 'name email phone')
+      .populate('user', 'name email')
       .populate('team', 'name shortName');
     
     if (!player) throw new ApiError(404, 'Player not found');
@@ -75,10 +75,13 @@ export const playerService = {
     return player;
   },
 
-  getAllPlayers: async (query) => {
-    const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
+  getAllPlayers: async (query, userId = null) => {
+    const { page, limit, skip, sortBy, sortOrder, all } = getPagination(query);
     
     const filter = { isActive: true };
+    if (!all && userId) {
+      filter.user = userId;
+    }
     if (query.role) filter.role = query.role;
     if (query.team) filter.team = query.team;
     if (query.search) {
@@ -101,6 +104,45 @@ export const playerService = {
     };
   },
 
+  // 🔥 NEW: Get MY players (user-specific, paginated)
+  getMyPlayers: async (query, userId) => {
+    query.user = userId;  // Force user filter
+    return playerService.getAllPlayers(query, userId);
+  },
+
+  // 🔥 NEW: Search MY players only
+  searchMyPlayers: async (query, limit, userId) => {
+    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+      console.log('My player search: Empty query');
+      return [];
+    }
+
+    const searchQuery = query.trim();
+    console.log(`My player search: "${searchQuery}" limit: ${limit} user: ${userId}`);
+
+    const players = await Player.find({
+      isActive: true,
+      user: userId,  // 🔥 Only user's players
+      playerName: { $regex: searchQuery, $options: 'i' }
+    })
+      .populate({
+        path: 'user',
+        select: 'name',
+        match: { isActive: { $ne: false } }
+      })
+      .populate({
+        path: 'team',
+        select: 'name shortName',
+        match: { isActive: { $ne: false } }
+      })
+      .limit(limit)
+      .lean();
+
+    const validPlayers = players.filter(p => p && p.isActive);
+    console.log(`My player search found ${validPlayers.length} results`);
+    return validPlayers;
+  },
+
   getPlayersByTeam: async (teamId) => {
     const players = await Player.find({ team: teamId, isActive: true })
       .populate('user', 'name email');
@@ -117,14 +159,49 @@ export const playerService = {
   },
 
   searchPlayers: async (query, limit = 10) => {
-    const players = await Player.find({
-      isActive: true,
-      playerName: { $regex: query, $options: 'i' }
-    })
-      .populate('user', 'name')
-      .populate('team', 'name shortName')
-      .limit(limit);
-    return players;
+    try {
+      if (!query || typeof query !== 'string' || query.trim().length === 0) {
+        console.log('Player search: Empty query, returning empty array');
+        return [];
+      }
+
+      const searchQuery = query.trim();
+      console.log(`Player search: "${searchQuery}" limit: ${limit}`);
+
+      const players = await Player.find({
+        isActive: true,
+        playerName: { $regex: searchQuery, $options: 'i' }
+      })
+        .populate({
+          path: 'user',
+          select: 'name',
+          match: { isActive: { $ne: false } }
+        })
+        .populate({
+          path: 'team',
+          select: 'name shortName',
+          match: { isActive: { $ne: false } }
+        })
+        .limit(limit)
+        .lean();
+
+      // Filter out docs where populate failed (null refs)
+      const validPlayers = players.filter(p => p && p.isActive);
+      
+      console.log(`Player search found ${validPlayers.length} valid players`);
+      return validPlayers;
+    } catch (error) {
+      console.error('Player search error:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+        query,
+        limit
+      });
+      
+      // Return empty array instead of crashing
+      return [];
+    }
   },
 
   comparePlayers: async (player1Id, player2Id) => {
@@ -161,6 +238,18 @@ export const playerService = {
         strikeRate: player.strikeRate || 0
       }
     };
+  },
+
+  deletePlayer: async (playerId, userId) => {
+    const player = await Player.findOne({ _id: playerId, user: userId });
+    if (!player) throw new ApiError(404, 'Player not found or not authorized');
+    
+    // Soft delete
+    player.isActive = false;
+    player.playerName = `[DELETED] ${player.playerName}`;
+    await player.save();
+    
+    return player;
   }
 };
 

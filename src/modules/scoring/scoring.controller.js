@@ -38,13 +38,13 @@ export const scoringController = {
     }
   },
 
-  // POST /match/:matchId/initialize - Auth required
+// POST /match/:matchId/initialize - Owner only
   initializeMatch: async (req, res) => {
     try {
       const result = await scoringService.initializeMatch(
         req.params.matchId, 
         req.body, 
-        req.user.id
+        req.user.userId
       );
       res.status(200).json({
         success: true,
@@ -58,13 +58,14 @@ export const scoringController = {
     }
   },
 
-  // POST /match/:matchId/ball - Auth required  
+
+// POST /match/:matchId/ball - Owner only  
   addBall: async (req, res) => {
     try {
       const result = await scoringService.addBall(
         req.params.matchId,
         req.body,
-        req.user.id
+        req.user.userId
       );
       res.status(201).json({
         success: true,
@@ -77,6 +78,7 @@ export const scoringController = {
       });
     }
   },
+
 
   // POST /match/:matchId/innings/start
   startInnings: async (req, res) => {
@@ -97,12 +99,12 @@ export const scoringController = {
     }
   },
 
-  // POST /match/:matchId/innings/end
+// POST /match/:matchId/innings/end - Owner only
   endInnings: async (req, res) => {
     try {
       const result = await scoringService.endInnings(
         req.params.matchId,
-        req.user.id
+        req.user.userId
       );
       res.status(200).json({
         success: true,
@@ -115,6 +117,7 @@ export const scoringController = {
       });
     }
   },
+
 
   // PATCH /match/:matchId/striker
   setStriker: async (req, res) => {

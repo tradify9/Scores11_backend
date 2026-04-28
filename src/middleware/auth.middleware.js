@@ -5,6 +5,7 @@ import ApiError from '../utils/ApiError.js';
 
 // Named export for auth (used in routes)
 export const auth = async (req, res, next) => {
+  console.log(`[${new Date().toISOString()}] [AUTH] ${req.method} ${req.originalUrl}`);
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -23,10 +24,14 @@ export const auth = async (req, res, next) => {
       throw new ApiError(401, 'User account is deactivated');
     }
 
-    req.user = decoded;
-    req.user.userId = decoded.userId;
+    req.user = user;  // FIXED: Attach full User document for req.user._id access
+    req.userId = user._id;
+    req.user.userId = user._id; // Legacy compatibility
+    console.log(`[${new Date().toISOString()}] [AUTH] SUCCESS userId: ${user._id} (${user.name || 'Unnamed'})`);
     next();
   } catch (error) {
+    console.log(`[${new Date().toISOString()}] [AUTH] ERROR: ${error.message}`);
+
     if (error.name === 'JsonWebTokenError') {
       next(new ApiError(401, 'Invalid token'));
     } else if (error.name === 'TokenExpiredError') {

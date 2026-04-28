@@ -14,10 +14,23 @@ export const userController = {
     }));
   }),
 
-  // Profile
-  getProfile: catchAsync(async (req, res) => {
-    const user = await userService.getUserById(req.user.userId);
-    res.json(new ApiResponse(200, 'User profile retrieved', user));
+  /* ---------- PROFILE ---------- */
+
+getProfile: catchAsync(async (req, res) => {
+    const userId = req.user._id || req.userId;
+    if (!userId) {
+      console.error('❌ NO USER ID in req.user:', req.user);
+      throw new ApiError(400, 'Missing user ID');
+    }
+    console.log(`[${new Date().toISOString()}] [USER-CONTROLLER] getProfile userId:${userId}`);
+    const user = await userService.getUserById(userId);
+    console.log(`[${new Date().toISOString()}] [USER-CONTROLLER] getProfile SUCCESS userId:${userId}`);
+    res.json(new ApiResponse(200, "Profile fetched", user));
+  }),
+
+  getProfileByUsername: catchAsync(async (req, res) => {
+    const user = await userService.getUserByUsername(req.params.username);
+    res.json(new ApiResponse(200, "Profile fetched", user));
   }),
 
   updateProfile: catchAsync(async (req, res) => {

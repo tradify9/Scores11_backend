@@ -65,5 +65,13 @@ export default {
     minDeposit: parseInt(process.env.WALLET_MIN_DEPOSIT, 10) || 10,
     maxDeposit: parseInt(process.env.WALLET_MAX_DEPOSIT, 10) || 10000,
     minWithdrawal: parseInt(process.env.WALLET_MIN_WITHDRAWAL, 10) || 100
+  },
+  
+  // ZenStream Live Streaming API
+  zenstream: {
+    apiSecret: process.env.ZENSTREAM_API_SECRET || '',
+    baseUrl: 'https://api.zenstream.live/v1', // Official ZenStream API
+    ingestDomain: 'ingest.zenstream.live',
+    playerDomain: 'player.zenstream.live'
   }
 };

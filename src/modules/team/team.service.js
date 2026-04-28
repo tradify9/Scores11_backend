@@ -8,17 +8,25 @@ import { getPagination } from '../../utils/pagination.js';
 export const teamService = {
   // Create a new team
   createTeam: async (teamData, userId) => {
+    const { matchId } = teamData;
 
-    // Check duplicate team name
-    const existingTeam = await Team.findOne({ name: teamData.name });
-    if (existingTeam) {
-      throw new ApiError(400, "Team with this name already exists");
-    }
-
-    // Check if user already has a team
-    const userTeam = await Team.findOne({ owner: userId });
-    if (userTeam) {
-      throw new ApiError(400, "You already created a team");
+    // ✅ MULTIPLE TEAMS: Check duplicate per match per user (allow same name different matches)
+    if (matchId) {
+      // ✅ Max 10 teams per match per user
+      const userTeamsForMatch = await Team.countDocuments({ 
+        matchId, 
+        owner: userId, 
+        isActive: true 
+      });
+      if (userTeamsForMatch >= 10) {
+        throw new ApiError(400, "Maximum 10 teams allowed per match");
+      }
+    } else {
+      // Fallback: Global uniqueness if no matchId (for non-fantasy teams)
+      const existingTeam = await Team.findOne({ name: teamData.name, isActive: true });
+      if (existingTeam) {
+        throw new ApiError(400, "Team with this name already exists");
+      }
     }
 
     // Create team
@@ -41,7 +49,7 @@ export const teamService = {
       .populate('owner', 'name email phone avatar')
       .populate('captain', 'playerName jerseyNumber role avatar')
       .populate('viceCaptain', 'playerName jerseyNumber role avatar')
-      .populate('players', 'playerName jerseyNumber role battingStyle bowlingStyle avatar stats');
+.populate('players', 'playerName name jerseyNumber role battingStyle bowlingStyle avatar stats')
     
     if (!team) {
       throw new ApiError(404, 'Team not found');
@@ -54,7 +62,7 @@ export const teamService = {
     const team = await Team.findById(teamId)
       .populate('captain', 'playerName jerseyNumber role')
       .populate('viceCaptain', 'playerName jerseyNumber role')
-      .populate('players', 'playerName jerseyNumber role');
+      .populate('players', 'playerName name jerseyNumber role');
     
     if (!team) {
       throw new ApiError(404, 'Team not found');
@@ -115,6 +123,8 @@ export const teamService = {
 
     const [teams, total] = await Promise.all([
       Team.find(filter)
+.populate('players', 'playerName name jerseyNumber role')
+
         .populate('owner', 'name email')
         .populate('captain', 'playerName')
         .populate('viceCaptain', 'playerName')
@@ -135,7 +145,7 @@ export const teamService = {
     const teams = await Team.find({ owner: userId, isActive: true })
       .populate('captain', 'playerName')
       .populate('viceCaptain', 'playerName')
-      .populate('players', 'playerName');
+.populate('players', 'playerName name jerseyNumber role')
     return teams;
   },
 
@@ -162,7 +172,7 @@ export const teamService = {
     await Player.findByIdAndUpdate(playerId, { team: teamId });
 
     return await Team.findById(teamId)
-      .populate('players', 'playerName jerseyNumber role');
+      .populate('players', 'playerName name jerseyNumber role');
   },
 
   // Remove player from team
@@ -185,7 +195,7 @@ export const teamService = {
     await Player.findByIdAndUpdate(playerId, { team: null });
 
     return await Team.findById(teamId)
-      .populate('players', 'playerName jerseyNumber role');
+      .populate('players', 'playerName name jerseyNumber role');
   },
 
   // Set team captain

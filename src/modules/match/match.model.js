@@ -118,7 +118,15 @@ const matchSchema = new mongoose.Schema({
   venue: venueSchema,
   scheduledDate: { type: Date, required: true },
   overs: { type: Number, default: 20 },
-  status: { type: String, enum: Object.values(MATCH_STATUS), default: 'scheduled' },
+status: { type: String, enum: Object.values(MATCH_STATUS), default: 'scheduled' },
+  team1Lineup: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Player'
+  }],
+  team2Lineup: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Player'
+  }],
   
   toss: tossSchema,
   result: resultSchema,

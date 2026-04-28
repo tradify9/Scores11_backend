@@ -23,7 +23,22 @@ const teamSchema = new mongoose.Schema({
     totalWickets: { type: Number, default: 0 }
   },
   isActive: { type: Boolean, default: true },
-  isVerified: { type: Boolean, default: false }
+  isVerified: { type: Boolean, default: false },
+  matchId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Match', 
+    index: true 
+  },
+  contestId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Contest', 
+    index: true 
+  },
+  status: { 
+    type: String, 
+    enum: ['draft', 'active', 'locked', 'completed'], 
+    default: 'draft' 
+  }
 }, { timestamps: true });
 
 teamSchema.index({ name: 1 });
