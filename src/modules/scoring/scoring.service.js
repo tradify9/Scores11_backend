@@ -483,13 +483,80 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     };
   },
 
-  // Get live score with current state - ENHANCED PROFESSIONAL VERSION
+// Get live score with current state - ENHANCED PROFESSIONAL VERSION with populated players
   getLiveScore: async (matchId) => {
-const match = await Match.findById(matchId)
+    const match = await Match.findById(matchId)
       .populate('team1', 'name shortName logo')
       .populate('team2', 'name shortName logo')
       .populate('toss.winner', 'name shortName logo')
       .lean();
+
+    if (!match) throw new ApiError(404, 'Match not found');
+
+    const currentInningsNumber = match.currentInnings || 1;
+    const currentInnings = match.innings?.find(i => i?.inningsNumber === currentInningsNumber) || {
+      totalRuns: 0,
+      totalWickets: 0,
+      totalOvers: 0,
+      totalBalls: 0,
+      extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, total: 0 },
+      battingScorecard: [],
+      bowlingScorecard: [],
+      fallOfWickets: [],
+      currentStriker: null,
+      currentNonStriker: null,
+      currentBowler: null,
+      currentOverNumber: 1,
+      currentBallNumber: 1,
+      currentPartnership: { runs: 0, balls: 0 }
+    };
+
+    // Populate batting scorecard
+    const battingIds = currentInnings.battingScorecard.map(b => b.batsman);
+    const battingPlayers = await Player.find({ _id: { $in: battingIds } }).select('playerName jerseyNumber avatar teamId role').lean();
+    const battingMap = {};
+    battingPlayers.forEach(p => {
+      battingMap[p._id.toString()] = {
+        playerName: p.playerName || p.name,
+        jerseyNumber: p.jerseyNumber,
+        avatar: p.avatar,
+        teamId: p.teamId,
+        role: p.role
+      };
+    });
+    currentInnings.battingScorecard = currentInnings.battingScorecard.map(b => ({
+      ...b,
+      playerName: battingMap[b.batsman]?.playerName || 'Unknown',
+      avatar: battingMap[b.batsman]?.avatar || '/default-avatar.png',
+      jerseyNumber: battingMap[b.batsman]?.jerseyNumber,
+      teamId: battingMap[b.batsman]?.teamId,
+      role: battingMap[b.batsman]?.role
+    }));
+
+    // Populate bowling scorecard
+    const bowlingIds = currentInnings.bowlingScorecard.map(b => b.bowler);
+    const bowlingPlayers = await Player.find({ _id: { $in: bowlingIds } }).select('playerName jerseyNumber avatar teamId role').lean();
+    const bowlingMap = {};
+    bowlingPlayers.forEach(p => {
+      bowlingMap[p._id.toString()] = {
+        playerName: p.playerName || p.name,
+        jerseyNumber: p.jerseyNumber,
+        avatar: p.avatar,
+        teamId: p.teamId,
+        role: p.role
+      };
+    });
+    currentInnings.bowlingScorecard = currentInnings.bowlingScorecard.map(b => ({
+      ...b,
+      playerName: bowlingMap[b.bowler]?.playerName || 'Unknown',
+      avatar: bowlingMap[b.bowler]?.avatar || '/default-avatar.png',
+      jerseyNumber: bowlingMap[b.bowler]?.jerseyNumber,
+      teamId: bowlingMap[b.bowler]?.teamId,
+      role: bowlingMap[b.bowler]?.role
+    }));
+
+    // Continue with rest...
+
 console.log('[LIVE] getLiveScore populated:', {
   team1: match.team1?.name,
   team2: match.team2?.name,
@@ -531,7 +598,7 @@ console.log('[LIVE] getLiveScore populated:', {
       }
     }
 
-    // Safe recent balls query - handle missing innings
+    // Safe recent balls query with full populate - handle missing innings
     let recentBalls = [];
     let lastBall = null;
     try {
@@ -541,20 +608,42 @@ console.log('[LIVE] getLiveScore populated:', {
       })
         .sort({ overNumber: -1, ballNumber: -1 })
         .limit(6)
-        .populate('batsman bowler fielder', 'playerName jerseyNumber');
+        .populate('batsman bowler fielder', 'playerName jerseyNumber avatar teamId role');
       
-      recentBalls = recentQuery.reverse();
+      recentBalls = recentQuery.reverse().map(ball => ({
+        ...ball.toObject(),
+        batsman: ball.batsman ? {
+          playerName: ball.batsman.playerName || ball.batsman.name,
+          jerseyNumber: ball.batsman.jerseyNumber,
+          avatar: ball.batsman.avatar,
+          teamId: ball.batsman.teamId
+        } : null,
+        bowler: ball.bowler ? {
+          playerName: ball.bowler.playerName || ball.bowler.name,
+          jerseyNumber: ball.bowler.jerseyNumber,
+          avatar: ball.bowler.avatar,
+          teamId: ball.bowler.teamId
+        } : null
+      }));
       
       const recentBallDoc = await Ball.findOne({ match: matchId, innings: currentInningsNumber })
         .sort({ overNumber: -1, ballNumber: -1 })
-        .populate('bowler', 'playerName jerseyNumber');
+        .populate('bowler', 'playerName jerseyNumber avatar');
       
       lastBall = recentBallDoc;
+      if (lastBall && lastBall.bowler) {
+        lastBall.bowler = {
+          playerName: lastBall.bowler.playerName || lastBall.bowler.name,
+          jerseyNumber: lastBall.bowler.jerseyNumber,
+          avatar: lastBall.bowler.avatar
+        };
+      }
     } catch (ballError) {
       console.warn(`No ball data for match ${matchId}:`, ballError.message);
       recentBalls = [];
       lastBall = null;
     }
+
 
     const safeScore = {
       team1: match.score?.team1 || { runs: 0, wickets: 0, overs: '0.0' },
