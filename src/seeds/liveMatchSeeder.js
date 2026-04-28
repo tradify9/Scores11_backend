@@ -41,8 +41,10 @@ async function seedLiveMatch() {
       matchType: 'league',
       status: MATCH_STATUS.LIVE,
       venue: { name: 'Wankhede Stadium', city: 'Mumbai' },
-      scheduledDate: new Date(Date.now() - 2 * 60 * 60 * 1000), // Started 2hrs ago
+      scheduledDate: new Date(Date.now() - 2 * 60 * 60 * 1000),
       toss: { winner: miTeam._id, decision: 'bat' },
+      team1Lineup: miPlayers.map(p => p._id),
+      team2Lineup: cskPlayers.map(p => p._id),
       score: {
         team1: { runs: 98, wickets: 2, overs: '12.3' }, // MI batting
         team2: { runs: 0, wickets: 0, overs: '0.0' }
@@ -51,6 +53,7 @@ async function seedLiveMatch() {
       isActive: true,
       createdBy: seedUserId
     });
+
 
     console.log(`🎯 Live Match created: ${liveMatch._id}`);
 
