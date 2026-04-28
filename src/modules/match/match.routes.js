@@ -2,7 +2,7 @@ import express from 'express';
 import { matchController } from './match.controller.js';
 import { authenticate } from '../../middleware/auth.middleware.js';
 import { authorize } from '../../middleware/role.middleware.js';
-import { ROLES } from '../../constants/roles.js';
+import { ROLES } from "../../constants/roles.js";
 import { createMatchSchema } from './match.validation.js';
 
 const router = express.Router();
@@ -71,16 +71,13 @@ router.patch('/:id/schedule', authenticate, authorize(ROLES.ADMIN), matchControl
 router.patch('/:id/toss', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateToss);
 router.patch('/:id/result', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateResult);
 router.patch('/:id/officials', authenticate, authorize(ROLES.ADMIN), matchController.setOfficials);
-router.patch('/:id/score', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateScore);
-router.patch('/:id/change-innings', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.changeInnings);
-router.patch('/:id/lineups', authenticate, matchController.setMatchLineups);
-router.patch('/:id/end-innings', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.endInnings);
+router.patch(
+  '/matches/:id/score',
+  authenticate,
+  authorize(ROLES.ADMIN),
+  matchController.updateScore
+);
 
-
-// ===============================
-// ⚠️ DYNAMIC ROUTE LAST (VERY IMPORTANT)
-// ===============================
-router.get('/:id', authenticate, matchController.getMatchById);
 
 export default router;
 

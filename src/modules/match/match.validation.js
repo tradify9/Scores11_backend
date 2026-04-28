@@ -24,7 +24,7 @@ export const createMatchSchema = Joi.object({
     country: Joi.string().optional().allow(''),
     capacity: Joi.number().optional()
   }).required().messages({
-    'object.required': 'Venue information is required'
+    'any.required': 'Venue information is required'
   }),
   scheduledDate: Joi.date().iso().required().messages({
     'date.format': 'Scheduled date must be valid ISO date',

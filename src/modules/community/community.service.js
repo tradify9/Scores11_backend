@@ -4,13 +4,48 @@ import { getPagination } from '../../utils/pagination.js';
 
 export const communityService = {
   // Create post
-  createPost: async (postData, userId) => {
+ createPost: async (data, userId) => {
+  try {
+    // 🏷 TAGS SAFE HANDLE
+    let tags = [];
+    if (data.tags) {
+      if (Array.isArray(data.tags)) {
+        tags = data.tags;
+      } else if (typeof data.tags === "string") {
+        tags = data.tags.split(",").map(t => t.trim());
+      }
+    }
+
+    // 🖼 IMAGE SAFE HANDLE
+    let image = null;
+    if (data.image) {
+      if (typeof data.image === "string") {
+        image = { url: data.image, publicId: "manual" };
+      } else {
+        image = {
+          url: data.image.url || "",
+          publicId: data.image.publicId || "manual",
+        };
+      }
+    }
+
     const post = await Post.create({
-      ...postData,
-      user: userId
+      content: data.content || "",
+      name: data.name || "",
+      email: data.email || "",
+      category: data.category || "",
+      tags,
+      image,
+      user: userId,
     });
-    return await Post.findById(post._id).populate('user', 'name email avatar');
-  },
+
+    return post;
+
+  } catch (error) {
+    console.log("❌ CREATE POST ERROR:", error);
+    throw error;
+  }
+},
 
   // Get all posts
   getAllPosts: async (query) => {
