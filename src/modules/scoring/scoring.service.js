@@ -1,3 +1,4 @@
+
 import Match from '../match/match.model.js';
 import Ball from './ball.model.js';
 import Team from '../team/team.model.js';
@@ -493,8 +494,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
 
     if (!match) throw new ApiError(404, 'Match not found');
 
-    const currentInningsNumber = match.currentInnings || 1;
-    const currentInnings = match.innings?.find(i => i?.inningsNumber === currentInningsNumber) || {
+    const currentInningNum = match.currentInnings || 1;   const currentInnings = match.innings?.find(i => i?.inningsNumber === currentInningNum) || {
       totalRuns: 0,
       totalWickets: 0,
       totalOvers: 0,
@@ -586,7 +586,7 @@ console.log('[LIVE] getLiveScore populated:', {
     try {
       const recentQuery = await Ball.find({ 
         match: matchId, 
-        innings: currentInningsNumber 
+        innings: currentInningNum 
       })
         .sort({ overNumber: -1, ballNumber: -1 })
         .limit(6)
@@ -608,7 +608,7 @@ console.log('[LIVE] getLiveScore populated:', {
         } : null
       }));
       
-      const recentBallDoc = await Ball.findOne({ match: matchId, innings: currentInningsNumber })
+      const recentBallDoc = await Ball.findOne({ match: matchId, innings: currentInningNum })
         .sort({ overNumber: -1, ballNumber: -1 })
         .populate('bowler', 'playerName jerseyNumber avatar');
       
@@ -640,7 +640,7 @@ console.log('[LIVE] getLiveScore populated:', {
         team1: match.team1 || { name: 'Team 1', shortName: 'T1' },
         team2: match.team2 || { name: 'Team 2', shortName: 'T2' },
         status: match.status || 'scheduled',
-        currentInnings: currentInningsNumber,
+        currentInnings: currentInningNum,
         overs: match.overs || 20
       },
       score: safeScore,
