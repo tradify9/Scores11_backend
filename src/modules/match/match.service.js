@@ -807,7 +807,7 @@ export const matchService = {
     return match;
   },
 
-  // Change innings
+  // Change innings - FIXED (missing closing brace was here)
   changeInnings: async (matchId, inningsNumber) => {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
@@ -815,6 +815,7 @@ export const matchService = {
     match.currentInnings = inningsNumber;
     await match.save();
     
+    return match;
   },
 
   // Get scheduled matches - dedicated method for /scheduled route
