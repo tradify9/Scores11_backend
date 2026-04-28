@@ -565,24 +565,6 @@ console.log('[LIVE] getLiveScore populated:', {
 });
     
     if (!match) throw new ApiError(404, 'Match not found');
-
-    const currentInningsNumber = match.currentInnings || 1;
-    const currentInnings = match.innings?.find(i => i?.inningsNumber === currentInningsNumber) || {
-      totalRuns: 0,
-      totalWickets: 0,
-      totalOvers: 0,
-      totalBalls: 0,
-      extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, total: 0 },
-      battingScorecard: [],
-      bowlingScorecard: [],
-      fallOfWickets: [],
-      currentStriker: null,
-      currentNonStriker: null,
-      currentBowler: null,
-      currentOverNumber: 1,
-      currentBallNumber: 1,
-      currentPartnership: { runs: 0, balls: 0 }
-    };
     
     // Calculate real-time metrics
     const currentOvers = currentInnings.totalOvers + (currentInnings.totalBalls / 6);
