@@ -210,6 +210,12 @@ export const matchController = {
     res.json(new ApiResponse(200, 'Scheduled matches retrieved', matches, pagination));
   }),
 
+  // 🆕 Flutter compatibility: Proxy /matches/:id/scorecard → scoring service
+  getMatchScorecard: catchAsync(async (req, res) => {
+    const { scoringService } = await import('../scoring/scoring.service.js');
+    const scorecard = await scoringService.getFullScorecard(req.params.id);
+    res.json(new ApiResponse(200, 'Scorecard retrieved', scorecard));
+  }),
 
   // Start match (triggers toss phase)
   startMatch: catchAsync(async (req, res) => {
@@ -219,3 +225,4 @@ export const matchController = {
 };
 
 export default matchController;
+
