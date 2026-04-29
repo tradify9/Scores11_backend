@@ -1,4 +1,5 @@
 import { matchService } from './match.service.js';
+import scoringService from '../scoring/scoring.service.js';
 import ApiResponse from '../../utils/ApiResponse.js';
 import catchAsync from '../../utils/catchAsync.js';
 import ApiError from '../../utils/ApiError.js';
@@ -210,9 +211,8 @@ export const matchController = {
     res.json(new ApiResponse(200, 'Scheduled matches retrieved', matches, pagination));
   }),
 
-  // 🆕 Flutter compatibility: Proxy /matches/:id/scorecard → scoring service  
+// 🆕 Flutter compatibility: Proxy /matches/:id/scorecard → scoring service  
   getMatchScorecard: catchAsync(async (req, res) => {
-    const scoringService = await import('../scoring/scoring.service.js').then(module => module.default);
     const scorecard = await scoringService.getFullScorecard(req.params.id);
     res.json(new ApiResponse(200, 'Scorecard retrieved', scorecard));
   }),
