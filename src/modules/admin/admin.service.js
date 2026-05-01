@@ -982,30 +982,48 @@ export const adminService = {
 
   // Player Management
   getAllPlayers: async (query) => {
-    const { page = 1, limit = 10, search, role, team, isVerified } = query;
-    const filter = {};
-    
-    if (search) {
-      filter.playerName = { $regex: search, $options: 'i' };
-    }
-    if (role) filter.role = role;
-    if (team) filter.team = team;
-    if (isVerified) filter.isVerified = isVerified === 'true';
+  let { page = 1, limit = 10, search, role, team, isVerified } = query;
 
-    const players = await Player.find(filter)
-      .populate('user', 'name email phone')
-      .populate('team', 'name shortName')
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
+  // Ensure numbers
+  page = parseInt(page);
+  limit = parseInt(limit);
 
-    const total = await Player.countDocuments(filter);
+  const filter = {};
 
-    return {
-      players,
-      pagination: paginate(total, page, limit)
-    };
-  },
+  // 🔍 Search filter
+  if (search && search.trim() !== "") {
+    filter.playerName = { $regex: search.trim(), $options: 'i' };
+  }
+
+  // 🎭 Role filter
+  if (role && role !== "") {
+    filter.role = role;
+  }
+
+  // 🏏 Team filter
+  if (team && team !== "") {
+    filter.team = team;
+  }
+
+  // ✅ FIXED isVerified filter (IMPORTANT)
+  if (isVerified !== undefined && isVerified !== "") {
+    filter.isVerified = isVerified === 'true';
+  }
+
+  const players = await Player.find(filter)
+    .populate('user', 'name email phone')
+    .populate('team', 'name shortName')
+    .sort({ createdAt: -1 })
+    .skip((page - 1) * limit)
+    .limit(limit);
+
+  const total = await Player.countDocuments(filter);
+
+  return {
+    players,
+    pagination: paginate(total, page, limit)
+  };
+},
 
   getPlayerStats: async (query) => {
     const { playerId, role, team } = query;

@@ -115,6 +115,7 @@ export const playerController = {
     }));
   }),
 
+<<<<<<< HEAD
   // 🔥 NEW: Get player matches (public)
   getPlayerMatches: catchAsync(async (req, res) => {
     const { playerMatchesService } = await import('./playerMatches.service.js');
@@ -126,6 +127,14 @@ export const playerController = {
     await playerService.deletePlayer(req.params.id, req.user.userId);
     res.json(new ApiResponse(200, 'Player deleted successfully'));
   })
+=======
+ delete: catchAsync(async (req, res) => {
+  const result = await playerService.delete(req.params.id);
+
+  res.json(new ApiResponse(200, 'Player deleted successfully', result));
+}),
+
+>>>>>>> 40461d1 ( new update)
 };
 
 export default playerController;
