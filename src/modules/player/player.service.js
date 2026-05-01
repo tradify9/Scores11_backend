@@ -79,7 +79,9 @@ export const playerService = {
     const { page, limit, skip, sortBy, sortOrder, all } = getPagination(query);
     
     const filter = { isActive: true };
-    if (!all && userId) {
+    // FIXED: Only filter by user if explicitly requested (?my=true)
+    // Public by default for team playing11 creation
+    if (query.my === 'true' && userId) {
       filter.user = userId;
     }
     if (query.role) filter.role = query.role;
@@ -106,8 +108,9 @@ export const playerService = {
 
   // 🔥 NEW: Get MY players (user-specific, paginated)
   getMyPlayers: async (query, userId) => {
-    query.user = userId;  // Force user filter
-    return playerService.getAllPlayers(query, userId);
+    // Pass explicit my=true for backward compatibility
+    const myQuery = { ...query, my: 'true' };
+    return playerService.getAllPlayers(myQuery, userId);
   },
 
   // 🔥 NEW: Search MY players only
