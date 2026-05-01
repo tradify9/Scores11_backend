@@ -28,14 +28,11 @@ router.get('/my', authenticate, playerController.getMyPlayers);
 router.post('/', authenticate, playerController.createPlayer);
 router.get('/', authenticate, playerController.getAllPlayers);
 router.get('/team/:teamId', authenticate, playerController.getPlayersByTeam);
-<<<<<<< HEAD
-=======
 router.get('/:id', authenticate, playerController.getPlayerById);
 router.get('/:id/stats', playerController.getPlayerStats);
 router.get('/:id/performance', playerController.getPlayerPerformance);
 router.put('/:id', authenticate, playerController.updatePlayer);
 router.delete('/:id', authenticate, playerController.delete);
->>>>>>> 40461d1 ( new update)
 
 /* =========================
    ⚠️ DYNAMIC ROUTES (ALWAYS LAST)
@@ -48,6 +45,6 @@ router.get('/:id([0-9a-fA-F]{24})/stats', playerController.getPlayerStats);
 router.get('/:id([0-9a-fA-F]{24})/performance', playerController.getPlayerPerformance);
 
 router.put('/:id([0-9a-fA-F]{24})', authenticate, playerController.updatePlayer);
-router.delete('/:id([0-9a-fA-F]{24})', authenticate, playerController.deletePlayer);
+router.delete('/:id([0-9a-fA-F]{24})', authenticate, playerController.delete);
 
 export default router;

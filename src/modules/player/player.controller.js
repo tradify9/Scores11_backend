@@ -1,4 +1,5 @@
 import { playerService } from './player.service.js';
+import { playerMatchesService } from './playerMatches.service.js';
 import { performanceService } from '../performance/performance.service.js';
 import { createPlayerSchema } from './player.validation.js';
 import ApiResponse from '../../utils/ApiResponse.js';
@@ -23,6 +24,11 @@ export const playerController = {
   getPlayerByIdPublic: catchAsync(async (req, res) => {
     const player = await playerService.getPlayerByIdPublic(req.params.id);
     res.json(new ApiResponse(200, 'Player retrieved', player));
+  }),
+
+  getPlayerMatches: catchAsync(async (req, res) => {
+    const { matches, pagination, player } = await playerMatchesService.getPlayerMatches(req.params.id, req.query);
+    res.json(new ApiResponse(200, 'Player matches retrieved successfully', matches, { pagination, player }));
   }),
 
   updatePlayer: catchAsync(async (req, res) => {
@@ -115,26 +121,10 @@ export const playerController = {
     }));
   }),
 
-<<<<<<< HEAD
-  // 🔥 NEW: Get player matches (public)
-  getPlayerMatches: catchAsync(async (req, res) => {
-    const { playerMatchesService } = await import('./playerMatches.service.js');
-    const matchesData = await playerMatchesService.getPlayerMatches(req.params.id, req.query);
-    res.json(new ApiResponse(200, 'Player matches retrieved', matchesData));
+  delete: catchAsync(async (req, res) => {
+    const result = await playerService.delete(req.params.id);
+    res.json(new ApiResponse(200, 'Player deleted successfully', result));
   }),
-
-  deletePlayer: catchAsync(async (req, res) => {
-    await playerService.deletePlayer(req.params.id, req.user.userId);
-    res.json(new ApiResponse(200, 'Player deleted successfully'));
-  })
-=======
- delete: catchAsync(async (req, res) => {
-  const result = await playerService.delete(req.params.id);
-
-  res.json(new ApiResponse(200, 'Player deleted successfully', result));
-}),
-
->>>>>>> 40461d1 ( new update)
 };
 
 export default playerController;

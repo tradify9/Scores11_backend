@@ -243,24 +243,11 @@ export const playerService = {
     };
   },
 
-<<<<<<< HEAD
-  deletePlayer: async (playerId, userId) => {
-    const player = await Player.findOne({ _id: playerId, user: userId });
-    if (!player) throw new ApiError(404, 'Player not found or not authorized');
-    
-    // Soft delete
-    player.isActive = false;
-    player.playerName = `[DELETED] ${player.playerName}`;
-    await player.save();
-    
-    return player;
-=======
  delete: async (id) => {
   const player = await Player.findByIdAndDelete(id);
 
   if (!player) {
     throw new ApiError(404, 'Player not found');
->>>>>>> 40461d1 ( new update)
   }
 
   return {
