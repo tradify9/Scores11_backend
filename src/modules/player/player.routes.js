@@ -28,6 +28,14 @@ router.get('/my', authenticate, playerController.getMyPlayers);
 router.post('/', authenticate, playerController.createPlayer);
 router.get('/', authenticate, playerController.getAllPlayers);
 router.get('/team/:teamId', authenticate, playerController.getPlayersByTeam);
+<<<<<<< HEAD
+=======
+router.get('/:id', authenticate, playerController.getPlayerById);
+router.get('/:id/stats', playerController.getPlayerStats);
+router.get('/:id/performance', playerController.getPlayerPerformance);
+router.put('/:id', authenticate, playerController.updatePlayer);
+router.delete('/:id', authenticate, playerController.delete);
+>>>>>>> 40461d1 ( new update)
 
 /* =========================
    ⚠️ DYNAMIC ROUTES (ALWAYS LAST)
