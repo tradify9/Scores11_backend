@@ -6,18 +6,18 @@ import { getPagination } from '../../utils/pagination.js';
 
 export const playerService = {
   createPlayer: async (playerData, userId) => {
-    const user = await User.findById(userId);
-    if (!user) throw new ApiError(404, 'User not found');
+    // 🔥 PUBLIC PLAYER CREATION: Allow creating players without login
+    // If userId is provided, verify user exists. If not, create player without user association.
+    let user = null;
+    if (userId) {
+      user = await User.findById(userId);
+      if (!user) throw new ApiError(404, 'User not found');
+    }
 
-    // Duplicate check removed - always allow multiple players per user
-    // const existingPlayer = await Player.findOne({ user: userId });
-    // if (existingPlayer) {
-    //   throw new ApiError(400, 'Player profile already exists for this user');
-    // }
-
+    // 🔥 Public player: create without user association if no userId
     const player = await Player.create({
       ...playerData,
-      user: userId
+      user: userId || null  // Allow null for public players
     });
 
     if (playerData.team) {

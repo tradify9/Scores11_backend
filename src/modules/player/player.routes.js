@@ -14,6 +14,9 @@ router.get('/public', playerController.getAllPlayers);
 router.get('/public/:id', playerController.getPlayerByIdPublic);
 router.get('/public/:id/matches', playerController.getPlayerMatches); // 🔥 NEW: Player-specific matches (public)
 
+// 🔥 PUBLIC PLAYER CREATION - Anyone can create players (no login required)
+router.post('/public/create', playerController.createPlayer);
+
 
 
 /* =========================
@@ -25,6 +28,7 @@ router.get('/my', authenticate, playerController.getMyPlayers);
 /* =========================
    OTHER PROTECTED ROUTES
 ========================= */
+// Protected player creation (for logged in users - kept for backward compatibility)
 router.post('/', authenticate, playerController.createPlayer);
 router.get('/', authenticate, playerController.getAllPlayers);
 router.get('/team/:teamId', authenticate, playerController.getPlayersByTeam);

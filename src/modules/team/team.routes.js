@@ -11,6 +11,7 @@ const router = express.Router();
 router.get('/search', teamController.searchTeams);
 router.get('/rankings', teamController.getTeamRankings);
 router.get('/public/:id', teamController.getTeamByIdPublic);
+router.get('/public/:id/players', teamController.getTeamByIdPublic); // 🔥 PUBLIC - Get team with all players (anyone can view team lineup)
 router.get('/list', teamController.getAllTeams);
 router.get('/list/populate', teamController.getAllTeams);
 
