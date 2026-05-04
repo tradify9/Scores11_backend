@@ -6,7 +6,8 @@ import { ROLES } from '../../constants/roles.js';
 
 const router = express.Router();
 
-// Public routes
+// Public routes - All reading endpoints are public
+router.get('/', blogController.getPublishedBlogs);  // ✅ FIX: Make root /blogs public for reading
 router.get('/published', blogController.getPublishedBlogs);
 router.get('/featured', blogController.getFeaturedBlogs);
 router.get('/recent', blogController.getRecentBlogs);
@@ -14,9 +15,9 @@ router.get('/categories', blogController.getCategories);
 router.get('/tags', blogController.getTags);
 router.get('/category/:category', blogController.getBlogsByCategory);
 router.get('/slug/:slug', blogController.getBlogBySlug);
-router.get('/:id', blogController.getBlogById);
+router.get('/id/:id', blogController.getBlogById);  // ✅ FIX: Use explicit /id/:id to avoid conflict
 
-// Protected routes
+// Protected routes - All writing endpoints require auth
 router.post('/', authenticate, authorize(ROLES.ADMIN), blogController.createBlog);
 router.put('/:id', authenticate, blogController.updateBlog);
 router.post('/:id/publish', authenticate, blogController.publishBlog);
@@ -27,6 +28,6 @@ router.patch('/:id/featured', authenticate, authorize(ROLES.ADMIN), blogControll
 router.delete('/:id', authenticate, blogController.deleteBlog);
 
 // Admin routes
-router.get('/', authenticate, authorize(ROLES.ADMIN), blogController.getAllBlogs);
+// router.get('/all', authenticate, authorize(ROLES.ADMIN), blogController.getAllBlogs);  // Removed duplicate
 
 export default router;
