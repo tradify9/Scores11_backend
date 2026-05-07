@@ -5,11 +5,20 @@ const playerSchema = new mongoose.Schema({
   playerName: { type: String, required: true, trim: true },
   jerseyNumber: { type: Number, min: 0, max: 999 },
   role: { type: String, enum: ['batsman', 'bowler', 'all-rounder', 'wicket-keeper'] },
-  battingStyle: { type: String, enum: ['right-hand', 'left-hand', 'right-hand bat', 'left-hand bat'] },
-  bowlingStyle: { type: String, enum: ['right-arm-fast', 'right-arm-medium', 'left-arm-fast', 'left-arm-medium', 'spin', 'none', 'right-arm fast', 'right-arm medium', 'off-spin', 'leg-spin'] },
+  // Support both UI format (with space) and legacy format (with hyphen)
+  battingStyle: { type: String, enum: ['right-hand bat', 'left-hand bat', 'right-hand', 'left-hand'] },
+  bowlingStyle: { 
+    type: String, 
+    enum: [
+      'right-arm fast', 'right-arm medium', 'left-arm fast', 'left-arm medium',
+      'off-spin', 'leg-spin', 'none',
+      'right-arm-fast', 'right-arm-medium', 'left-arm-fast', 'left-arm-medium',
+      'off spin', 'leg spin'
+    ] 
+  },
   dateOfBirth: Date,
   nationality: { type: String, default: 'India' },
-  phone: { type: String }, // Phone number for player
+  phone: { type: String },
   profileImage: { publicId: String, url: String },
   team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
   teamName: { type: String, trim: true },
