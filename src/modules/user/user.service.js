@@ -91,9 +91,9 @@ export const userService = {
     return user;
   },
 
-  // Registration & Authentication
+// Registration & Authentication
   createUser: async (userData) => {
-    const { email, password, username, fullName, phone } = userData;
+    const { email, password, username, fullName, phone, role } = userData;
     
     // Check if user exists
     const existingUser = await User.findOne({
@@ -112,6 +112,10 @@ export const userService = {
     // Generate referral code
     const referralCode = `${username}_${crypto.randomBytes(3).toString('hex')}`.toUpperCase();
     
+    // Accept role from request, default to 'user', but allow 'player', 'umpire', 'scorer'
+    const validRoles = ['user', 'player', 'umpire', 'scorer', 'admin', 'captain', 'manager'];
+    const userRole = validRoles.includes(role) ? role : 'user';
+    
     const user = await User.create({
       email,
       password: hashedPassword,
@@ -119,13 +123,37 @@ export const userService = {
       fullName,
       phone,
       referralCode,
-      role: 'user',
+      role: userRole,
       isActive: true
     });
     
     // Handle referral if provided
     if (userData.referralCode) {
       await userService.handleReferral(userData.referralCode, user._id);
+    }
+    
+    // AUTO-CREATE PLAYER PROFILE when user registers with 'player' role
+    if (userRole === 'player') {
+      try {
+        const Player = (await import('../player/player.model.js')).default;
+        
+        // Create player profile linked to this user
+        await Player.create({
+          user: user._id,
+          playerName: fullName,
+          role: userData.playerRole || 'batsman', // Default role
+          battingStyle: userData.battingStyle || 'right-hand bat',
+          bowlingStyle: userData.bowlingStyle || 'none',
+          phone: phone,
+          dateOfBirth: userData.dateOfBirth,
+          nationality: userData.nationality || 'India'
+        });
+        
+        console.log(`[PLAYER-CREATE] Auto-created player profile for user: ${user.email} with role: ${userRole}`);
+      } catch (playerError) {
+        console.error('[PLAYER-CREATE] Error auto-creating player profile:', playerError.message);
+        // Don't fail registration if player creation fails
+      }
     }
     
     return user;
