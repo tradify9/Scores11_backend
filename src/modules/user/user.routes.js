@@ -22,6 +22,10 @@ router.get('/users/:id/avatar', userController.getUserAvatarPublic);
 router.get('/list', userController.getAllUsers);
 router.get('/leaderboard', userController.getLeaderboard);
 
+/* ---------- PUBLIC PLAYERS API ---------- */
+// Public players list - for captains to search and add players to teams
+router.get('/players/public', userController.getPublicPlayers);
+
 /* ---------- AUTHENTICATED ROUTES ---------- */
 
 router.use(authenticate);

@@ -47,9 +47,12 @@ export const userService = {
     // Generate referral code
     const referralCode = `${username}_${crypto.randomBytes(3).toString('hex')}`.toUpperCase();
     
-    // Accept role from request, default to 'user', but allow 'player', 'umpire', 'scorer'
+// Accept role from request, default to 'user', but allow 'player', 'umpire', 'scorer'
     const validRoles = ['user', 'player', 'umpire', 'scorer', 'admin', 'captain', 'manager'];
     const userRole = validRoles.includes(role) ? role : 'user';
+    
+    // Set isPublicPlayer to true if user registers with role = "player"
+    const isPublicPlayer = userRole === 'player';
     
     const user = await User.create({
       email,
@@ -59,7 +62,8 @@ export const userService = {
       phone,
       referralCode,
       role: userRole,
-      isActive: true
+      isActive: true,
+      isPublicPlayer: isPublicPlayer
     });
     
     // Handle referral if provided
@@ -975,7 +979,7 @@ export const userService = {
     return user.achievements || [];
   },
 
-  // Public avatar - returns Cloudinary URL or null
+// Public avatar - returns Cloudinary URL or null
   getUserAvatarPublic: async (userId) => {
     const user = await User.findById(userId).select('avatar').lean();
     if (!user || !user.avatar?.url || user.avatar.url === 'default-avatar-url') {
@@ -986,6 +990,51 @@ export const userService = {
       return user.avatar.url;
     }
     return null;
+  },
+
+  // Get Public Players - for captains to search and add players to teams
+  getPublicPlayers: async (query) => {
+    const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
+    
+    // Build filter: only players who are marked as public
+    const filter = {
+      role: 'player',
+      isPublicPlayer: true,
+      isActive: true,
+      isBlocked: false
+    };
+    
+    // Add search functionality
+    if (query.search) {
+      filter.$or = [
+        { fullName: { $regex: query.search, $options: 'i' } },
+        { username: { $regex: query.search, $options: 'i' } }
+      ];
+    }
+
+    // Add player type filter
+    if (query.playerType) {
+      filter['cricketProfile.playerType'] = query.playerType;
+    }
+
+    const [players, total] = await Promise.all([
+      User.find(filter)
+        .select('-password -refreshTokens -fcmTokens -loginHistory -resetPasswordToken -emailVerificationToken -phoneVerificationCode')
+        .sort({ [sortBy]: sortOrder })
+        .skip(skip)
+        .limit(limit),
+      User.countDocuments(filter)
+    ]);
+
+    return {
+      players,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    };
   }
 };
 

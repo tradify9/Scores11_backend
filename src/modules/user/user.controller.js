@@ -273,7 +273,7 @@ getProfile: catchAsync(async (req, res) => {
     res.json(new ApiResponse(200, 'Achievements retrieved', achievements));
   }),
 
-  // Public avatar endpoint - no auth required for img tags
+// Public avatar endpoint - no auth required for img tags
   getUserAvatarPublic: catchAsync(async (req, res) => {
     const userId = req.params.id;
     const avatar = await userService.getUserAvatarPublic(userId);
@@ -283,6 +283,12 @@ getProfile: catchAsync(async (req, res) => {
       // Return default avatar
       res.redirect('https://via.placeholder.com/400x400/6B7280/FFFFFF?text=👤');
     }
+  }),
+
+  // Get public players - for captains to search and add players to teams
+  getPublicPlayers: catchAsync(async (req, res) => {
+    const { players, pagination } = await userService.getPublicPlayers(req.query);
+    res.json(new ApiResponse(200, 'Public players retrieved', players, pagination));
   })
 };
 

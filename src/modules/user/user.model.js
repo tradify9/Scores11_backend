@@ -244,7 +244,7 @@ const userSchema = new mongoose.Schema({
     }
   }],
   
-  // Account Status
+// Account Status
   isEmailVerified: {
     type: Boolean,
     default: false
@@ -266,6 +266,12 @@ const userSchema = new mongoose.Schema({
     default: false
   },
   blockedReason: String,
+  
+  // Public Player Visibility (for players to be searchable by captains)
+  isPublicPlayer: {
+    type: Boolean,
+    default: false
+  },
   
   // Login Activity
   lastLogin: {
