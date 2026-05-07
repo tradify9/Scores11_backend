@@ -11,8 +11,10 @@ export const createPlayerSchema = Joi.object({
   height: Joi.string(),
   weight: Joi.string(),
   bio: Joi.string().max(1000),// Optional bio field for player description
-team: Joi.string(),// Optional team field for player association    
-  teamName: Joi.string().optional().allow('') // Allow empty string for teamName when team is provided
+team: Joi.string(),// Optional team field for player association     
+  teamName: Joi.string().optional().allow(''), // Allow empty string for teamName when team is provided
+  phone: Joi.string().optional(), // Phone number for player
+  nationality: Joi.string().optional() // Nationality of player
 });
 
 export const updatePlayerSchema = Joi.object({
