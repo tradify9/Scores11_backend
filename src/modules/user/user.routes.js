@@ -23,8 +23,7 @@ router.get('/list', userController.getAllUsers);
 router.get('/leaderboard', userController.getLeaderboard);
 
 /* ---------- PUBLIC PLAYERS API ---------- */
-// Get all public players - for captains to search and add to teams
-// Returns only: role="player", isPublicPlayer=true, isActive=true, isBlocked=false
+// Get public players - for captains to search and add players to teams
 router.get('/players/public', userController.getPublicPlayers);
 
 /* ---------- AUTHENTICATED ROUTES ---------- */
