@@ -12,7 +12,10 @@ export const playerController = {
     if (error) {
       throw new ApiError(422, error.details[0].message);
     }
-    const player = await playerService.createPlayer(req.body, req.user.userId);
+    // Use optional chaining to handle both authenticated and public requests
+    // req.user may be undefined for public routes, so we pass undefined
+    const userId = req.user?.userId;
+    const player = await playerService.createPlayer(req.body, userId);
     res.status(201).json(new ApiResponse(201, 'Player created successfully', player));
   }),
 
