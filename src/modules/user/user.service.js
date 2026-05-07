@@ -67,24 +67,34 @@ export const userService = {
       await userService.handleReferral(userData.referralCode, user._id);
     }
     
-    // AUTO-CREATE PLAYER PROFILE when user registers with 'player' role
+// AUTO-CREATE PLAYER PROFILE when user registers with 'player' role
     if (userRole === 'player') {
       try {
         const Player = (await import('../player/player.model.js')).default;
         
-        // Create player profile linked to this user
-        await Player.create({
-          user: user._id,
+        // 🔥 FIXED: Create player profile properly linked to this user via user field
+        const player = await Player.create({
+          user: user._id,  // 🔥 CRITICAL: Link player to user
           playerName: fullName,
           role: userData.playerRole || 'batsman', // Default role
           battingStyle: userData.battingStyle || 'right-hand bat',
           bowlingStyle: userData.bowlingStyle || 'none',
           phone: phone,
           dateOfBirth: userData.dateOfBirth,
-          nationality: userData.nationality || 'India'
+          nationality: userData.nationality || 'India',
+          isActive: true
         });
         
-        console.log(`[PLAYER-CREATE] Auto-created player profile for user: ${user.email} with role: ${userRole}`);
+        // 🔥 Ensure the player reference is stored in user.cricketProfile for easy access
+        user.cricketProfile = {
+          playerId: player._id,
+          playerType: userData.playerRole || 'batsman',
+          battingStyle: userData.battingStyle || 'right-hand bat',
+          bowlingStyle: userData.bowlingStyle || 'none'
+        };
+        await user.save();
+        
+        console.log(`[PLAYER-CREATE] Auto-created player profile for user: ${user.email} (playerId: ${player._id})`);
       } catch (playerError) {
         console.error('[PLAYER-CREATE] Error auto-creating player profile:', playerError.message);
         // Don't fail registration if player creation fails

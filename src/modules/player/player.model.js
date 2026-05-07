@@ -39,6 +39,8 @@ const playerSchema = new mongoose.Schema({
 
 playerSchema.index({ playerName: 'text' });
 playerSchema.index({ team: 1 });
+// 🔥 FIX: Add index on user field for MY PLAYERS query
+playerSchema.index({ user: 1 });
 
 const Player = mongoose.model('Player', playerSchema);
 export default Player;
