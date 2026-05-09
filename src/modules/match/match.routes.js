@@ -36,6 +36,9 @@ router.get('/public/:id', matchController.getMatchByIdPublic);
 // 🆕 COMPATIBILITY: Flutter scorecard alias
 router.get('/:id/scorecard', matchController.getMatchScorecard);
 
+// ✅ FIX: Add missing match by ID route - Flutter app calls this
+router.get('/:id', matchController.getMatchById);
+
 router.get('/', matchController.getAllMatches);
 router.get('/list', matchController.getAllMatches);
 router.get('/my-matches', authenticate, matchController.getMyMatches); // Private owner view
