@@ -33,15 +33,16 @@ router.get('/search', matchController.searchMatches);
 router.get('/public/list', matchController.getAllMatches);
 router.get('/public/:id', matchController.getMatchByIdPublic);
 
+// Static routes FIRST (before param routes)
+router.get('/', matchController.getAllMatches);
+router.get('/list', matchController.getAllMatches);
+router.get('/my-matches', authenticate, matchController.getMyMatches); // Private owner view
+
 // 🆕 COMPATIBILITY: Flutter scorecard alias
 router.get('/:id/scorecard', matchController.getMatchScorecard);
 
 // ✅ FIX: Add missing match by ID route - Flutter app calls this
 router.get('/:id', matchController.getMatchById);
-
-router.get('/', matchController.getAllMatches);
-router.get('/list', matchController.getAllMatches);
-router.get('/my-matches', authenticate, matchController.getMyMatches); // Private owner view
 
 
 
