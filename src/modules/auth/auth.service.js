@@ -19,77 +19,112 @@ export const authService = {
   register: async (userData) => {
     const { email, password, name, phone, role } = userData;
 
-    // Check if user exists with email or phone
-    const existingUser = await User.findOne({
-      $or: [
-        { email: email?.toLowerCase() },
-        { phone }
-      ]
-    });
-    
-    if (existingUser) {
-      if (existingUser.email === email?.toLowerCase()) {
-        throw new ApiError(400, 'User already exists with this email');
+    try {
+      // Validate required fields
+      if (!email || !password || !name) {
+        throw new ApiError(400, 'Email, password, and name are required');
       }
-      if (existingUser.phone === phone) {
-        throw new ApiError(400, 'User already exists with this phone number');
+
+      // Check if user exists with email or phone
+      const existingUser = await User.findOne({
+        $or: [
+          { email: email?.toLowerCase() },
+          phone ? { phone } : null
+        ].filter(Boolean)
+      });
+      
+      if (existingUser) {
+        if (existingUser.email === email?.toLowerCase()) {
+          throw new ApiError(400, 'User already exists with this email');
+        }
+        if (existingUser.phone === phone && phone) {
+          throw new ApiError(400, 'User already exists with this phone number');
+        }
       }
-    }
 
-    const hashedPassword = await hashPassword(password);
-    
-    // Generate username from name
-    const username = name.toLowerCase().replace(/\s+/g, '_') + '_' + Math.random().toString(36).substring(2, 6);
-    
-    const user = await User.create({
-      email: email?.toLowerCase(),
-      password: hashedPassword,
-      fullName: name,
-      username,
-      phone,
-      role: role || 'user'
-    });
+      const hashedPassword = await hashPassword(password);
+      
+      // Generate username from name - ensure uniqueness
+      let username = name.toLowerCase().replace(/\s+/g, '_').substring(0, 20);
+      let counter = 1;
+      let finalUsername = username;
+      
+      while (await User.findOne({ username: finalUsername })) {
+        finalUsername = `${username}_${counter}`;
+        counter++;
+      }
+      
+      // Create user
+      const user = await User.create({
+        email: email?.toLowerCase(),
+        password: hashedPassword,
+        fullName: name,
+        username: finalUsername,
+        phone: phone || null,
+        role: role || 'user'
+      });
 
-    await Wallet.create({
-      user: user._id,
-      balance: 0
-    });
-
-    const { accessToken, refreshToken } = generateTokenPair(user._id, user.role);
-
-    await User.findByIdAndUpdate(user._id, { refreshToken });
-
-    // Send welcome SMS notification
-    if (phone) {
+      // Create wallet - wrap in try-catch to not fail registration
       try {
-        await sendRegistrationSuccessSMS(phone, name);
-      } catch (smsError) {
-        // Don't fail registration if SMS fails
-        console.error('Welcome SMS failed:', smsError.message);
+        await Wallet.create({
+          user: user._id,
+          balance: 0
+        });
+      } catch (walletError) {
+        console.error('Wallet creation failed (non-fatal):', walletError.message);
+        // Continue with registration even if wallet creation fails
       }
-    }
 
-    // Send welcome email
-    if (email) {
+      // Generate tokens
+      let accessToken, refreshToken;
       try {
-        await sendWelcomeEmail(email, name);
-        console.log(`Welcome email sent to: ${email}`);
-      } catch (emailError) {
-        // Don't fail registration if email fails
-        console.error('Welcome email failed:', emailError.message);
-      }
-    }
+        const tokenPair = generateTokenPair(user._id, user.role);
+        accessToken = tokenPair.accessToken;
+        refreshToken = tokenPair.refreshToken;
 
-    const userResponse = user.toJSON();
-    
-    // Add 'name' field to response for Flutter compatibility
-    userResponse.name = user.fullName;
-    
-    return {
-      user: userResponse,
-      accessToken,
-      refreshToken
-    };
+        // Save refresh token to user
+        await User.findByIdAndUpdate(user._id, { refreshToken });
+      } catch (tokenError) {
+        console.error('Token generation error:', tokenError.message);
+        throw new ApiError(500, 'Failed to generate authentication tokens');
+      }
+
+      // Send welcome notifications asynchronously (don't block registration)
+      if (phone) {
+        try {
+          await sendRegistrationSuccessSMS(phone, name);
+        } catch (smsError) {
+          console.error('Welcome SMS failed (non-fatal):', smsError.message);
+        }
+      }
+
+      if (email) {
+        try {
+          await sendWelcomeEmail(email, name);
+          console.log(`Welcome email sent to: ${email}`);
+        } catch (emailError) {
+          console.error('Welcome email failed (non-fatal):', emailError.message);
+        }
+      }
+
+      const userResponse = user.toJSON();
+      
+      // Add 'name' field to response for Flutter compatibility
+      userResponse.name = user.fullName;
+      
+      return {
+        user: userResponse,
+        accessToken,
+        refreshToken
+      };
+    } catch (error) {
+      console.error('Registration error:', error);
+      if (error.name === 'MongoServerError' && error.code === 11000) {
+        const field = Object.keys(error.keyPattern)[0];
+        throw new ApiError(400, `${field} already exists`);
+      }
+      throw error;
+    }
   },
 
   // Login with email or phone
