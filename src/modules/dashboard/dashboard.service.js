@@ -70,6 +70,22 @@ export const dashboardService = {
         .limit(10)
         .lean();
 
+      const formatInningsScore = (innings) => {
+        if (!innings) return null;
+        const balls = innings.totalBalls || 0;
+        const completedOvers = Math.floor(balls / 6);
+        const remainingBalls = balls % 6;
+        return {
+          inningsNumber: innings.inningsNumber,
+          battingTeam: innings.battingTeam?.toString(),
+          bowlingTeam: innings.bowlingTeam?.toString(),
+          runs: innings.totalRuns || 0,
+          wickets: innings.totalWickets || 0,
+          overs: `${completedOvers}.${remainingBalls}`,
+          isCompleted: !!innings.isCompleted
+        };
+      };
+
       // Transform matches for dashboard display
       return matches.map(match => ({
         id: match._id,
@@ -89,17 +105,24 @@ export const dashboardService = {
         status: match.status,
         format: match.format,
         scheduledDate: match.scheduledDate,
+        venue: match.venue?.name,
+        venueCity: match.venue?.city,
+        matchType: match.matchType,
+        currentInnings: match.currentInnings || 1,
+        score: match.score || {
+          team1: { runs: 0, wickets: 0, overs: '0.0' },
+          team2: { runs: 0, wickets: 0, overs: '0.0' }
+        },
         tournament: match.tournament ? {
           id: match.tournament._id,
           name: match.tournament.name
         } : null,
-        // Add innings info if available
-        innings: match.innings ? {
-          currentInnings: match.innings.currentInnings,
-          totalRuns: match.innings.totalRuns,
-          wickets: match.innings.wickets,
-          overs: match.innings.overs
-        } : null
+        innings: Array.isArray(match.innings)
+          ? match.innings.map(formatInningsScore).filter(Boolean)
+          : [],
+        currentInningsScore: Array.isArray(match.innings)
+          ? formatInningsScore(match.innings.find(i => i.inningsNumber === match.currentInnings) || match.innings[0])
+          : null
       }));
     } catch (error) {
       console.error('getLiveMatches error:', error);
