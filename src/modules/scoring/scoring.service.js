@@ -39,22 +39,39 @@ if (!match.team1Lineup?.length || !match.team2Lineup?.length) {
   match.team2Lineup = team2?.players?.slice(0, 11) || [];
 }
 
+const tossWinnerId = match.toss?.winner?.toString();
+const tossDecision = (match.toss?.decision || 'bat').toString().toLowerCase();
+let firstInningsBattingTeam = match.team1;
+let firstInningsBowlingTeam = match.team2;
+
+if (tossWinnerId) {
+  const tossLoserTeam = tossWinnerId === match.team1.toString() ? match.team2 : match.team1;
+  if (tossDecision === 'bowl') {
+    firstInningsBattingTeam = tossLoserTeam;
+    firstInningsBowlingTeam = match.toss.winner;
+  } else {
+    firstInningsBattingTeam = match.toss.winner;
+    firstInningsBowlingTeam = tossLoserTeam;
+  }
+}
+
 // Set batting order (use provided or auto from toss)
 if (!match.battingOrder || !battingOrder.length) {
-  const battingTeamId = match.toss?.winner || match.team1;
-  const battingTeamLineup = battingTeamId.toString() === match.team1.toString() 
+  const battingTeamId = firstInningsBattingTeam;
+  const battingTeamLineup = battingTeamId.toString() === match.team1.toString()
     ? match.team1Lineup : match.team2Lineup;
   match.battingOrder = [{ team: battingTeamId, players: battingTeamLineup }];
 }
 match.battingOrder = battingOrder.length ? battingOrder : match.battingOrder;
+const effectiveBattingOrder = match.battingOrder || [];
 console.log('[SCORING] Batting order set:', match.battingOrder.length, 'teams');
     
     // Initialize first innings
     match.currentInnings = 1;
     match.innings.push({
       inningsNumber: 1,
-      battingTeam: match.toss?.winner || match.team1,
-      bowlingTeam: match.toss?.winner === match.team1 ? match.team2 : match.team1,
+      battingTeam: firstInningsBattingTeam,
+      bowlingTeam: firstInningsBowlingTeam,
       totalRuns: 0,
       totalWickets: 0,
       totalOvers: 0,
@@ -77,8 +94,7 @@ console.log('[SCORING] Batting order set:', match.battingOrder.length, 'teams');
     });
 
     // Initialize batting scorecard with playing XI
-    const firstInningsBattingTeam = match.toss?.winner || match.team1;
-    const battingTeamOrder = battingOrder.find(b => b.team.toString() === firstInningsBattingTeam.toString());
+    const battingTeamOrder = effectiveBattingOrder.find(b => b.team.toString() === firstInningsBattingTeam.toString());
     
     if (battingTeamOrder) {
       battingTeamOrder.players.forEach(playerId => {
