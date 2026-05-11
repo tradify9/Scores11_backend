@@ -288,7 +288,13 @@ getProfile: catchAsync(async (req, res) => {
   // Get public players - for captains to search and add players to teams
   getPublicPlayers: catchAsync(async (req, res) => {
     const { players, pagination } = await userService.getPublicPlayers(req.query);
-    res.json(new ApiResponse(200, 'Public players retrieved', players, pagination));
+    res.json({
+      statusCode: 200,
+      message: 'Public players retrieved',
+      success: true,
+      data: players,
+      pagination
+    });
   })
 };
 

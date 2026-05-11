@@ -155,10 +155,15 @@ export const teamService = {
     if (!team) throw new ApiError(404, 'Team not found');
     if (team.owner.toString() !== userId) throw new ApiError(403, 'Not authorized');
 
-    const player = await Player.findById(playerId);
+    let player = await Player.findById(playerId);
+    if (!player) {
+      player = await Player.findOne({ user: playerId });
+    }
     if (!player) throw new ApiError(404, 'Player not found');
 
-    if (team.players.includes(playerId)) {
+    const resolvedPlayerId = player._id.toString();
+
+    if (team.players.some(p => p.toString() === resolvedPlayerId)) {
       throw new ApiError(400, 'Player already in team');
     }
 
@@ -166,10 +171,10 @@ export const teamService = {
       throw new ApiError(400, 'Team is full (max 25 players)');
     }
 
-    team.players.push(playerId);
+    team.players.push(player._id);
     await team.save();
 
-    await Player.findByIdAndUpdate(playerId, { team: teamId });
+    await Player.findByIdAndUpdate(player._id, { team: teamId });
 
     return await Team.findById(teamId)
       .populate('players', 'playerName name jerseyNumber role');
