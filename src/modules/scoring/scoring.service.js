@@ -753,7 +753,7 @@ console.log('[LIVE] getLiveScore populated:', {
     let battingTeam, bowlingTeam;
     if (inningsNumber === 1) {
       if (match.toss?.winner) {
-        if (match.toss.decision === 'BAT') {
+        if ((match.toss.decision || 'bat').toString().toLowerCase() === 'bat') {
           battingTeam = match.toss.winner;
           bowlingTeam = match.toss.winner.toString() === match.team1.toString() ? match.team2 : match.team1;
         } else {
@@ -859,8 +859,9 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
 
     // Check if match is over
     if (match.currentInnings === 1) {
+      await match.save();
       // First innings completed, start second innings
-      await scoringService.startInnings(matchId, 2);
+      return await scoringService.startInnings(matchId, 2);
     } else {
       // Match completed
       match.status = MATCH_STATUS.COMPLETED;
@@ -873,7 +874,14 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
         const winner = match.innings[1].battingTeam;
         if (!match.result) match.result = {};
         match.result.winner = winner;
-        match.result.margin = `${secondInningsRuns - firstInningsRuns} runs`;
+        const wicketsLeft = Math.max(0, 10 - (match.innings[1].totalWickets || 0));
+        match.result.margin = `${wicketsLeft} wickets`;
+        match.result.method = 'by wickets';
+      } else if (firstInningsRuns > secondInningsRuns) {
+        const winner = match.innings[0].battingTeam;
+        if (!match.result) match.result = {};
+        match.result.winner = winner;
+        match.result.margin = `${firstInningsRuns - secondInningsRuns} runs`;
         match.result.method = 'by runs';
       } else if (secondInningsRuns === firstInningsRuns) {
         if (!match.result) match.result = {};
