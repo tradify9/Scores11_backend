@@ -98,13 +98,29 @@ export const matchService = {
     }
     
     // ✅ CREATE MATCH
+    const resolveScheduledDate = () => {
+      if (!matchData.scheduledDate) return new Date();
+
+      const rawDate = matchData.scheduledDate.toString();
+      if (rawDate.includes('T')) return new Date(rawDate);
+
+      if (matchData.startTime) {
+        return new Date(`${rawDate}T${matchData.startTime}:00`);
+      }
+
+      return new Date(rawDate);
+    };
+
+    const scheduledAt = resolveScheduledDate();
+
     const newMatchData = {
       team1: team1Id,
       team2: team2Id,
       tournament: tournamentId,
       matchNumber,
       createdBy: userId,
-      scheduledDate: matchData.scheduledDate || new Date(),
+      scheduledDate: scheduledAt,
+      startTime: scheduledAt,
       status: MATCH_STATUS.SCHEDULED,
       format: matchData.format || 't20',
       matchType: matchData.matchType || 'league',
