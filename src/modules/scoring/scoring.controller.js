@@ -44,7 +44,7 @@ export const scoringController = {
       const result = await scoringService.initializeMatch(
         req.params.matchId, 
         req.body, 
-        req.user.userId
+        req.user?.userId || req.user?._id || null
       );
       res.status(200).json({
         success: true,
