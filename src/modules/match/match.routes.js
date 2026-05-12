@@ -77,7 +77,7 @@ router.get('/my-matches', authenticate, matchController.getMyMatches);
 router.patch('/:id/status', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.PLAYER, ROLES.USER), matchController.updateMatchStatus);
 router.patch('/:id/start', authenticate, matchController.startMatch);
 router.patch('/:id/schedule', authenticate, authorize(ROLES.ADMIN), matchController.scheduleMatch);
-router.patch('/:id/toss', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), matchController.updateToss);
+router.patch('/:id/toss', matchController.updateToss);
 router.patch('/:id/result', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateResult);
 router.patch('/:id/officials', authenticate, authorize(ROLES.ADMIN), matchController.setOfficials);
 router.patch(

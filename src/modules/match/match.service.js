@@ -452,8 +452,12 @@ export const matchService = {
     if (!match || !match.isActive) throw new ApiError(404, 'Match not found or inactive');
     if (match.toss) throw new ApiError(400, 'Toss already completed for this match');
 
-    if (match.status !== MATCH_STATUS.SCHEDULED && match.status !== MATCH_STATUS.READY) {
-      throw new ApiError(400, 'Toss can only be updated for scheduled or ready matches');
+    if (
+      match.status !== MATCH_STATUS.SCHEDULED &&
+      match.status !== MATCH_STATUS.READY &&
+      match.status !== MATCH_STATUS.TEAM_SELECTING
+    ) {
+      throw new ApiError(400, 'Toss can only be updated for scheduled, ready, or team selecting matches');
     }
 
     // Validate winner is one of the teams
