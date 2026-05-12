@@ -996,10 +996,11 @@ export const userService = {
   getPublicPlayers: async (query) => {
     const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
     
-    // Build filter: only players who are marked as public
+    // Build filter from User model: every active user registered with role "player"
+    // must be searchable in the Flutter player search screen. Older player
+    // accounts may not have isPublicPlayer=true, so do not depend on that flag.
     const filter = {
       role: 'player',
-      isPublicPlayer: true,
       isActive: true,
       isBlocked: false
     };
@@ -1008,7 +1009,9 @@ export const userService = {
     if (query.search) {
       filter.$or = [
         { fullName: { $regex: query.search, $options: 'i' } },
-        { username: { $regex: query.search, $options: 'i' } }
+        { username: { $regex: query.search, $options: 'i' } },
+        { email: { $regex: query.search, $options: 'i' } },
+        { phone: { $regex: query.search, $options: 'i' } }
       ];
     }
 
