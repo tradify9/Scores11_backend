@@ -14,10 +14,63 @@ const generateOTP = () => {
 // OTP expiry time (10 minutes)
 const OTP_EXPIRY = 10 * 60 * 1000;
 
+const normalizePlayerRole = (value) => {
+  const role = value?.toString().toLowerCase();
+  if (['batsman', 'bowler', 'all-rounder', 'wicket-keeper'].includes(role)) {
+    return role;
+  }
+  if (role === 'allrounder' || role === 'all rounder') return 'all-rounder';
+  if (role === 'wicket keeper' || role === 'wk') return 'wicket-keeper';
+  return 'batsman';
+};
+
+const normalizeUserBattingStyle = (value) => {
+  const style = value?.toString().toLowerCase();
+  if (style === 'left-hand bat' || style === 'left-hand' || style === 'lhb') return 'left-hand';
+  return 'right-hand';
+};
+
+const normalizePlayerBattingStyle = (value) => {
+  const style = value?.toString().toLowerCase();
+  if (style === 'left-hand bat' || style === 'left-hand' || style === 'lhb') return 'left-hand bat';
+  return 'right-hand bat';
+};
+
+const normalizeUserBowlingStyle = (value) => {
+  const style = value?.toString().toLowerCase();
+  if (style === 'right-arm fast' || style === 'right-arm-fast') return 'right-arm-fast';
+  if (style === 'right-arm medium' || style === 'right-arm-medium') return 'right-arm-medium';
+  if (style === 'left-arm fast' || style === 'left-arm-fast') return 'left-arm-fast';
+  if (style === 'left-arm medium' || style === 'left-arm-medium') return 'left-arm-medium';
+  if (style === 'off-spin' || style === 'off spin' || style === 'leg-spin' || style === 'leg spin' || style === 'spin') {
+    return 'spin';
+  }
+  return 'none';
+};
+
+const normalizePlayerBowlingStyle = (value) => {
+  const style = value?.toString().toLowerCase();
+  if (style === 'right-arm-fast') return 'right-arm fast';
+  if (style === 'right-arm-medium') return 'right-arm medium';
+  if (style === 'left-arm-fast') return 'left-arm fast';
+  if (style === 'left-arm-medium') return 'left-arm medium';
+  if (style === 'off spin') return 'off-spin';
+  if (style === 'leg spin') return 'leg-spin';
+  if (['right-arm fast', 'right-arm medium', 'left-arm fast', 'left-arm medium', 'off-spin', 'leg-spin'].includes(style)) {
+    return style;
+  }
+  return 'none';
+};
+
 export const authService = {
   // Register new user
   register: async (userData) => {
-    const { email, password, name, phone, role } = userData;
+      const { email, password, name, phone, role } = userData;
+      const userRole = role || 'user';
+      const isPlayer = userRole === 'player';
+      const playerType = normalizePlayerRole(userData.playerRole || userData.playerType);
+      const userBattingStyle = normalizeUserBattingStyle(userData.battingStyle);
+      const userBowlingStyle = normalizeUserBowlingStyle(userData.bowlingStyle);
 
     try {
       // Validate required fields
@@ -61,8 +114,39 @@ export const authService = {
         fullName: name,
         username: finalUsername,
         phone: phone || null,
-        role: role || 'user'
+        role: userRole,
+        isPublicPlayer: isPlayer,
+        cricketProfile: isPlayer
+          ? {
+              playerType,
+              battingStyle: userBattingStyle,
+              bowlingStyle: userBowlingStyle,
+              preferredRole: [playerType]
+            }
+          : undefined
       });
+
+      if (isPlayer) {
+        try {
+          const Player = (await import('../player/player.model.js')).default;
+          const player = await Player.create({
+            user: user._id,
+            playerName: name,
+            role: playerType,
+            battingStyle: normalizePlayerBattingStyle(userData.battingStyle),
+            bowlingStyle: normalizePlayerBowlingStyle(userData.bowlingStyle),
+            phone: phone || undefined,
+            dateOfBirth: userData.dateOfBirth || undefined,
+            nationality: userData.nationality || 'India',
+            isActive: true
+          });
+
+          user.cricketProfile.playerId = player._id;
+          await user.save();
+        } catch (playerError) {
+          console.error('Player profile creation failed (non-fatal):', playerError.message);
+        }
+      }
 
       // Create wallet - wrap in try-catch to not fail registration
       try {

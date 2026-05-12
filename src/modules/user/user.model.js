@@ -97,6 +97,10 @@ const userSchema = new mongoose.Schema({
   
   // Cricket Specific
   cricketProfile: {
+    playerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Player'
+    },
     playerType: {
       type: String,
       enum: ['batsman', 'bowler', 'all-rounder', 'wicket-keeper']
