@@ -14,8 +14,8 @@ router.get('/list', tournamentController.getAllTournaments);
 
 // Protected routes
 router.post('/', authenticate, tournamentController.createTournament);
-router.get('/', authenticate, tournamentController.getAllTournaments);
-router.get('/:id', authenticate, tournamentController.getTournamentById);
+router.get('/', tournamentController.getAllTournaments);
+router.get('/:id', tournamentController.getTournamentById);
 router.put('/:id', authenticate, tournamentController.updateTournament);
 router.delete('/:id', authenticate, tournamentController.deleteTournament);
 
@@ -27,7 +27,7 @@ router.delete('/:id/register', authenticate, tournamentController.unregisterTeam
 router.patch('/:id/status', authenticate, authorize(ROLES.ADMIN), tournamentController.updateStatus);
 
 // Points table
-router.get('/:id/points-table', authenticate, tournamentController.getPointsTable);
+router.get('/:id/points-table', tournamentController.getPointsTable);
 
 // Match generation
 router.post('/:id/generate/league', authenticate, tournamentController.generateLeagueMatches);
@@ -35,9 +35,9 @@ router.post('/:id/generate/knockout', authenticate, tournamentController.generat
 router.post('/:id/generate-fixtures', authenticate, tournamentController.generateFixtures);
 
 // Get tournament matches/fixtures
-router.get('/:id/matches', authenticate, tournamentController.getTournamentMatches);
+router.get('/:id/matches', tournamentController.getTournamentMatches);
 
 // Stats
-router.get('/:id/stats', authenticate, tournamentController.getTournamentStats);
+router.get('/:id/stats', tournamentController.getTournamentStats);
 
 export default router;
