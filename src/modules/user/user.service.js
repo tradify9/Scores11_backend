@@ -1,4 +1,5 @@
 import User from './user.model.js';
+import Player from '../player/player.model.js';
 import mongoose from 'mongoose';
 import { uploadImage, deleteImage } from '../../config/cloudinary.js';
 import ApiError from '../../utils/ApiError.js';
@@ -992,42 +993,111 @@ export const userService = {
     return null;
   },
 
-  // Get Public Players - for captains to search and add players to teams
+  // Get Public Players - combines User(role=player) and Player collection records
   getPublicPlayers: async (query) => {
     const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
-    
-    // Build filter from User model: every active user registered with role "player"
-    // must be searchable in the Flutter player search screen. Older player
-    // accounts may not have isPublicPlayer=true, so do not depend on that flag.
-    const filter = {
+    const search = query.search?.toString().trim();
+    const playerType = query.playerType?.toString().trim();
+    const sortDirection = Number(sortOrder) === 1 || sortOrder === 'asc' ? 1 : -1;
+
+    const userFilter = {
       role: 'player',
       isActive: true,
       isBlocked: false
     };
-    
-    // Add search functionality
-    if (query.search) {
-      filter.$or = [
-        { fullName: { $regex: query.search, $options: 'i' } },
-        { username: { $regex: query.search, $options: 'i' } },
-        { email: { $regex: query.search, $options: 'i' } },
-        { phone: { $regex: query.search, $options: 'i' } }
+
+    const playerFilter = { isActive: true };
+
+    if (search) {
+      const searchRegex = { $regex: search, $options: 'i' };
+      userFilter.$or = [
+        { fullName: searchRegex },
+        { username: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex }
+      ];
+      playerFilter.$or = [
+        { playerName: searchRegex },
+        { phone: searchRegex },
+        { teamName: searchRegex },
+        { nationality: searchRegex }
       ];
     }
 
-    // Add player type filter
-    if (query.playerType) {
-      filter['cricketProfile.playerType'] = query.playerType;
+    if (playerType) {
+      userFilter['cricketProfile.playerType'] = playerType;
+      playerFilter.role = playerType;
     }
 
-    const [players, total] = await Promise.all([
-      User.find(filter)
+    const [playerUsers, playerDocs] = await Promise.all([
+      User.find(userFilter)
         .select('-password -refreshTokens -fcmTokens -loginHistory -resetPasswordToken -emailVerificationToken -phoneVerificationCode')
-        .sort({ [sortBy]: sortOrder })
-        .skip(skip)
-        .limit(limit),
-      User.countDocuments(filter)
+        .lean(),
+      Player.find(playerFilter)
+        .populate('user', 'fullName username email avatar isActive isBlocked role')
+        .populate('team', 'name shortName')
+        .lean()
     ]);
+
+    const userIdsWithPlayerDocs = new Set(
+      playerDocs
+        .filter(player => player.user?._id)
+        .map(player => player.user._id.toString())
+    );
+
+    const normalizedUsers = playerUsers.map(user => ({
+      ...user,
+      isPublicPlayer: true,
+      cricketProfile: {
+        ...(user.cricketProfile || {}),
+        playerType: user.cricketProfile?.playerType || 'batsman'
+      },
+      source: 'user'
+    }));
+
+    const normalizedPlayers = playerDocs
+      .filter(player => !player.user?._id || !userIdsWithPlayerDocs.has(player.user._id.toString()))
+      .map(player => ({
+        _id: player._id,
+        fullName: player.playerName,
+        username: player.user?.username || '',
+        email: player.user?.email || '',
+        phone: player.phone || '',
+        role: 'player',
+        isPublicPlayer: true,
+        isActive: player.isActive !== false,
+        isBlocked: false,
+        avatar: player.profileImage || player.user?.avatar || undefined,
+        cricketProfile: {
+          playerId: player._id,
+          playerType: player.role || 'batsman',
+          battingStyle: player.battingStyle || '',
+          bowlingStyle: player.bowlingStyle || '',
+          matchesPlayed: player.stats?.matches || 0,
+          totalRuns: player.stats?.runs || 0,
+          totalWickets: player.stats?.wickets || 0,
+          highestScore: player.stats?.highestScore || 0,
+          battingAverage: player.stats?.average || 0
+        },
+        teamName: player.team?.name || player.team?.shortName || player.teamName || '',
+        stats: {
+          matchesPlayed: player.stats?.matches || 0,
+          matchesWon: 0,
+          matchesLost: 0
+        },
+        createdAt: player.createdAt,
+        updatedAt: player.updatedAt,
+        source: 'player'
+      }));
+
+    const combinedPlayers = [...normalizedUsers, ...normalizedPlayers].sort((a, b) => {
+      const aValue = new Date(a[sortBy] || a.createdAt || 0).getTime();
+      const bValue = new Date(b[sortBy] || b.createdAt || 0).getTime();
+      return sortDirection === 1 ? aValue - bValue : bValue - aValue;
+    });
+
+    const total = combinedPlayers.length;
+    const players = combinedPlayers.slice(skip, skip + limit);
 
     return {
       players,
