@@ -33,7 +33,8 @@ export const updateTeamSchema = Joi.object({
 });
 
 export const addPlayerSchema = Joi.object({
-  playerId: Joi.string().required()
+  playerId: Joi.string().required(),
+  matchId: Joi.string().allow('')
 });
 
 export const removePlayerSchema = Joi.object({

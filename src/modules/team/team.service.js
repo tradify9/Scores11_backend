@@ -150,10 +150,23 @@ export const teamService = {
   },
 
   // Add player to team
-  addPlayer: async (teamId, playerId, userId) => {
+  addPlayer: async (teamId, playerId, userId, matchId = null) => {
     const team = await Team.findById(teamId);
     if (!team) throw new ApiError(404, 'Team not found');
-    if (team.owner.toString() !== userId) throw new ApiError(403, 'Not authorized');
+
+    let canManageTeam = team.owner.toString() === userId;
+    if (!canManageTeam && matchId) {
+      const { default: Match } = await import('../match/match.model.js');
+      const match = await Match.findById(matchId).select('team1 team2 createdBy isActive');
+      const isMatchTeam =
+        match?.team1?.toString() === team._id.toString() ||
+        match?.team2?.toString() === team._id.toString();
+      canManageTeam =
+        Boolean(match?.isActive) &&
+        isMatchTeam &&
+        match?.createdBy?.toString() === userId;
+    }
+    if (!canManageTeam) throw new ApiError(403, 'Not authorized');
 
     let player = await Player.findById(playerId);
     if (!player) {
@@ -164,7 +177,8 @@ export const teamService = {
     const resolvedPlayerId = player._id.toString();
 
     if (team.players.some(p => p.toString() === resolvedPlayerId)) {
-      throw new ApiError(400, 'Player already in team');
+      return await Team.findById(teamId)
+        .populate('players', 'playerName name jerseyNumber role battingStyle bowlingStyle avatar stats');
     }
 
     if (team.players.length >= 25) {
@@ -177,7 +191,7 @@ export const teamService = {
     await Player.findByIdAndUpdate(player._id, { team: teamId });
 
     return await Team.findById(teamId)
-      .populate('players', 'playerName name jerseyNumber role');
+      .populate('players', 'playerName name jerseyNumber role battingStyle bowlingStyle avatar stats');
   },
 
   // Remove player from team

@@ -47,7 +47,12 @@ export const teamController = {
 
   // Add player to team
   addPlayer: catchAsync(async (req, res) => {
-    const team = await teamService.addPlayer(req.params.id, req.body.playerId, req.user.userId);
+    const team = await teamService.addPlayer(
+      req.params.id,
+      req.body.playerId,
+      req.user.userId,
+      req.body.matchId
+    );
     res.json(new ApiResponse(200, 'Player added to team', team));
   }),
 
