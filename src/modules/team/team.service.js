@@ -5,6 +5,28 @@ import ApiError from '../../utils/ApiError.js';
 import { uploadImage, deleteImage } from '../../config/cloudinary.js';
 import { getPagination } from '../../utils/pagination.js';
 
+const toIdString = (value) => {
+  if (!value) return '';
+  if (value._id) return value._id.toString();
+  return value.toString();
+};
+
+const idMatches = (value, expectedId) => toIdString(value) === expectedId;
+
+const includesId = (values, expectedId) => {
+  if (!values) return false;
+
+  if (Array.isArray(values)) {
+    return values.some((value) => idMatches(value, expectedId));
+  }
+
+  if (typeof values === 'object') {
+    return Object.values(values).some((value) => idMatches(value, expectedId));
+  }
+
+  return idMatches(values, expectedId);
+};
+
 export const teamService = {
   // Create a new team
   createTeam: async (teamData, userId) => {
@@ -151,6 +173,7 @@ export const teamService = {
 
   // Add player to team
   addPlayer: async (teamId, playerId, userId, matchId = null) => {
+    const userIdString = toIdString(userId);
     const team = await Team.findById(teamId);
     if (!team) throw new ApiError(404, 'Team not found');
 
@@ -161,22 +184,22 @@ export const teamService = {
     const currentUser = await User.findById(userId).select('role');
     const userRole = currentUser?.role?.toString().toLowerCase();
     let canManageTeam =
-      team.owner?.toString() === userId.toString() ||
+      idMatches(team.owner, userIdString) ||
       userRole === 'admin';
     
     if (!canManageTeam && matchId) {
       try {
         const { default: Match } = await import('../match/match.model.js');
-        const match = await Match.findById(matchId).select('team1 team2 createdBy isActive officials scorer1 scorer2');
+        const match = await Match.findById(matchId).select('team1 team2 createdBy isActive status officials scorer1 scorer2');
         
         if (match) {
           const isMatchTeam =
             match.team1?.toString() === team._id.toString() ||
             match.team2?.toString() === team._id.toString();
           
-          const isMatchCreator = match.createdBy?.toString() === userId;
-          const isScorer = match.scorer1?.toString() === userId || match.scorer2?.toString() === userId;
-          const isOfficial = match.officials?.some(o => o?.toString() === userId);
+          const isMatchCreator = idMatches(match.createdBy, userIdString);
+          const isScorer = includesId([match.scorer1, match.scorer2], userIdString);
+          const isOfficial = includesId(match.officials, userIdString);
           
           canManageTeam = Boolean(match.isActive) && isMatchTeam && (isMatchCreator || isScorer || isOfficial);
         }
