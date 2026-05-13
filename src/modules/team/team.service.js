@@ -149,13 +149,20 @@ export const teamService = {
     return teams;
   },
 
-// Add player to team
+  // Add player to team
   addPlayer: async (teamId, playerId, userId, matchId = null) => {
     const team = await Team.findById(teamId);
     if (!team) throw new ApiError(404, 'Team not found');
 
-    // Authorization check: Allow team owner OR match creator OR scoring officials
-    let canManageTeam = team.owner.toString() === userId;
+    if (!playerId) {
+      throw new ApiError(400, 'Player ID is required');
+    }
+
+    const currentUser = await User.findById(userId).select('role');
+    const userRole = currentUser?.role?.toString().toLowerCase();
+    let canManageTeam =
+      team.owner?.toString() === userId.toString() ||
+      userRole === 'admin';
     
     if (!canManageTeam && matchId) {
       try {
@@ -174,7 +181,6 @@ export const teamService = {
           canManageTeam = Boolean(match.isActive) && isMatchTeam && (isMatchCreator || isScorer || isOfficial);
         }
       } catch (err) {
-        // If match lookup fails, check owner only
         console.log('Match lookup error:', err.message);
       }
     }
