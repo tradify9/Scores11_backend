@@ -17,6 +17,17 @@ export const scoringService = {
     
     // ✅ FIXED: LiveControl access allowed for all authenticated users
     console.log(`[SCORING] Initialize match ${matchId} by user ${userId} (owner: ${match.createdBy})`);
+
+    const existingCurrentInnings = match.innings?.find(i => i.inningsNumber === (match.currentInnings || 1));
+    if (match.status === MATCH_STATUS.LIVE && existingCurrentInnings) {
+      if (Array.isArray(battingOrder) && battingOrder.length) {
+        match.battingOrder = battingOrder;
+        await match.save();
+      }
+      return await Match.findById(matchId)
+        .populate('team1', 'name shortName')
+        .populate('team2', 'name shortName');
+    }
     
 const validStatuses = ['scheduled', 'team_selecting', 'live', 'ready'];
 if (!validStatuses.includes(match.status)) {
@@ -670,7 +681,9 @@ console.log('[LIVE] getLiveScore populated:', {
         bowlingScorecard: currentInnings.bowlingScorecard || []
       },
       recentBalls,
-      currentBowler: lastBall?.bowler || null,
+      currentStriker: currentInnings.currentStriker || null,
+      currentNonStriker: currentInnings.currentNonStriker || null,
+      currentBowler: currentInnings.currentBowler || lastBall?.bowler || null,
       target: match.result?.target || null,
       requiredRuns: match.result?.requiredRuns || null,
       requiredRunRate: rrr,
