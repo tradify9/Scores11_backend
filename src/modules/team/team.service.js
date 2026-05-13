@@ -149,24 +149,37 @@ export const teamService = {
     return teams;
   },
 
-  // Add player to team
+// Add player to team
   addPlayer: async (teamId, playerId, userId, matchId = null) => {
     const team = await Team.findById(teamId);
     if (!team) throw new ApiError(404, 'Team not found');
 
+    // Authorization check: Allow team owner OR match creator OR scoring officials
     let canManageTeam = team.owner.toString() === userId;
+    
     if (!canManageTeam && matchId) {
-      const { default: Match } = await import('../match/match.model.js');
-      const match = await Match.findById(matchId).select('team1 team2 createdBy isActive');
-      const isMatchTeam =
-        match?.team1?.toString() === team._id.toString() ||
-        match?.team2?.toString() === team._id.toString();
-      canManageTeam =
-        Boolean(match?.isActive) &&
-        isMatchTeam &&
-        match?.createdBy?.toString() === userId;
+      try {
+        const { default: Match } = await import('../match/match.model.js');
+        const match = await Match.findById(matchId).select('team1 team2 createdBy isActive officials scorer1 scorer2');
+        
+        if (match) {
+          const isMatchTeam =
+            match.team1?.toString() === team._id.toString() ||
+            match.team2?.toString() === team._id.toString();
+          
+          const isMatchCreator = match.createdBy?.toString() === userId;
+          const isScorer = match.scorer1?.toString() === userId || match.scorer2?.toString() === userId;
+          const isOfficial = match.officials?.some(o => o?.toString() === userId);
+          
+          canManageTeam = Boolean(match.isActive) && isMatchTeam && (isMatchCreator || isScorer || isOfficial);
+        }
+      } catch (err) {
+        // If match lookup fails, check owner only
+        console.log('Match lookup error:', err.message);
+      }
     }
-    if (!canManageTeam) throw new ApiError(403, 'Not authorized');
+    
+    if (!canManageTeam) throw new ApiError(403, 'Not authorized to add players to this team');
 
     let player = await Player.findById(playerId);
     if (!player) {
