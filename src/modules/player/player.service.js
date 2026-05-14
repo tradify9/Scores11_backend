@@ -147,9 +147,23 @@ export const playerService = {
   },
 
   getPlayersByTeam: async (teamId) => {
-    const players = await Player.find({ team: teamId, isActive: true })
-      .populate('user', 'name email');
-    return players;
+    const [directPlayers, team] = await Promise.all([
+      Player.find({ team: teamId, isActive: true }).populate('user', 'name email'),
+      Team.findById(teamId).populate({
+        path: 'players',
+        match: { isActive: true },
+        populate: { path: 'user', select: 'name email' }
+      })
+    ]);
+
+    const byId = new Map();
+    for (const player of directPlayers) {
+      if (player?._id) byId.set(player._id.toString(), player);
+    }
+    for (const player of team?.players || []) {
+      if (player?._id) byId.set(player._id.toString(), player);
+    }
+    return Array.from(byId.values());
   },
 
   getTrendingPlayers: async (limit = 10) => {

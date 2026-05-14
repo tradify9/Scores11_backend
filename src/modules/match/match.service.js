@@ -164,8 +164,16 @@ export const matchService = {
     }
     
     const match = await Match.findById(idStr)
-      .populate('team1', 'name shortName logo captain players')
-      .populate('team2', 'name shortName logo captain players')
+      .populate({
+        path: 'team1',
+        select: 'name shortName logo captain viceCaptain players',
+        populate: { path: 'players', select: 'playerName name jerseyNumber role battingStyle bowlingStyle avatar stats' }
+      })
+      .populate({
+        path: 'team2',
+        select: 'name shortName logo captain viceCaptain players',
+        populate: { path: 'players', select: 'playerName name jerseyNumber role battingStyle bowlingStyle avatar stats' }
+      })
       .populate('tournament', 'name format')
       .populate('result.winner', 'name shortName')
       .populate('result.playerOfMatch', 'playerName jerseyNumber')
