@@ -167,6 +167,7 @@ export const matchService = {
       .populate('team1', 'name shortName logo captain players')
       .populate('team2', 'name shortName logo captain players')
       .populate('tournament', 'name format')
+      .populate('result.winner', 'name shortName')
       .populate('result.playerOfMatch', 'playerName jerseyNumber')
       .populate('innings.battingScorecard.batsman', 'playerName')
       .populate('innings.battingScorecard.bowler', 'playerName')
@@ -194,7 +195,8 @@ export const matchService = {
     const match = await Match.findById(idStr)
       .populate('team1', 'name shortName logo')
       .populate('team2', 'name shortName logo')
-      .populate('tournament', 'name');
+      .populate('tournament', 'name')
+      .populate('result.winner', 'name shortName');
     
     if (!match) throw new ApiError(404, 'Match not found');
     return match;

@@ -172,6 +172,8 @@ console.log('[SCORING] Batting order set:', match.battingOrder.length, 'teams');
       isNoBall, 
       isBye,
       isLegBye,
+      wagonZone,
+      wagonLabel,
       comment 
     } = ballData;
 
@@ -289,6 +291,8 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       isNoBall, 
       isBye, 
       isLegBye,
+      wagonZone,
+      wagonLabel,
       comment: comment || '',
       scoredBy: userId
     });
@@ -468,6 +472,35 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       }
     }
 
+    if (match.currentInnings === 2 && match.innings[0]) {
+      const target = match.innings[0].totalRuns + 1;
+      const ballsLimit = (match.overs || 20) * 6;
+      const chaseWon = innings.totalRuns >= target;
+      const inningsDone = chaseWon || innings.totalWickets >= 10 || innings.totalOvers * 6 + innings.totalBalls >= ballsLimit;
+
+      if (inningsDone) {
+        innings.isCompleted = true;
+        innings.endTime = new Date();
+        match.status = MATCH_STATUS.COMPLETED;
+        if (!match.result) match.result = {};
+        match.result.target = target;
+
+        if (chaseWon) {
+          match.result.winner = innings.battingTeam;
+          const wicketsLeft = Math.max(0, 10 - (innings.totalWickets || 0));
+          match.result.margin = `${wicketsLeft} wickets`;
+          match.result.method = 'by wickets';
+        } else if (innings.totalRuns === match.innings[0].totalRuns) {
+          match.result.margin = 'Tie';
+          match.result.method = 'tie';
+        } else {
+          match.result.winner = match.innings[0].battingTeam;
+          match.result.margin = `${match.innings[0].totalRuns - innings.totalRuns} runs`;
+          match.result.method = 'by runs';
+        }
+      }
+    }
+
     await match.save();
 
     // ENHANCED SOCKET BROADCAST (Professional real-time)
@@ -642,7 +675,9 @@ console.log('[LIVE] getLiveScore populated:', {
           jerseyNumber: ball.bowler.jerseyNumber,
           avatar: ball.bowler.avatar,
           teamId: ball.bowler.teamId
-        } : null
+        } : null,
+        wagonZone: ball.wagonZone,
+        wagonLabel: ball.wagonLabel
       }));
       
       const recentBallDoc = await Ball.findOne({ match: matchId, innings: currentInningNum })
@@ -708,6 +743,7 @@ console.log('[LIVE] getLiveScore populated:', {
       .populate('team1', 'name shortName logo captain')
       .populate('team2', 'name shortName logo captain')
       .populate('tournament', 'name format')
+      .populate('result.winner', 'name shortName')
       .populate('result.playerOfMatch', 'playerName jerseyNumber');
     
     if (!match) throw new ApiError(404, 'Match not found');
@@ -716,6 +752,32 @@ console.log('[LIVE] getLiveScore populated:', {
       .populate('batsman', 'playerName jerseyNumber')
       .populate('bowler', 'playerName jerseyNumber')
       .sort({ innings: 1, overNumber: 1, ballNumber: 1 });
+    const ballByBall = balls.map(ball => ({
+      _id: ball._id,
+      innings: ball.innings,
+      overNumber: ball.overNumber,
+      ballNumber: ball.ballNumber,
+      runs: ball.runs,
+      extras: ball.extras,
+      wicket: ball.wicket,
+      wicketType: ball.wicketType,
+      isWide: ball.isWide,
+      isNoBall: ball.isNoBall,
+      isBye: ball.isBye,
+      isLegBye: ball.isLegBye,
+      wagonZone: ball.wagonZone,
+      wagonLabel: ball.wagonLabel,
+      comment: ball.comment,
+      createdAt: ball.createdAt,
+      batsman: ball.batsman ? {
+        _id: ball.batsman._id,
+        playerName: ball.batsman.playerName
+      } : null,
+      bowler: ball.bowler ? {
+        _id: ball.bowler._id,
+        playerName: ball.bowler.playerName
+      } : null
+    }));
 
     // Build innings data
     const inningsData = match.innings.map(innings => ({
@@ -753,6 +815,8 @@ console.log('[LIVE] getLiveScore populated:', {
         status: match.status
       },
       innings: inningsData,
+      balls: ballByBall,
+      ballByBall,
       powerplay: match.powerplay,
       commentary: match.commentary,
       stats: matchStats
@@ -914,9 +978,17 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     }
 
     await match.save();
-    return await Match.findById(matchId)
+    const completedMatch = await Match.findById(matchId)
       .populate('team1', 'name shortName')
       .populate('team2', 'name shortName');
+
+    emitToMatch(matchId, 'liveScoreUpdate', {
+      matchId,
+      action: 'matchCompleted',
+      match: completedMatch
+    });
+
+    return completedMatch;
   },
 
   // Set striker

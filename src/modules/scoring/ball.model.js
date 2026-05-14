@@ -19,6 +19,8 @@ const ballSchema = new mongoose.Schema({
   isNoBall: { type: Boolean, default: false },
   isBye: { type: Boolean, default: false },
   isLegBye: { type: Boolean, default: false },
+  wagonZone: { type: Number },
+  wagonLabel: { type: String },
   comment: { type: String },
   scoredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
 }, { timestamps: true });
