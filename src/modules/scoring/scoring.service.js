@@ -205,9 +205,13 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       throw new ApiError(400, 'Ball must be scored off current striker');
     }
 
+    const actualBowlerId = bowlerId || innings.currentBowler;
+    if (!actualBowlerId) throw new ApiError(400, 'Set bowler first');
+
     // Use current state for consistency
     let overNumber = innings.currentOverNumber;
     let ballNumber = innings.currentBallNumber;
+    const scoringBatsmanId = innings.currentStriker;
 
     // Advance over/ball counters after creating ball
     const isValidDelivery = !isWide && !isNoBall;
@@ -223,6 +227,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     }
     
     let newStriker = innings.currentStriker;
+    const previousStriker = innings.currentStriker;
     
     if (shouldRotate && innings.currentNonStriker) {
       // Swap striker/non-striker
@@ -240,12 +245,13 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     }
     
     // Advance ball counter
-    innings.currentBallNumber += 1;
+    innings.currentBallNumber += isValidDelivery ? 1 : 0;
     
     // OVER ADVANCEMENT LOGIC
     if (isValidDelivery && ballNumber === 6) {
       innings.currentOverNumber += 1;
       innings.currentBallNumber = 1; // Reset ball counter
+      innings.currentBowler = null;
       console.log(`🏏 New over started: ${innings.currentOverNumber}`);
     }
     
@@ -257,7 +263,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       occurred: shouldRotate,
       reason: rotationReason || null,
       newStriker: newStriker,
-      previousStriker: innings.currentStriker,
+      previousStriker,
       timestamp: new Date().toISOString()
     };
 
@@ -272,8 +278,8 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       innings: match.currentInnings,
       battingTeam: innings.battingTeam,
       bowlingTeam: innings.bowlingTeam,
-      batsman: innings.currentStriker,
-      bowler: bowlerId || innings.currentBowler,
+      batsman: scoringBatsmanId,
+      bowler: actualBowlerId,
       runs: runs || 0,
       extras: (isWide || isNoBall || isBye || isLegBye) ? 1 : 0,
       wicket: isWicket || false,
@@ -310,12 +316,13 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     
     innings.extras.total += extrasCount;
     innings.totalRuns += totalRuns + extrasCount;
-    innings.totalBalls += 1;
+    if (isValidDelivery) innings.totalBalls += 1;
 
     // Update over count (only if not wide or no-ball)
     if (!isWide && !isNoBall) {
       if (ballNumber === 6) {
         innings.totalOvers += 1;
+        innings.totalBalls = 0;
       }
     }
 
@@ -339,9 +346,6 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     }
 
     // Update bowler stats (using innings.currentBowler if not provided)
-    const actualBowlerId = bowlerId || innings.currentBowler;
-    if (!actualBowlerId) throw new ApiError(400, 'Set bowler first');
-    
     const bowlerIndex = innings.bowlingScorecard.findIndex(b => 
       b.bowler.toString() === actualBowlerId.toString()
     );
@@ -350,13 +354,13 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       // Add new bowler
       innings.bowlingScorecard.push({
         bowler: actualBowlerId,
-        overs: 0,
+        overs: isValidDelivery ? 0.1 : 0,
         maidens: 0,
         runsConceded: totalRuns + extrasCount,
         wickets: isWicket ? 1 : 0,
         wide: isWide ? 1 : 0,
         noBall: isNoBall ? 1 : 0,
-        economy: 0
+        economy: isValidDelivery ? (totalRuns + extrasCount) * 6 : 0
       });
     } else {
       innings.bowlingScorecard[bowlerIndex].runsConceded += totalRuns + extrasCount;
@@ -364,12 +368,15 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       if (isWide) innings.bowlingScorecard[bowlerIndex].wide += 1;
       if (isNoBall) innings.bowlingScorecard[bowlerIndex].noBall += 1;
       
-      // Calculate overs and economy
-      const totalBalls = (innings.bowlingScorecard[bowlerIndex].overs * 6) + 
-        innings.bowlingScorecard[bowlerIndex].wide + innings.bowlingScorecard[bowlerIndex].noBall;
-      innings.bowlingScorecard[bowlerIndex].overs = Math.floor(totalBalls / 6);
-      innings.bowlingScorecard[bowlerIndex].economy = 
-        innings.bowlingScorecard[bowlerIndex].runsConceded / innings.bowlingScorecard[bowlerIndex].overs || 0;
+      // Calculate cricket-style overs from legal deliveries only.
+      const currentOvers = innings.bowlingScorecard[bowlerIndex].overs || 0;
+      const [bowledOvers, bowledBalls = 0] = currentOvers.toString().split('.').map(Number);
+      const legalBalls = (bowledOvers * 6) + bowledBalls + (isValidDelivery ? 1 : 0);
+      innings.bowlingScorecard[bowlerIndex].overs = Number(`${Math.floor(legalBalls / 6)}.${legalBalls % 6}`);
+      innings.bowlingScorecard[bowlerIndex].economy =
+        legalBalls > 0
+          ? innings.bowlingScorecard[bowlerIndex].runsConceded / (legalBalls / 6)
+          : 0;
     }
 
     // UPDATE PARTNERSHIP TRACKING (Professional)
@@ -382,7 +389,8 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     if (match.currentInnings === 2 && match.innings[0]) {
       const target = match.innings[0].totalRuns + 1;
       const runsNeeded = target - innings.totalRuns;
-      const ballsRemaining = (match.overs * 6) - innings.totalBalls;
+      const legalBallsBowled = (innings.totalOvers * 6) + innings.totalBalls;
+      const ballsRemaining = (match.overs * 6) - legalBallsBowled;
       if (ballsRemaining > 0) {
         if (!match.result) match.result = {};
         match.result.requiredRunRate = (runsNeeded / (ballsRemaining / 6)).toFixed(2);
@@ -408,11 +416,13 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
           partnership: 0 // Calculate this
         });
       }
+      innings.currentStriker = null;
     }
 
     // Update match score
     if (!match.score) match.score = {};
-    if (match.currentInnings === 1) {
+    const battingScoreKey = innings.battingTeam.toString() === match.team1.toString() ? 'team1' : 'team2';
+    if (battingScoreKey === 'team1') {
       match.score.team1 = {
         runs: innings.totalRuns,
         wickets: innings.totalWickets,
@@ -683,7 +693,7 @@ console.log('[LIVE] getLiveScore populated:', {
       recentBalls,
       currentStriker: currentInnings.currentStriker || null,
       currentNonStriker: currentInnings.currentNonStriker || null,
-      currentBowler: currentInnings.currentBowler || lastBall?.bowler || null,
+      currentBowler: currentInnings.currentBowler || null,
       target: match.result?.target || null,
       requiredRuns: match.result?.requiredRuns || null,
       requiredRunRate: rrr,
@@ -917,6 +927,27 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
     if (!currentInnings) throw new ApiError(400, 'Innings not found');
 
+    if (currentInnings.currentNonStriker?.toString() === batsmanId.toString()) {
+      throw new ApiError(400, 'Striker and non-striker cannot be the same player');
+    }
+
+    const existsInScorecard = currentInnings.battingScorecard.some(b =>
+      b.batsman.toString() === batsmanId.toString()
+    );
+    if (!existsInScorecard) {
+      currentInnings.battingScorecard.push({
+        batsman: batsmanId,
+        runs: 0,
+        balls: 0,
+        fours: 0,
+        sixes: 0,
+        strikeRate: 0,
+        howOut: 'not_out',
+        fielder: null,
+        bowler: null
+      });
+    }
+
     currentInnings.currentStriker = batsmanId;
     await match.save();
     
@@ -930,6 +961,27 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
 
     const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
     if (!currentInnings) throw new ApiError(400, 'Innings not found');
+
+    if (currentInnings.currentStriker?.toString() === batsmanId.toString()) {
+      throw new ApiError(400, 'Striker and non-striker cannot be the same player');
+    }
+
+    const existsInScorecard = currentInnings.battingScorecard.some(b =>
+      b.batsman.toString() === batsmanId.toString()
+    );
+    if (!existsInScorecard) {
+      currentInnings.battingScorecard.push({
+        batsman: batsmanId,
+        runs: 0,
+        balls: 0,
+        fours: 0,
+        sixes: 0,
+        strikeRate: 0,
+        howOut: 'not_out',
+        fielder: null,
+        bowler: null
+      });
+    }
 
     currentInnings.currentNonStriker = batsmanId;
     await match.save();

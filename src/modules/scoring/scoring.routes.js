@@ -7,7 +7,7 @@ import { ROLES } from '../../constants/roles.js';
 const router = express.Router();
 
 // ✅ FIXED: Full access for all users - ADMIN/UMPIRE/SCORER/PLAYER/USER
-router.post('/match/:matchId/initialize', scoringController.initializeMatch);
+router.post('/match/:matchId/initialize', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.initializeMatch);
 router.post('/match/:matchId/ball', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.addBall);
 router.get('/match/:matchId/live', scoringController.getLiveScore);
 router.get('/match/:matchId/scorecard', scoringController.getFullScorecard);

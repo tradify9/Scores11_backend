@@ -200,8 +200,15 @@ export const teamService = {
           const isMatchCreator = idMatches(match.createdBy, userIdString);
           const isScorer = includesId([match.scorer1, match.scorer2], userIdString);
           const isOfficial = includesId(match.officials, userIdString);
-          
-          canManageTeam = Boolean(match.isActive) && isMatchTeam && (isMatchCreator || isScorer || isOfficial);
+          const liveControlOpenRoles = ['user', 'player', 'scorer', 'umpire'];
+
+          const matchAllowsLineupEdit =
+            Boolean(match.isActive) ||
+            ['scheduled', 'team_selecting', 'ready', 'live'].includes(match.status);
+
+          canManageTeam = matchAllowsLineupEdit &&
+            isMatchTeam &&
+            (isMatchCreator || isScorer || isOfficial || liveControlOpenRoles.includes(userRole));
         }
       } catch (err) {
         console.log('Match lookup error:', err.message);
