@@ -12,6 +12,14 @@ import { emitToMatch } from '../../config/socket.js';
 export const scoringService = {
   // Initialize match for live scoring
   initializeMatch: async (matchId, battingOrder, userId) => {
+    const normalizedBattingOrder = Array.isArray(battingOrder)
+      ? battingOrder
+          .filter(order => order && order.team)
+          .map(order => ({
+            team: order.team,
+            players: Array.isArray(order.players) ? order.players.filter(Boolean) : []
+          }))
+      : [];
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
     
@@ -20,8 +28,8 @@ export const scoringService = {
 
     const existingCurrentInnings = match.innings?.find(i => i.inningsNumber === (match.currentInnings || 1));
     if (match.status === MATCH_STATUS.LIVE && existingCurrentInnings) {
-      if (Array.isArray(battingOrder) && battingOrder.length) {
-        match.battingOrder = battingOrder;
+      if (normalizedBattingOrder.length) {
+        match.battingOrder = normalizedBattingOrder;
         await match.save();
       }
       return await Match.findById(matchId)
@@ -67,13 +75,13 @@ if (tossWinnerId) {
 }
 
 // Set batting order (use provided or auto from toss)
-if (!match.battingOrder || !battingOrder.length) {
+if (!match.battingOrder || !normalizedBattingOrder.length) {
   const battingTeamId = firstInningsBattingTeam;
   const battingTeamLineup = battingTeamId.toString() === match.team1.toString()
     ? match.team1Lineup : match.team2Lineup;
   match.battingOrder = [{ team: battingTeamId, players: battingTeamLineup }];
 }
-match.battingOrder = battingOrder.length ? battingOrder : match.battingOrder;
+match.battingOrder = normalizedBattingOrder.length ? normalizedBattingOrder : match.battingOrder;
 const effectiveBattingOrder = match.battingOrder || [];
 console.log('[SCORING] Batting order set:', match.battingOrder.length, 'teams');
     

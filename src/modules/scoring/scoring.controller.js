@@ -41,9 +41,14 @@ export const scoringController = {
 // POST /match/:matchId/initialize - Owner only
   initializeMatch: async (req, res) => {
     try {
+      const battingOrder = Array.isArray(req.body)
+        ? req.body
+        : Array.isArray(req.body?.battingOrder)
+          ? req.body.battingOrder
+          : [];
       const result = await scoringService.initializeMatch(
         req.params.matchId, 
-        req.body, 
+        battingOrder, 
         req.user?.userId || req.user?._id || null
       );
       res.status(200).json({
