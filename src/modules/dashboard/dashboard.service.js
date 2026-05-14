@@ -67,7 +67,6 @@ export const dashboardService = {
         .populate('team2', 'name shortName logo')
         .populate('tournament', 'name')
         .sort({ scheduledDate: 1 })
-        .limit(10)
         .lean();
 
       const formatInningsScore = (innings) => {
