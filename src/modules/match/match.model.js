@@ -25,10 +25,12 @@ const resultSchema = new mongoose.Schema({
   winner: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
   margin: String,
   method: String,
+  message: String,
   playerOfMatch: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
   target: Number,
   requiredRuns: Number,
-  requiredBalls: Number
+  requiredBalls: Number,
+  requiredRunRate: String
 });
 
 const battingScorecardSchema = new mongoose.Schema({

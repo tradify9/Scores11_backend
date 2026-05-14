@@ -344,6 +344,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     );
     
     if (batsmanIndex !== -1 && !isWide && !isNoBall) {
+      const previousRuns = innings.battingScorecard[batsmanIndex].runs || 0;
       innings.battingScorecard[batsmanIndex].runs += totalRuns;
       innings.battingScorecard[batsmanIndex].balls += 1;
       
@@ -354,6 +355,34 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       if (innings.battingScorecard[batsmanIndex].balls > 0) {
         innings.battingScorecard[batsmanIndex].strikeRate = 
           (innings.battingScorecard[batsmanIndex].runs / innings.battingScorecard[batsmanIndex].balls) * 100;
+      }
+
+      const currentRuns = innings.battingScorecard[batsmanIndex].runs || 0;
+      if (previousRuns < 50 && currentRuns >= 50 && currentRuns < 100) {
+        match.commentary ??= [];
+        match.commentary.push({
+          over: overNumber,
+          ball: ballNumber,
+          text: `Excellent fifty for the batter - ${currentRuns} runs`,
+          batsmanRuns: runs || 0,
+          totalRuns: innings.totalRuns,
+          isWicket: false,
+          timestamp: new Date()
+        });
+        emitToMatch(matchId, 'liveScoreUpdate', { matchId, action: 'milestone', type: 'fifty', player: scoringBatsmanId, runs: currentRuns });
+      }
+      if (previousRuns < 100 && currentRuns >= 100) {
+        match.commentary ??= [];
+        match.commentary.push({
+          over: overNumber,
+          ball: ballNumber,
+          text: `Outstanding hundred for the batter - ${currentRuns} runs`,
+          batsmanRuns: runs || 0,
+          totalRuns: innings.totalRuns,
+          isWicket: false,
+          timestamp: new Date()
+        });
+        emitToMatch(matchId, 'liveScoreUpdate', { matchId, action: 'milestone', type: 'hundred', player: scoringBatsmanId, runs: currentRuns });
       }
     }
 
@@ -480,33 +509,32 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       }
     }
 
-    if (match.currentInnings === 2 && match.innings[0]) {
-      const target = match.innings[0].totalRuns + 1;
-      const ballsLimit = (match.overs || 20) * 6;
-      const chaseWon = innings.totalRuns >= target;
-      const inningsDone = chaseWon || innings.totalWickets >= 10 || innings.totalOvers * 6 + innings.totalBalls >= ballsLimit;
-
-      if (inningsDone) {
-        innings.isCompleted = true;
-        innings.endTime = new Date();
-        match.status = MATCH_STATUS.COMPLETED;
-        if (!match.result) match.result = {};
-        match.result.target = target;
-
-        if (chaseWon) {
-          match.result.winner = innings.battingTeam;
-          const wicketsLeft = Math.max(0, 10 - (innings.totalWickets || 0));
-          match.result.margin = `${wicketsLeft} wickets`;
-          match.result.method = 'by wickets';
-        } else if (innings.totalRuns === match.innings[0].totalRuns) {
-          match.result.margin = 'Tie';
-          match.result.method = 'tie';
-        } else {
-          match.result.winner = match.innings[0].battingTeam;
-          match.result.margin = `${match.innings[0].totalRuns - innings.totalRuns} runs`;
-          match.result.method = 'by runs';
-        }
+    if (isWicket && actualBowlerId) {
+      const recentWickets = await Ball.find({
+        match: matchId,
+        innings: match.currentInnings,
+        bowler: actualBowlerId,
+        wicket: true,
+        isWide: { $ne: true },
+        isNoBall: { $ne: true }
+      }).sort({ createdAt: -1 }).limit(3).lean();
+      if (recentWickets.length >= 3) {
+        match.commentary ??= [];
+        match.commentary.push({
+          over: overNumber,
+          ball: ballNumber,
+          text: 'Hat-trick! Three wickets for the bowler.',
+          batsmanRuns: 0,
+          totalRuns: innings.totalRuns,
+          isWicket: true,
+          timestamp: new Date()
+        });
+        emitToMatch(matchId, 'liveScoreUpdate', { matchId, action: 'milestone', type: 'hattrick', player: actualBowlerId });
       }
+    }
+
+    if (match.currentInnings === 2 && match.innings[0]) {
+      finalizeSecondInningsResult(match);
     }
 
     await match.save();
@@ -514,8 +542,11 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     // ENHANCED SOCKET BROADCAST (Professional real-time)
     const liveState = {
       matchId,
-      action: isWicket ? 'wicketFall' : (runs >= 4 ? 'boundary' : 'ballUpdate'),
+      action: match.status === MATCH_STATUS.COMPLETED
+        ? 'matchCompleted'
+        : (isWicket ? 'wicketFall' : (runs >= 4 ? 'boundary' : 'ballUpdate')),
       score: match.score,
+      result: match.result,
       currentInnings: {
         ...innings.toObject ? innings.toObject() : innings,
         currentStriker: innings.currentStriker,
@@ -740,6 +771,7 @@ console.log('[LIVE] getLiveScore populated:', {
       target: match.result?.target || null,
       requiredRuns: match.result?.requiredRuns || null,
       requiredRunRate: rrr,
+      result: match.result || null,
       powerplay: safePowerplay,
       initialized: !!(currentInnings.battingScorecard && currentInnings.battingScorecard.length > 0)
     };
@@ -959,30 +991,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       return await scoringService.startInnings(matchId, 2);
     } else {
       // Match completed
-      match.status = MATCH_STATUS.COMPLETED;
-      
-      // Determine winner
-      const firstInningsRuns = match.innings[0].totalRuns;
-      const secondInningsRuns = match.innings[1].totalRuns;
-      
-      if (secondInningsRuns > firstInningsRuns) {
-        const winner = match.innings[1].battingTeam;
-        if (!match.result) match.result = {};
-        match.result.winner = winner;
-        const wicketsLeft = Math.max(0, 10 - (match.innings[1].totalWickets || 0));
-        match.result.margin = `${wicketsLeft} wickets`;
-        match.result.method = 'by wickets';
-      } else if (firstInningsRuns > secondInningsRuns) {
-        const winner = match.innings[0].battingTeam;
-        if (!match.result) match.result = {};
-        match.result.winner = winner;
-        match.result.margin = `${firstInningsRuns - secondInningsRuns} runs`;
-        match.result.method = 'by runs';
-      } else if (secondInningsRuns === firstInningsRuns) {
-        if (!match.result) match.result = {};
-        match.result.margin = 'Tie';
-        match.result.method = 'tie';
-      }
+      finalizeSecondInningsResult(match, { force: true });
     }
 
     await match.save();
@@ -1235,6 +1244,79 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     };
   }
 };
+
+function finalizeSecondInningsResult(match, { force = false } = {}) {
+  const first = match.innings?.[0];
+  const second = match.innings?.find(i => i.inningsNumber === 2) || match.innings?.[1];
+  if (!first || !second) return false;
+
+  const target = (first.totalRuns || 0) + 1;
+  const ballsLimit = (match.overs || 20) * 6;
+  const legalBalls = ((second.totalOvers || 0) * 6) + (second.totalBalls || 0);
+  const chaseWon = (second.totalRuns || 0) >= target;
+  const inningsDone = force || chaseWon || (second.totalWickets || 0) >= 10 || legalBalls >= ballsLimit;
+
+  match.result ??= {};
+  match.result.target = target;
+  match.result.requiredRuns = Math.max(0, target - (second.totalRuns || 0));
+  match.result.requiredBalls = Math.max(0, ballsLimit - legalBalls);
+  if (match.result.requiredBalls > 0 && match.result.requiredRuns > 0) {
+    match.result.requiredRunRate = (match.result.requiredRuns / (match.result.requiredBalls / 6)).toFixed(2);
+  }
+
+  if (!inningsDone) return false;
+
+  second.isCompleted = true;
+  second.endTime = second.endTime || new Date();
+  match.status = MATCH_STATUS.COMPLETED;
+
+  if (chaseWon) {
+    const wicketsLeft = Math.max(0, 10 - (second.totalWickets || 0));
+    match.result.winner = second.battingTeam;
+    match.result.margin = `${wicketsLeft} wickets`;
+    match.result.method = 'by wickets';
+    match.result.message = `Target chased. Won by ${wicketsLeft} wickets.`;
+  } else if ((second.totalRuns || 0) === (first.totalRuns || 0)) {
+    match.result.winner = undefined;
+    match.result.margin = 'Tie';
+    match.result.method = 'tie';
+    match.result.message = 'Match tied.';
+  } else {
+    const runsMargin = (first.totalRuns || 0) - (second.totalRuns || 0);
+    match.result.winner = first.battingTeam;
+    match.result.margin = `${runsMargin} runs`;
+    match.result.method = 'by runs';
+    match.result.message = `Defended successfully. Won by ${runsMargin} runs.`;
+  }
+
+  match.result.playerOfMatch = pickPlayerOfMatch(match);
+  match.commentary ??= [];
+  match.commentary.push({
+    over: second.currentOverNumber || 0,
+    ball: second.currentBallNumber || 0,
+    text: match.result.message,
+    batsmanRuns: 0,
+    totalRuns: second.totalRuns || 0,
+    isWicket: false,
+    timestamp: new Date()
+  });
+  return true;
+}
+
+function pickPlayerOfMatch(match) {
+  let best = { id: null, points: -1 };
+  for (const innings of match.innings || []) {
+    for (const bat of innings.battingScorecard || []) {
+      const points = (bat.runs || 0) + ((bat.fours || 0) * 2) + ((bat.sixes || 0) * 3);
+      if (points > best.points) best = { id: bat.batsman, points };
+    }
+    for (const bowl of innings.bowlingScorecard || []) {
+      const points = ((bowl.wickets || 0) * 25) - (bowl.runsConceded || 0) + ((bowl.maidens || 0) * 10);
+      if (points > best.points) best = { id: bowl.bowler, points };
+    }
+  }
+  return best.id;
+}
 
 // Helper function to generate commentary
 function generateCommentary(ballData, totalRuns) {
