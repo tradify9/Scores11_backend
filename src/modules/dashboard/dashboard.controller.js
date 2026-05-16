@@ -15,7 +15,8 @@ export const dashboardController = {
 
   // Get live matches for dashboard
   getLiveMatches: catchAsync(async (req, res) => {
-    const matches = await dashboardService.getLiveMatches();
+    const { limit = 25 } = req.query;
+    const matches = await dashboardService.getLiveMatches(parseInt(limit));
     res.json(new ApiResponse(200, 'Live matches retrieved', matches));
   }),
 
@@ -57,7 +58,7 @@ export const dashboardController = {
 
   // GET /matches/live - Get all live matches
   getMatchesLive: catchAsync(async (req, res) => {
-    const matches = await matchService.getLiveMatches();
+    const matches = await matchService.getLiveMatches(req.query);
     res.json(new ApiResponse(200, 'Live matches retrieved', matches));
   }),
 

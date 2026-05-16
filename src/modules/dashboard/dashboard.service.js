@@ -18,7 +18,7 @@ export const dashboardService = {
         latestTournaments,
         quickStats
       ] = await Promise.all([
-        dashboardService.getLiveMatches(),
+        dashboardService.getLiveMatches(25),
         dashboardService.getUpcomingMatches(5),
         dashboardService.getTrendingPlayers(10),
         dashboardService.getLatestTournaments(5),
@@ -57,7 +57,7 @@ export const dashboardService = {
   },
 
   // Get live matches
-  getLiveMatches: async () => {
+  getLiveMatches: async (limit = 25) => {
     try {
       const matches = await Match.find({
         status: MATCH_STATUS.LIVE,
@@ -66,7 +66,9 @@ export const dashboardService = {
         .populate('team1', 'name shortName logo')
         .populate('team2', 'name shortName logo')
         .populate('tournament', 'name')
-        .sort({ scheduledDate: 1 })
+        .populate('toss.winner', 'name shortName logo')
+        .sort({ updatedAt: -1, scheduledDate: -1 })
+        .limit(Math.min(parseInt(limit, 10) || 25, 100))
         .lean();
 
       const formatInningsScore = (innings) => {
@@ -107,6 +109,9 @@ export const dashboardService = {
         venue: match.venue?.name,
         venueCity: match.venue?.city,
         matchType: match.matchType,
+        toss: match.toss,
+        tossWinner: match.toss?.winner,
+        tossDecision: match.toss?.decision,
         currentInnings: match.currentInnings || 1,
         score: match.score || {
           team1: { runs: 0, wickets: 0, overs: '0.0' },

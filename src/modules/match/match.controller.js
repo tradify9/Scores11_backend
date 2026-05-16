@@ -122,7 +122,7 @@ export const matchController = {
 
   // Get live matches
   getLiveMatches: catchAsync(async (req, res) => {
-    const matches = await matchService.getLiveMatches();
+    const matches = await matchService.getLiveMatches(req.query);
     res.json(new ApiResponse(200, 'Live matches retrieved', matches));
   }),
 

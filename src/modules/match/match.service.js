@@ -337,7 +337,11 @@ export const matchService = {
   },
 
   // Get live matches
-  getLiveMatches: async () => {
+  getLiveMatches: async (query = {}) => {
+    const limit = Math.min(parseInt(query.limit, 10) || 25, 100);
+    const sortBy = query.sort || query.sortBy || 'updatedAt';
+    const sortOrder = query.order === 'asc' ? 1 : -1;
+
     const matches = await Match.find({ 
       status: MATCH_STATUS.LIVE,
       isActive: true 
@@ -345,8 +349,10 @@ export const matchService = {
       .populate('team1', 'name shortName logo')
       .populate('team2', 'name shortName logo')
       .populate('tournament', 'name')
+      .populate('toss.winner', 'name shortName logo')
       .populate('result.winner', 'name shortName')
-      .sort({ scheduledDate: 1 })
+      .sort({ [sortBy]: sortOrder })
+      .limit(limit)
       .lean();
 
     return matches;
