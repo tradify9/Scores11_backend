@@ -1215,14 +1215,17 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
 
+    const winner = await resolveWinnerTeam(match, resultData.winner);
+
     match.result = {
-      winner: resultData.winner,
+      winner,
       margin: resultData.margin,
       method: resultData.method,
       playerOfMatch: resultData.playerOfMatch,
       target: resultData.target,
       requiredRuns: resultData.requiredRuns,
-      requiredBalls: resultData.requiredBalls
+      requiredBalls: resultData.requiredBalls,
+      message: resultData.message
     };
 
     match.status = MATCH_STATUS.COMPLETED;
@@ -1231,7 +1234,38 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     return await Match.findById(matchId)
       .populate('team1', 'name shortName')
       .populate('team2', 'name shortName')
+      .populate('result.winner', 'name shortName')
       .populate('result.playerOfMatch', 'playerName');
+  },
+
+  endMatch: async (matchId, userId) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+
+    if (match.status !== MATCH_STATUS.COMPLETED) {
+      const didFinalize = finalizeSecondInningsResult(match, { force: true });
+      if (!didFinalize) {
+        match.status = MATCH_STATUS.COMPLETED;
+        match.result ??= {};
+        match.result.message = match.result.message || 'Match completed.';
+      }
+      await match.save();
+    }
+
+    const completedMatch = await Match.findById(matchId)
+      .populate('team1', 'name shortName logo')
+      .populate('team2', 'name shortName logo')
+      .populate('result.winner', 'name shortName')
+      .populate('result.playerOfMatch', 'playerName jerseyNumber');
+
+    emitToMatch(matchId, 'liveScoreUpdate', {
+      matchId,
+      action: 'matchCompleted',
+      match: completedMatch,
+      result: completedMatch.result
+    });
+
+    return completedMatch;
   },
 
   // Get over summary
@@ -1369,6 +1403,25 @@ function finalizeSecondInningsResult(match, { force = false } = {}) {
     timestamp: new Date()
   });
   return true;
+}
+
+async function resolveWinnerTeam(match, winner) {
+  if (!winner) return undefined;
+  const raw = winner._id || winner.id || winner;
+  const value = raw.toString();
+
+  if (value === match.team1.toString()) return match.team1;
+  if (value === match.team2.toString()) return match.team2;
+
+  const teams = await Team.find({ _id: { $in: [match.team1, match.team2] } })
+    .select('name shortName')
+    .lean();
+  const normalized = value.trim().toLowerCase();
+  const team = teams.find(t =>
+    t.name?.toLowerCase() === normalized ||
+    t.shortName?.toLowerCase() === normalized
+  );
+  return team?._id;
 }
 
 function pickPlayerOfMatch(match) {

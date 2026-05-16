@@ -267,6 +267,8 @@ export const matchService = {
         .populate('team1', 'name shortName logo')
         .populate('team2', 'name shortName logo')
         .populate('tournament', 'name format')
+        .populate('result.winner', 'name shortName')
+        .populate('result.playerOfMatch', 'playerName jerseyNumber')
         .sort({ [safeSortBy]: safeSortOrder })
         .skip(skip)
         .limit(limit)
@@ -343,6 +345,7 @@ export const matchService = {
       .populate('team1', 'name shortName logo')
       .populate('team2', 'name shortName logo')
       .populate('tournament', 'name')
+      .populate('result.winner', 'name shortName')
       .sort({ scheduledDate: 1 })
       .lean();
 
@@ -389,6 +392,7 @@ export const matchService = {
         .populate('team1', 'name shortName logo')
         .populate('team2', 'name shortName logo')
         .populate('tournament', 'name')
+        .populate('result.winner', 'name shortName')
         .populate('result.playerOfMatch', 'playerName')
         .sort({ [sortBy]: sortOrder })
         .skip(skip)
@@ -569,7 +573,8 @@ export const matchService = {
       playerOfMatch: resultData.playerOfMatch,
       target: resultData.target,
       requiredRuns: resultData.requiredRuns,
-      requiredBalls: resultData.requiredBalls
+      requiredBalls: resultData.requiredBalls,
+      message: resultData.message
     };
     
     match.status = MATCH_STATUS.COMPLETED;
@@ -596,6 +601,7 @@ export const matchService = {
     return await Match.findById(matchId)
       .populate('team1', 'name shortName')
       .populate('team2', 'name shortName')
+      .populate('result.winner', 'name shortName')
       .populate('result.playerOfMatch', 'playerName');
   },
 
@@ -865,6 +871,8 @@ export const matchService = {
         .populate('team1', 'name shortName logo')
         .populate('team2', 'name shortName logo')
         .populate('tournament', 'name format')
+        .populate('result.winner', 'name shortName')
+        .populate('result.playerOfMatch', 'playerName jerseyNumber')
         .sort({ [sortBy]: sortOrder })
         .skip(skip)
         .limit(limit)

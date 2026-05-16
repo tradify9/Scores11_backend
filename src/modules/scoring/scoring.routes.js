@@ -14,6 +14,8 @@ router.get('/match/:matchId/scorecard', scoringController.getFullScorecard);
 router.get('/match/:matchId/full-scorecard', scoringController.getFullScorecard); // 🆕 Flutter compatibility alias
 router.post('/match/:matchId/innings/start', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.startInnings);
 router.post('/match/:matchId/innings/end', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.endInnings);
+router.post('/match/:matchId/end', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.endMatch);
+router.post('/match/:matchId/result', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.updateResult);
 router.patch('/match/:matchId/striker', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.setStriker);
 router.patch('/match/:matchId/non-striker', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.setNonStriker);
 router.patch('/match/:matchId/bowler', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.setBowler);

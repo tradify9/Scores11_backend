@@ -123,6 +123,44 @@ export const scoringController = {
     }
   },
 
+  // POST /match/:matchId/end
+  endMatch: async (req, res) => {
+    try {
+      const result = await scoringService.endMatch(
+        req.params.matchId,
+        req.user.userId
+      );
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
+
+  // POST /match/:matchId/result
+  updateResult: async (req, res) => {
+    try {
+      const result = await scoringService.updateResult(
+        req.params.matchId,
+        req.body
+      );
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
+
 
   // PATCH /match/:matchId/striker
   setStriker: async (req, res) => {
