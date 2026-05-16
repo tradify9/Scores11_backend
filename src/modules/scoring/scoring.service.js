@@ -176,14 +176,22 @@ console.log('[SCORING] Batting order set:', match.battingOrder.length, 'teams');
       isWicket, 
       wicketType, 
       fielderId,
+      dismissedBatsmanId,
       isWide, 
       isNoBall, 
       isBye,
       isLegBye,
+      isFreeHit,
       wagonZone,
       wagonLabel,
       comment 
     } = ballData;
+
+    const normalizedWicketType = wicketType === 'runOut' ? 'run_out' : wicketType;
+    const freeHitAllowedWickets = ['run_out', 'handled_ball', 'obstructing_field', 'hit_ball_twice'];
+    if ((isFreeHit || isNoBall) && isWicket && !freeHitAllowedWickets.includes(normalizedWicketType)) {
+      throw new ApiError(400, 'This wicket is not allowed on a no ball/free hit');
+    }
 
 let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match.currentInnings);
     if (currentInningsIndex === -1) {
@@ -291,10 +299,12 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       batsman: scoringBatsmanId,
       bowler: actualBowlerId,
       runs: runs || 0,
-      extras: (isWide || isNoBall || isBye || isLegBye) ? 1 : 0,
+      extras: isWide || isNoBall ? 1 : (isBye || isLegBye ? (runs || 0) : 0),
       wicket: isWicket || false,
-      wicketType: wicketType || null,
+      wicketType: normalizedWicketType || null,
       wicketFielder: fielderId || null,
+      dismissedBatsman: dismissedBatsmanId || batsmanId,
+      isFreeHit: isFreeHit || false,
       isWide,
       isNoBall, 
       isBye, 
@@ -306,7 +316,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     });
 
     // Update innings scores
-    let totalRuns = runs || 0;
+    const deliveryRuns = runs || 0;
     let extrasCount = 0;
     
     if (isWide) {
@@ -318,16 +328,17 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       extrasCount += 1;
     }
     if (isBye) {
-      innings.extras.byes += 1;
-      extrasCount += 1;
+      innings.extras.byes += deliveryRuns;
+      extrasCount += deliveryRuns;
     }
     if (isLegBye) {
-      innings.extras.legByes += 1;
-      extrasCount += 1;
+      innings.extras.legByes += deliveryRuns;
+      extrasCount += deliveryRuns;
     }
     
+    const totalRuns = (isBye || isLegBye) ? extrasCount : deliveryRuns + extrasCount;
     innings.extras.total += extrasCount;
-    innings.totalRuns += totalRuns + extrasCount;
+    innings.totalRuns += totalRuns;
     if (isValidDelivery) innings.totalBalls += 1;
 
     // Update over count (only if not wide or no-ball)
@@ -342,14 +353,19 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     const batsmanIndex = innings.battingScorecard.findIndex(b => 
       b.batsman.toString() === batsmanId.toString()
     );
+    const dismissedId = (dismissedBatsmanId || batsmanId).toString();
+    const dismissedBatsmanIndex = innings.battingScorecard.findIndex(b =>
+      b.batsman.toString() === dismissedId
+    );
+    const batsmanRuns = (isBye || isLegBye || isWide) ? 0 : deliveryRuns;
     
-    if (batsmanIndex !== -1 && !isWide && !isNoBall) {
+    if (batsmanIndex !== -1 && !isWide) {
       const previousRuns = innings.battingScorecard[batsmanIndex].runs || 0;
-      innings.battingScorecard[batsmanIndex].runs += totalRuns;
-      innings.battingScorecard[batsmanIndex].balls += 1;
+      innings.battingScorecard[batsmanIndex].runs += batsmanRuns;
+      innings.battingScorecard[batsmanIndex].balls += isValidDelivery ? 1 : 0;
       
-      if (totalRuns === 4) innings.battingScorecard[batsmanIndex].fours += 1;
-      if (totalRuns === 6) innings.battingScorecard[batsmanIndex].sixes += 1;
+      if (batsmanRuns === 4) innings.battingScorecard[batsmanIndex].fours += 1;
+      if (batsmanRuns === 6) innings.battingScorecard[batsmanIndex].sixes += 1;
       
       // Calculate strike rate
       if (innings.battingScorecard[batsmanIndex].balls > 0) {
@@ -390,6 +406,8 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     const bowlerIndex = innings.bowlingScorecard.findIndex(b => 
       b.bowler.toString() === actualBowlerId.toString()
     );
+    const bowlerWicketTypes = ['bowled', 'caught', 'lbw', 'stumped', 'hit_wicket'];
+    const isBowlerWicket = Boolean(isWicket && bowlerWicketTypes.includes(normalizedWicketType));
     
     if (bowlerIndex === -1) {
       // Add new bowler
@@ -397,15 +415,15 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
         bowler: actualBowlerId,
         overs: isValidDelivery ? 0.1 : 0,
         maidens: 0,
-        runsConceded: totalRuns + extrasCount,
-        wickets: isWicket ? 1 : 0,
+        runsConceded: totalRuns,
+        wickets: isBowlerWicket ? 1 : 0,
         wide: isWide ? 1 : 0,
         noBall: isNoBall ? 1 : 0,
         economy: isValidDelivery ? (totalRuns + extrasCount) * 6 : 0
       });
     } else {
-      innings.bowlingScorecard[bowlerIndex].runsConceded += totalRuns + extrasCount;
-      if (isWicket) innings.bowlingScorecard[bowlerIndex].wickets += 1;
+      innings.bowlingScorecard[bowlerIndex].runsConceded += totalRuns;
+      if (isBowlerWicket) innings.bowlingScorecard[bowlerIndex].wickets += 1;
       if (isWide) innings.bowlingScorecard[bowlerIndex].wide += 1;
       if (isNoBall) innings.bowlingScorecard[bowlerIndex].noBall += 1;
       
@@ -424,7 +442,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     if (isValidDelivery) {
       innings.currentPartnership.balls += 1;
     }
-    innings.currentPartnership.runs += totalRuns; // Extras not counted in partnership
+    innings.currentPartnership.runs += batsmanRuns; // Extras not counted in partnership
 
     // RRR CALCULATION for 2nd innings
     if (match.currentInnings === 2 && match.innings[0]) {
@@ -443,21 +461,22 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     if (isWicket) {
       innings.totalWickets += 1;
       
-      if (batsmanIndex !== -1) {
-        innings.battingScorecard[batsmanIndex].howOut = wicketType || 'caught';
-        innings.battingScorecard[batsmanIndex].fielder = fielderId;
-        innings.battingScorecard[batsmanIndex].bowler = bowlerId;
+      if (dismissedBatsmanIndex !== -1) {
+        innings.battingScorecard[dismissedBatsmanIndex].howOut = normalizedWicketType || 'caught';
+        innings.battingScorecard[dismissedBatsmanIndex].fielder = fielderId;
+        innings.battingScorecard[dismissedBatsmanIndex].bowler = isBowlerWicket ? bowlerId : null;
         
         // Add fall of wicket
         innings.fallOfWickets.push({
           wicketNumber: innings.totalWickets,
-          batsman: batsmanId,
+          batsman: dismissedId,
           runs: innings.totalRuns,
           overs: `${innings.totalOvers}.${innings.totalBalls}`,
           partnership: 0 // Calculate this
         });
       }
-      innings.currentStriker = null;
+      if (innings.currentStriker?.toString() === dismissedId) innings.currentStriker = null;
+      if (innings.currentNonStriker?.toString() === dismissedId) innings.currentNonStriker = null;
     }
 
     // Update match score
@@ -485,7 +504,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       over: overNumber,
       ball: ballNumber,
       text: generateCommentary(ballData, innings.totalRuns),
-      batsmanRuns: runs || 0,
+      batsmanRuns,
       totalRuns: innings.totalRuns,
       isWicket: isWicket || false,
       timestamp: new Date()
@@ -792,6 +811,39 @@ console.log('[LIVE] getLiveScore populated:', {
       .populate('batsman', 'playerName jerseyNumber')
       .populate('bowler', 'playerName jerseyNumber')
       .sort({ innings: 1, overNumber: 1, ballNumber: 1 });
+
+    const scorecardPlayerIds = new Set();
+    match.innings.forEach(innings => {
+      innings.battingScorecard.forEach(b => {
+        if (b.batsman) scorecardPlayerIds.add(b.batsman.toString());
+        if (b.bowler) scorecardPlayerIds.add(b.bowler.toString());
+        if (b.fielder) scorecardPlayerIds.add(b.fielder.toString());
+      });
+      innings.bowlingScorecard.forEach(b => {
+        if (b.bowler) scorecardPlayerIds.add(b.bowler.toString());
+      });
+      innings.fallOfWickets.forEach(w => {
+        if (w.batsman) scorecardPlayerIds.add(w.batsman.toString());
+      });
+    });
+    const scorecardPlayers = await Player.find({ _id: { $in: Array.from(scorecardPlayerIds) } })
+      .select('playerName name jerseyNumber avatar role')
+      .lean();
+    const scorecardPlayerMap = new Map(
+      scorecardPlayers.map(player => [player._id.toString(), {
+        _id: player._id,
+        playerName: player.playerName || player.name || 'Unknown',
+        name: player.name || player.playerName || 'Unknown',
+        jerseyNumber: player.jerseyNumber,
+        avatar: player.avatar,
+        role: player.role
+      }])
+    );
+    const playerPayload = (playerId) => {
+      if (!playerId) return null;
+      const id = playerId.toString();
+      return scorecardPlayerMap.get(id) || { _id: id, playerName: 'Unknown' };
+    };
     const ballByBall = balls.map(ball => ({
       _id: ball._id,
       innings: ball.innings,
@@ -828,15 +880,31 @@ console.log('[LIVE] getLiveScore populated:', {
       totalWickets: innings.totalWickets,
       overs: `${innings.totalOvers}.${innings.totalBalls}`,
       extras: innings.extras,
-      battingScorecard: innings.battingScorecard.map(b => ({
-        ...b,
-        strikeRate: b.balls > 0 ? ((b.runs / b.balls) * 100).toFixed(2) : 0
-      })),
-      bowlingScorecard: innings.bowlingScorecard.map(b => ({
-        ...b,
-        economy: b.overs > 0 ? (b.runsConceded / b.overs).toFixed(2) : 0
-      })),
-      fallOfWickets: innings.fallOfWickets,
+      battingScorecard: innings.battingScorecard.map(b => {
+        const row = b.toObject ? b.toObject() : b;
+        return {
+          ...row,
+          batsman: playerPayload(b.batsman),
+          bowler: playerPayload(b.bowler),
+          fielder: playerPayload(b.fielder),
+          strikeRate: b.balls > 0 ? ((b.runs / b.balls) * 100).toFixed(2) : 0
+        };
+      }),
+      bowlingScorecard: innings.bowlingScorecard.map(b => {
+        const row = b.toObject ? b.toObject() : b;
+        return {
+          ...row,
+          bowler: playerPayload(b.bowler),
+          economy: b.overs > 0 ? (b.runsConceded / b.overs).toFixed(2) : 0
+        };
+      }),
+      fallOfWickets: innings.fallOfWickets.map(w => {
+        const row = w.toObject ? w.toObject() : w;
+        return {
+          ...row,
+          batsman: playerPayload(w.batsman)
+        };
+      }),
       partnerships: innings.partnerships
     }));
 

@@ -16,9 +16,11 @@ const validateBallData = Joi.object({
   }),
   fielderId: Joi.string().when('isWicket', {
     is: true,
-    then: Joi.string().required(),
+    then: Joi.string().allow(null, ''),
     otherwise: Joi.string().allow(null, '')
   }),
+  dismissedBatsmanId: Joi.string().allow(null, ''),
+  isFreeHit: Joi.boolean().default(false),
   isWide: Joi.boolean().default(false),
   isNoBall: Joi.boolean().default(false),
   isBye: Joi.boolean().default(false),

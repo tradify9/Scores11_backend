@@ -15,6 +15,8 @@ const ballSchema = new mongoose.Schema({
   wicket: { type: Boolean, default: false },
   wicketType: { type: String, enum: Object.values(WICKET_TYPE) },
   wicketFielder: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
+  dismissedBatsman: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
+  isFreeHit: { type: Boolean, default: false },
   isWide: { type: Boolean, default: false },
   isNoBall: { type: Boolean, default: false },
   isBye: { type: Boolean, default: false },

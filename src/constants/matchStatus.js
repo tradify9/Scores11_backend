@@ -37,7 +37,10 @@ export const WICKET_TYPE = {
   LBW: 'lbw',
   HIT_WICKET: 'hit_wicket',
   HANDLED_BALL: 'handled_ball',
-  TIMED_OUT: 'timed_out'
+  TIMED_OUT: 'timed_out',
+  OBSTRUCTING_FIELD: 'obstructing_field',
+  HIT_BALL_TWICE: 'hit_ball_twice',
+  RETIRED_HURT: 'retired_hurt'
 };
 
 export const BALL_RESULT = {
