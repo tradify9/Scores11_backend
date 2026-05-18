@@ -7,6 +7,7 @@ const router = express.Router();
 // Public routes
 router.get('/', liveStreamController.getLiveStreams);
 router.get('/featured', liveStreamController.getFeaturedStreams);
+router.get('/my/streams', auth, liveStreamController.getMyStreams);
 router.get('/:streamId', liveStreamController.getLiveStreamById);
 
 // Protected routes
@@ -19,6 +20,5 @@ router.post('/:streamId/join', auth, liveStreamController.joinLiveStream);
 router.post('/:streamId/leave', auth, liveStreamController.leaveLiveStream);
 router.post('/:streamId/chat', auth, liveStreamController.sendChatMessage);
 router.post('/:streamId/like', auth, liveStreamController.likeLiveStream);
-router.get('/my/streams', auth, liveStreamController.getMyStreams);
 
 export default router;

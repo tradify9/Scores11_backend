@@ -1,7 +1,6 @@
 import LiveStream from './liveStream.model.js';
 import User from '../user/user.model.js';
 import ApiError from '../../utils/ApiError.js';
-import { paginate } from '../../utils/pagination.js';
 import { getIO } from '../../config/socket.js';
 import config from '../../config/env.js';
 import axios from 'axios';
@@ -102,6 +101,9 @@ export const generateRealZenUrls = async (stream) => {
 
 export const getLiveStreams = async (query) => {
   const { status, category, streamType, search, isPremium, page = 1, limit = 20 } = query;
+  const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
+  const skip = (pageNumber - 1) * limitNumber;
   const filter = {};
   
   if (status) filter.status = status;
@@ -111,10 +113,22 @@ export const getLiveStreams = async (query) => {
   if (search) filter.$text = { $search: search };
   if (!status) filter.status = { $in: ['live', 'scheduled'] };
 
-  return await paginate(LiveStream, filter, {
-    page, limit, sort: { viewerCount: -1, createdAt: -1 },
-    populate: 'userId'
-  });
+  const [results, totalResults] = await Promise.all([
+    LiveStream.find(filter)
+      .populate('userId', 'name email avatar')
+      .sort({ status: 1, viewerCount: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(limitNumber),
+    LiveStream.countDocuments(filter)
+  ]);
+
+  return {
+    results,
+    page: pageNumber,
+    limit: limitNumber,
+    totalResults,
+    totalPages: Math.ceil(totalResults / limitNumber)
+  };
 };
 
 export const getLiveStreamById = async (streamId) => {
@@ -252,8 +266,23 @@ export const getFeaturedStreams = async (limit = 10) => {
 };
 
 export const getMyStreams = async (userId, page = 1, limit = 10) => {
-  return await paginate(LiveStream, { userId }, {
-    page, limit, sort: { createdAt: -1 }
-  });
+  const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 50);
+  const skip = (pageNumber - 1) * limitNumber;
+  const [results, totalResults] = await Promise.all([
+    LiveStream.find({ userId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNumber),
+    LiveStream.countDocuments({ userId })
+  ]);
+
+  return {
+    results,
+    page: pageNumber,
+    limit: limitNumber,
+    totalResults,
+    totalPages: Math.ceil(totalResults / limitNumber)
+  };
 };
 
