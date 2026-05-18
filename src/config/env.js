@@ -69,9 +69,11 @@ export default {
   
   // ZenStream Live Streaming API
   zenstream: {
-    apiSecret: process.env.ZENSTREAM_API_SECRET || '',
-    baseUrl: 'https://api.zenstream.live/v1', // Official ZenStream API
-    ingestDomain: 'ingest.zenstream.live',
-    playerDomain: 'player.zenstream.live'
+    apiKey: process.env.ZENSTREAM_API_KEY || process.env.ZENSTREAM_API_SECRET || '',
+    apiSecret: process.env.ZENSTREAM_API_SECRET || process.env.ZENSTREAM_API_KEY || '',
+    baseUrl: process.env.ZENSTREAM_BASE_URL || 'https://api.zenstream.live/v1',
+    rtmpServer: process.env.ZENSTREAM_RTMP_SERVER || process.env.ZENSTREAM_INGEST_URL || 'rtmp://live-ingest-01.vd0.co:1935/livestream',
+    playerUrl: process.env.ZENSTREAM_PLAYER_URL || process.env.ZENSTREAM_PLAYER_DOMAIN || 'https://player.zenstream.live',
+    hlsUrl: process.env.ZENSTREAM_HLS_URL || ''
   }
 };

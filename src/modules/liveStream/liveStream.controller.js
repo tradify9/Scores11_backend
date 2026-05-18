@@ -1,23 +1,22 @@
 import * as liveStreamService from './liveStream.service.js';
 import ApiResponse from '../../utils/ApiResponse.js';
 import catchAsync from '../../utils/catchAsync.js';
-import { getIO } from '../../config/socket.js';
 
 export const createLiveStream = catchAsync(async (req, res) => {
   console.log(`[${new Date().toISOString()}] [LIVESTREAM-CONTROLLER] createLiveStream req.user._id: ${req.user._id} (${typeof req.user._id})`);
   console.log(`[${new Date().toISOString()}] [LIVESTREAM-CONTROLLER] req.user: ${JSON.stringify(req.user)}`);
   const stream = await liveStreamService.createLiveStream(req.user._id, req.body);
-  ApiResponse.created(res, stream, 'Live stream created successfully');
+  ApiResponse.created(res, 'Live stream created successfully', stream);
 });
 
 export const getLiveStreams = catchAsync(async (req, res) => {
   const streams = await liveStreamService.getLiveStreams(req.query);
-  ApiResponse.success(res, streams, 'Live streams fetched successfully');
+  ApiResponse.success(res, 'Live streams fetched successfully', streams);
 });
 
 export const getLiveStreamById = catchAsync(async (req, res) => {
   const stream = await liveStreamService.getLiveStreamById(req.params.streamId);
-  ApiResponse.success(res, stream, 'Live stream fetched successfully');
+  ApiResponse.success(res, 'Live stream fetched successfully', stream);
 });
 
 export const updateLiveStream = catchAsync(async (req, res) => {
@@ -26,12 +25,12 @@ export const updateLiveStream = catchAsync(async (req, res) => {
     req.user._id,
     req.body
   );
-  ApiResponse.success(res, stream, 'Live stream updated successfully');
+  ApiResponse.success(res, 'Live stream updated successfully', stream);
 });
 
 export const deleteLiveStream = catchAsync(async (req, res) => {
   await liveStreamService.deleteLiveStream(req.params.streamId, req.user._id);
-  ApiResponse.success(res, null, 'Live stream deleted successfully');
+  ApiResponse.success(res, 'Live stream deleted successfully', null);
 });
 
 export const startLiveStream = catchAsync(async (req, res) => {
@@ -39,13 +38,7 @@ export const startLiveStream = catchAsync(async (req, res) => {
     req.params.streamId,
     req.user._id
   );
-  
-  const io = getIO();
-  if (io) {
-    io.emit('streamStarted', { streamId: stream._id, title: stream.title });
-  }
-  
-  ApiResponse.success(res, stream, 'Live stream started');
+  ApiResponse.success(res, 'Live stream started', stream);
 });
 
 export const endLiveStream = catchAsync(async (req, res) => {
@@ -53,13 +46,7 @@ export const endLiveStream = catchAsync(async (req, res) => {
     req.params.streamId,
     req.user._id
   );
-  
-  const io = getIO();
-  if (io) {
-    io.emit('streamEnded', { streamId: stream._id });
-  }
-  
-  ApiResponse.success(res, stream, 'Live stream ended');
+  ApiResponse.success(res, 'Live stream ended', stream);
 });
 
 export const joinLiveStream = catchAsync(async (req, res) => {
@@ -67,16 +54,7 @@ export const joinLiveStream = catchAsync(async (req, res) => {
     req.params.streamId,
     req.user._id
   );
-  
-  const io = getIO();
-  if (io) {
-    io.to(req.params.streamId).emit('viewerJoined', { 
-      viewerCount: stream.viewerCount,
-      userId: req.user._id
-    });
-  }
-  
-  ApiResponse.success(res, stream, 'Joined live stream');
+  ApiResponse.success(res, 'Joined live stream', stream);
 });
 
 export const leaveLiveStream = catchAsync(async (req, res) => {
@@ -84,16 +62,7 @@ export const leaveLiveStream = catchAsync(async (req, res) => {
     req.params.streamId,
     req.user._id
   );
-  
-  const io = getIO();
-  if (io) {
-    io.to(req.params.streamId).emit('viewerLeft', { 
-      viewerCount: stream.viewerCount,
-      userId: req.user._id
-    });
-  }
-  
-  ApiResponse.success(res, stream, 'Left live stream');
+  ApiResponse.success(res, 'Left live stream', stream);
 });
 
 export const sendChatMessage = catchAsync(async (req, res) => {
@@ -102,13 +71,7 @@ export const sendChatMessage = catchAsync(async (req, res) => {
     req.user._id,
     req.body.message
   );
-  
-  const io = getIO();
-  if (io) {
-    io.to(req.params.streamId).emit('newChatMessage', message);
-  }
-  
-  ApiResponse.success(res, message, 'Message sent');
+  ApiResponse.success(res, 'Message sent', message);
 });
 
 export const likeLiveStream = catchAsync(async (req, res) => {
@@ -116,23 +79,14 @@ export const likeLiveStream = catchAsync(async (req, res) => {
     req.params.streamId,
     req.user._id
   );
-  
-  const io = getIO();
-  if (io) {
-    io.to(req.params.streamId).emit('streamLiked', { 
-      likes: stream.likes,
-      userId: req.user._id
-    });
-  }
-  
-  ApiResponse.success(res, stream, 'Liked live stream');
+  ApiResponse.success(res, 'Liked live stream', stream);
 });
 
 export const getFeaturedStreams = catchAsync(async (req, res) => {
   const streams = await liveStreamService.getFeaturedStreams(
     parseInt(req.query.limit) || 10
   );
-  ApiResponse.success(res, streams, 'Featured streams fetched successfully');
+  ApiResponse.success(res, 'Featured streams fetched successfully', streams);
 });
 
 export const getMyStreams = catchAsync(async (req, res) => {
@@ -141,7 +95,7 @@ export const getMyStreams = catchAsync(async (req, res) => {
     parseInt(req.query.page) || 1,
     parseInt(req.query.limit) || 10
   );
-  ApiResponse.success(res, streams, 'My streams fetched successfully');
+  ApiResponse.success(res, 'My streams fetched successfully', streams);
 });
 
 

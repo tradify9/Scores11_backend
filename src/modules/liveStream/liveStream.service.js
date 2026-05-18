@@ -6,6 +6,32 @@ import { getIO } from '../../config/socket.js';
 import config from '../../config/env.js';
 import axios from 'axios';
 
+const trimTrailingSlash = (value = '') => value.toString().replace(/\/+$/, '');
+
+const makeStreamKey = (stream) => {
+  const seed = stream._id?.toString?.() || Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 10);
+  return `scores11_${seed}_${Date.now()}_${random}`;
+};
+
+const applyZenStreamUrls = (stream, streamKey) => {
+  const rtmpServer = trimTrailingSlash(config.zenstream.rtmpServer);
+  const playerBase = trimTrailingSlash(config.zenstream.playerUrl);
+  const hlsBase = trimTrailingSlash(config.zenstream.hlsUrl);
+
+  stream.provider = 'zenstream';
+  stream.streamKey = streamKey;
+  stream.zenstreamStreamKey = streamKey;
+  stream.rtmpUrl = rtmpServer;
+  stream.zenstreamRtmpUrl = `${rtmpServer}/${streamKey}`;
+  stream.zenstreamPlayerUrl = playerBase ? `${playerBase}/${streamKey}` : '';
+  stream.playbackUrl = stream.zenstreamPlayerUrl;
+  stream.hlsUrl = hlsBase ? `${hlsBase}/${streamKey}.m3u8` : stream.hlsUrl;
+  stream.streamUrl = stream.hlsUrl || stream.playbackUrl || stream.zenstreamPlayerUrl;
+
+  return stream;
+};
+
 export const createLiveStream = async (userId, streamData) => {
   console.log(`[LIVESTREAM-SERVICE] createLiveStream userId: ${userId}`);
   
@@ -29,36 +55,46 @@ export const createLiveStream = async (userId, streamData) => {
 };
 
 export const generateRealZenUrls = async (stream) => {
-  if (!config.zenstream.apiSecret) {
-    console.warn('[ZENSTREAM] API secret not configured, using fallback URLs');
-    // Fallback to dummy (already in model)
-    return stream;
+  const fallbackKey = stream.zenstreamStreamKey || stream.streamKey || makeStreamKey(stream);
+
+  if (!config.zenstream.apiKey) {
+    console.warn('[ZENSTREAM] API key not configured, using dynamic local stream key');
+    return applyZenStreamUrls(stream, fallbackKey);
   }
 
   try {
-    const streamKey = `scores11_${stream._id}_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    applyZenStreamUrls(stream, fallbackKey);
     
-    // Call ZenStream API to create authenticated stream (assumed endpoint)
+    // ZenStream account APIs differ by plan. If the configured endpoint accepts
+    // stream creation, use its returned values; otherwise the local key remains valid.
     const response = await axios.post(`${config.zenstream.baseUrl}/streams`, {
-      stream_key: streamKey,
+      stream_key: fallbackKey,
       title: stream.title,
       description: stream.description || '',
-      secret: config.zenstream.apiSecret
+      provider: 'zenstream'
     }, {
-      headers: { 'Authorization': `Secret ${config.zenstream.apiSecret}` }
+      timeout: 10000,
+      headers: {
+        Authorization: `Bearer ${config.zenstream.apiKey}`,
+        'x-api-key': config.zenstream.apiKey
+      }
     });
 
-    stream.zenstreamStreamKey = response.data.stream_key || streamKey;
-    stream.zenstreamRtmpUrl = `rtmp://${config.zenstream.ingestDomain}/live/${stream.zenstreamStreamKey}`;
-    stream.zenstreamPlayerUrl = `https://${config.zenstream.playerDomain}/${stream.zenstreamStreamKey}`;
-    stream.streamUrl = stream.zenstreamPlayerUrl;
+    const data = response.data?.data || response.data?.stream || response.data || {};
+    const apiStreamKey = data.stream_key || data.streamKey || data.key || fallbackKey;
+    applyZenStreamUrls(stream, apiStreamKey);
+
+    stream.rtmpUrl = data.rtmpUrl || data.rtmp_url || stream.rtmpUrl;
+    stream.zenstreamRtmpUrl = data.ingestUrl || data.ingest_url || data.rtmpFullUrl || stream.zenstreamRtmpUrl;
+    stream.zenstreamPlayerUrl = data.playerUrl || data.player_url || data.playbackUrl || stream.zenstreamPlayerUrl;
+    stream.playbackUrl = data.playbackUrl || data.playback_url || stream.zenstreamPlayerUrl;
+    stream.hlsUrl = data.hlsUrl || data.hls_url || stream.hlsUrl;
+    stream.streamUrl = stream.hlsUrl || stream.playbackUrl || stream.zenstreamPlayerUrl;
 
     console.log(`[ZENSTREAM] Real URLs generated for stream ${stream._id}`);
   } catch (error) {
     console.error('[ZENSTREAM] API call failed:', error.response?.data || error.message);
-    // Fallback to model-generated dummy URLs
-    stream.zenstreamRtmpUrl = `rtmp://${config.zenstream.ingestDomain}/live/${stream.zenstreamStreamKey}`;
-    stream.zenstreamPlayerUrl = `https://${config.zenstream.playerDomain}/${stream.zenstreamStreamKey}`;
+    applyZenStreamUrls(stream, fallbackKey);
   }
 
   return stream;
@@ -111,9 +147,15 @@ export const deleteLiveStream = async (streamId, userId) => {
 export const startLiveStream = async (streamId, userId) => {
   const stream = await LiveStream.findOne({ _id: streamId, userId });
   if (!stream) throw new ApiError(404, 'Live stream not found');
+
+  if (!stream.streamKey || !stream.rtmpUrl) {
+    await generateRealZenUrls(stream);
+  }
   
-  stream.status = 'live';
-  stream.startedAt = new Date();
+  if (stream.status !== 'live') {
+    stream.status = 'live';
+    stream.startedAt = stream.startedAt || new Date();
+  }
   await stream.save();
 
   const io = getIO();
@@ -126,9 +168,11 @@ export const endLiveStream = async (streamId, userId) => {
   const stream = await LiveStream.findOne({ _id: streamId, userId });
   if (!stream) throw new ApiError(404, 'Live stream not found');
   
-  stream.status = 'ended';
-  stream.endedAt = new Date();
-  if (stream.startedAt) stream.duration = Math.floor((stream.endedAt - stream.startedAt) / 1000);
+  if (stream.status !== 'ended') {
+    stream.status = 'ended';
+    stream.endedAt = new Date();
+    if (stream.startedAt) stream.duration = Math.floor((stream.endedAt - stream.startedAt) / 1000);
+  }
   await stream.save();
 
   const io = getIO();

@@ -32,6 +32,13 @@ const liveStreamSchema = new mongoose.Schema({
     sparse: true
   },
   streamUrl: String,
+  provider: {
+    type: String,
+    default: 'zenstream'
+  },
+  rtmpUrl: String,
+  hlsUrl: String,
+  playbackUrl: String,
   status: {
     type: String,
     enum: ['pending', 'live', 'ended', 'scheduled'],
@@ -112,7 +119,7 @@ liveStreamSchema.pre('save', async function(next) {
       this.streamKey = `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
     if (!this.zenstreamStreamKey) {
-      this.zenstreamStreamKey = `zen_${this._id || 'new'}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      this.zenstreamStreamKey = this.streamKey;
     }
     
     // Service will populate real URLs on create/update

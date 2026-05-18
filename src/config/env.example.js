@@ -50,7 +50,9 @@ WALLET_MIN_DEPOSIT=10
 WALLET_MAX_DEPOSIT=10000
 WALLET_MIN_WITHDRAWAL=100
 
-  # 🔴 ZENSTREAM LIVE STREAMING (NEW)
-# ZENSTREAM_API_SECRET=MSmOXLidKY5m1u1AhP1RhgA8PZqhGmle68WJ8QXP0afX4Y39sXOLBmTOAbSqcaCg
-# Copy this exact value to your .env file!
-# ZenStream will authenticate RTMP streams using this secret
+# ZenStream live streaming
+ZENSTREAM_API_KEY=your_zenstream_api_key_here
+ZENSTREAM_BASE_URL=https://api.zenstream.live/v1
+ZENSTREAM_RTMP_SERVER=rtmp://live-ingest-01.vd0.co:1935/livestream
+ZENSTREAM_PLAYER_URL=https://player.zenstream.live
+ZENSTREAM_HLS_URL=
