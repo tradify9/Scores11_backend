@@ -31,6 +31,55 @@ const applyZenStreamUrls = (stream, streamKey) => {
   return stream;
 };
 
+const extractYoutubeVideoId = (value = '') => {
+  const input = value.toString().trim();
+  if (!input) return '';
+
+  const plainId = /^[a-zA-Z0-9_-]{11}$/;
+  if (plainId.test(input)) return input;
+
+  try {
+    const url = new URL(input);
+    if (url.hostname.includes('youtu.be')) {
+      return url.pathname.split('/').filter(Boolean)[0] || '';
+    }
+    if (url.searchParams.get('v')) return url.searchParams.get('v');
+    const parts = url.pathname.split('/').filter(Boolean);
+    const markers = ['embed', 'live', 'shorts'];
+    for (const marker of markers) {
+      const index = parts.indexOf(marker);
+      if (index >= 0 && parts[index + 1]) return parts[index + 1];
+    }
+  } catch (_) {
+    return '';
+  }
+
+  return '';
+};
+
+const applyYoutubeUrls = (stream, youtubeInput) => {
+  const videoId = extractYoutubeVideoId(youtubeInput || stream.youtubeUrl || stream.youtubeVideoId);
+  if (!videoId) {
+    throw new ApiError(400, 'Valid YouTube live URL or video ID is required');
+  }
+
+  stream.provider = 'youtube';
+  stream.streamType = 'youtube';
+  stream.youtubeVideoId = videoId;
+  stream.youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  stream.youtubeEmbedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&rel=0`;
+  stream.streamKey = videoId;
+  stream.streamUrl = stream.youtubeUrl;
+  stream.playbackUrl = stream.youtubeEmbedUrl;
+  stream.hlsUrl = '';
+  stream.rtmpUrl = '';
+  stream.zenstreamStreamKey = undefined;
+  stream.zenstreamRtmpUrl = undefined;
+  stream.zenstreamPlayerUrl = undefined;
+
+  return stream;
+};
+
 export const createLiveStream = async (userId, streamData) => {
   console.log(`[LIVESTREAM-SERVICE] createLiveStream userId: ${userId}`);
   
@@ -41,11 +90,16 @@ export const createLiveStream = async (userId, streamData) => {
 
   const liveStream = new LiveStream({
     ...streamData,
+    provider: streamData.provider || (streamData.youtubeUrl || streamData.youtubeVideoId ? 'youtube' : 'zenstream'),
+    streamType: streamData.streamType || (streamData.youtubeUrl || streamData.youtubeVideoId ? 'youtube' : 'mobile'),
     userId
   });
 
-  // Generate real ZenStream URLs using API secret
-  await generateRealZenUrls(liveStream);
+  if (liveStream.provider === 'youtube' || liveStream.streamType === 'youtube') {
+    applyYoutubeUrls(liveStream, streamData.youtubeUrl || streamData.youtubeVideoId || streamData.streamUrl);
+  } else {
+    await generateRealZenUrls(liveStream);
+  }
 
   await liveStream.save();
   await liveStream.populate('userId', 'name email avatar');
@@ -162,7 +216,9 @@ export const startLiveStream = async (streamId, userId) => {
   const stream = await LiveStream.findOne({ _id: streamId, userId });
   if (!stream) throw new ApiError(404, 'Live stream not found');
 
-  if (!stream.streamKey || !stream.rtmpUrl) {
+  if (stream.provider === 'youtube' || stream.streamType === 'youtube') {
+    applyYoutubeUrls(stream, stream.youtubeUrl || stream.youtubeVideoId || stream.streamUrl);
+  } else if (!stream.streamKey || !stream.rtmpUrl) {
     await generateRealZenUrls(stream);
   }
   

@@ -17,7 +17,7 @@ const liveStreamSchema = new mongoose.Schema({
   },
   streamType: {
     type: String,
-    enum: ['mobile', 'professional', 'session', 'watch', 'camera'],
+    enum: ['mobile', 'professional', 'session', 'watch', 'camera', 'youtube'],
     required: true
   },
   streamQuality: {
@@ -39,6 +39,9 @@ const liveStreamSchema = new mongoose.Schema({
   rtmpUrl: String,
   hlsUrl: String,
   playbackUrl: String,
+  youtubeUrl: String,
+  youtubeVideoId: String,
+  youtubeEmbedUrl: String,
   status: {
     type: String,
     enum: ['pending', 'live', 'ended', 'scheduled'],

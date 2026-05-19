@@ -75,5 +75,17 @@ export default {
     rtmpServer: process.env.ZENSTREAM_RTMP_SERVER || process.env.ZENSTREAM_INGEST_URL || 'rtmp://live-ingest-01.vd0.co:1935/livestream',
     playerUrl: process.env.ZENSTREAM_PLAYER_URL || process.env.ZENSTREAM_PLAYER_DOMAIN || 'https://player.zenstream.live',
     hlsUrl: process.env.ZENSTREAM_HLS_URL || ''
+  },
+
+  // YouTube Live integration
+  youtube: {
+    apiKey: process.env.YOUTUBE_API_KEY || '',
+    clientId: process.env.YOUTUBE_CLIENT_ID || '',
+    clientSecret: process.env.YOUTUBE_CLIENT_SECRET || '',
+    redirectUri: process.env.YOUTUBE_REDIRECT_URI || 'http://localhost:3000/api/v1/live-streams/youtube/callback',
+    scopes: [
+      'https://www.googleapis.com/auth/youtube',
+      'https://www.googleapis.com/auth/youtube.force-ssl'
+    ]
   }
 };

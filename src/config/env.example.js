@@ -56,3 +56,9 @@ ZENSTREAM_BASE_URL=https://api.zenstream.live/v1
 ZENSTREAM_RTMP_SERVER=rtmp://live-ingest-01.vd0.co:1935/livestream
 ZENSTREAM_PLAYER_URL=https://player.zenstream.live
 ZENSTREAM_HLS_URL=
+
+# YouTube Live
+YOUTUBE_API_KEY=your_youtube_data_api_key_here
+YOUTUBE_CLIENT_ID=your_google_oauth_web_client_id_here
+YOUTUBE_CLIENT_SECRET=your_google_oauth_web_client_secret_here
+YOUTUBE_REDIRECT_URI=http://localhost:3000/api/v1/live-streams/youtube/callback
