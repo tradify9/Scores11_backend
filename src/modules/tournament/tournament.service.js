@@ -4,13 +4,27 @@ import Team from '../team/team.model.js';
 import Match from '../match/match.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
-import { TOURNAMENT_STATUS } from '../../constants/tournamentStatus.js';
+import { TOURNAMENT_FORMAT, TOURNAMENT_STATUS, TOURNAMENT_TYPE } from '../../constants/tournamentStatus.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
 
 export const tournamentService = {
   // Create a new tournament
   createTournament: async (tournamentData, userId) => {
-    const { name, type, format, startDate, endDate, venue, maxTeams, entryFee, prizeMoney } = tournamentData;
+    const {
+      name,
+      shortName,
+      description,
+      type,
+      format,
+      startDate,
+      endDate,
+      venue,
+      maxTeams,
+      minTeams,
+      entryFee,
+      prizeMoney,
+      rules
+    } = tournamentData;
 
     // Validate dates
     if (new Date(startDate) < new Date()) {
@@ -23,14 +37,18 @@ export const tournamentService = {
 
     const tournament = await Tournament.create({
       name,
-      type: type || 'LEAGUE',
-      format: format || 'T20',
+      shortName,
+      description,
+      type: type || TOURNAMENT_TYPE.LEAGUE,
+      format: format || TOURNAMENT_FORMAT.T20,
       startDate,
       endDate,
       venue,
       maxTeams: maxTeams || 8,
+      minTeams: minTeams || 2,
       entryFee: entryFee || 0,
       prizeMoney: prizeMoney || 0,
+      rules,
       organizer: userId,
       status: TOURNAMENT_STATUS.DRAFT,
       teams: [],

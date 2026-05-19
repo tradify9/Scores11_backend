@@ -80,6 +80,11 @@ const tournamentSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  prizeMoney: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   maxTeams: {
     type: Number,
     default: 16

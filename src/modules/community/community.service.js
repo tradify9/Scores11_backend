@@ -29,6 +29,24 @@ export const communityService = {
       }
     }
 
+    let images = [];
+    if (Array.isArray(data.images)) {
+      images = data.images
+        .map((item) => {
+          if (typeof item === "string") {
+            return { url: item, publicId: "manual" };
+          }
+          return {
+            url: item?.url || "",
+            publicId: item?.publicId || "manual",
+          };
+        })
+        .filter((item) => item.url);
+    }
+    if (image && images.length === 0) {
+      images = [image];
+    }
+
     const post = await Post.create({
       content: data.content || "",
       name: data.name || "",
@@ -36,6 +54,7 @@ export const communityService = {
       category: data.category || "",
       tags,
       image,
+      images,
       user: userId,
     });
 
