@@ -842,7 +842,18 @@ console.log('[LIVE] getLiveScore populated:', {
     const playerPayload = (playerId) => {
       if (!playerId) return null;
       const id = playerId.toString();
-      return scorecardPlayerMap.get(id) || { _id: id, playerName: 'Unknown' };
+      return scorecardPlayerMap.get(id) || { playerName: 'Player' };
+    };
+    const teamPayload = (teamId) => {
+      if (!teamId) return null;
+      const id = teamId.toString();
+      const team = [match.team1, match.team2].find(t => t?._id?.toString() === id);
+      if (!team) return { name: 'Team', shortName: 'Team' };
+      return {
+        _id: team._id,
+        name: team.name,
+        shortName: team.shortName || team.name
+      };
     };
     const ballByBall = balls.map(ball => ({
       _id: ball._id,
@@ -874,11 +885,13 @@ console.log('[LIVE] getLiveScore populated:', {
     // Build innings data
     const inningsData = match.innings.map(innings => ({
       inningsNumber: innings.inningsNumber,
-      battingTeam: innings.battingTeam,
-      bowlingTeam: innings.bowlingTeam,
+      battingTeam: teamPayload(innings.battingTeam),
+      bowlingTeam: teamPayload(innings.bowlingTeam),
       totalRuns: innings.totalRuns,
       totalWickets: innings.totalWickets,
-      overs: `${innings.totalOvers}.${innings.totalBalls}`,
+      totalOvers: innings.totalOvers,
+      totalBalls: innings.totalBalls,
+      overs: `${Math.floor((innings.totalBalls || 0) / 6)}.${(innings.totalBalls || 0) % 6}`,
       extras: innings.extras,
       battingScorecard: innings.battingScorecard.map(b => {
         const row = b.toObject ? b.toObject() : b;

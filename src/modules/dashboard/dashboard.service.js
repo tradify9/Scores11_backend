@@ -87,6 +87,44 @@ export const dashboardService = {
         };
       };
 
+      const ballLabel = (ball) => {
+        if (!ball) return '';
+        if (ball.isWicket || ball.wicket) return 'W';
+        if (ball.isWide) return `${ball.runs || 0}Wd`;
+        if (ball.isNoBall) return `${ball.runs || 0}Nb`;
+        if (ball.isBye) return `${ball.runs || 0}B`;
+        if (ball.isLegBye) return `${ball.runs || 0}LB`;
+        return `${ball.runs ?? ball.batsmanRuns ?? ball.totalRuns ?? 0}`;
+      };
+
+      const recentBallsFor = (match) => {
+        const current = Array.isArray(match.innings)
+          ? (match.innings.find(i => i.inningsNumber === match.currentInnings) || match.innings[0])
+          : null;
+        const lastOverBalls = Array.isArray(current?.lastOverBalls) ? current.lastOverBalls : [];
+        if (lastOverBalls.length) {
+          return lastOverBalls.slice(-6).map(ball => ({
+            over: ball.overNumber ?? ball.over,
+            ball: ball.ballNumber ?? ball.ball,
+            runs: ball.runs ?? ball.batsmanRuns ?? ball.totalRuns ?? 0,
+            isWicket: !!(ball.isWicket || ball.wicket),
+            label: ballLabel(ball),
+            text: ball.text
+          }));
+        }
+
+        const commentary = Array.isArray(match.commentary) ? match.commentary : [];
+        return commentary.slice(-6).map(ball => ({
+          over: ball.over,
+          ball: ball.ball,
+          runs: ball.batsmanRuns ?? ball.totalRuns ?? 0,
+          isWicket: !!ball.isWicket,
+          label: ball.isWicket ? 'W' : `${ball.batsmanRuns ?? ball.totalRuns ?? 0}`,
+          text: ball.text,
+          timestamp: ball.timestamp
+        }));
+      };
+
       // Transform matches for dashboard display
       return matches.map(match => ({
         id: match._id,
@@ -126,6 +164,10 @@ export const dashboardService = {
           : [],
         currentInningsScore: Array.isArray(match.innings)
           ? formatInningsScore(match.innings.find(i => i.inningsNumber === match.currentInnings) || match.innings[0])
+          : null,
+        recentBalls: recentBallsFor(match),
+        latestCommentary: Array.isArray(match.commentary) && match.commentary.length
+          ? match.commentary[match.commentary.length - 1]
           : null
       }));
     } catch (error) {
