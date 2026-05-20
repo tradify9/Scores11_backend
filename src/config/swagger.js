@@ -448,13 +448,13 @@ const buildPaths = () => {
 export const swaggerDocument = {
   openapi: '3.0.0',
   info: {
-    title: 'Crick11 Backend API',
+    title: 'Scores Backend API',
     version: '1.0.0',
     description:
-      'Complete REST API documentation for Crick11 cricket scoring, tournament, fantasy contest, wallet, live stream, community, store, and admin backend.',
+      'Complete REST API documentation for Scores11 cricket scoring, tournament, fantasy contest, wallet, live stream, community, store, and admin backend.',
     contact: {
-      name: 'Crick11 API Support',
-      email: 'support@crick11.com'
+      name: 'Scores11 API Support',
+      email: 'support@Scores11.com'
     }
   },
   servers: [
@@ -463,7 +463,7 @@ export const swaggerDocument = {
       description: 'Local development server'
     },
     {
-      url: 'https://api.crick11.com',
+      url: 'https://api.Scores11.com',
       description: 'Production server'
     }
   ],
@@ -550,7 +550,7 @@ export const setupSwagger = (app) => {
     swaggerUi.setup(swaggerDocument, {
       explorer: true,
       customCss: '.swagger-ui .topbar { display: none }',
-      customSiteTitle: 'Crick11 API Docs',
+      customSiteTitle: 'Scores11 API Docs',
       customfavIcon: '/favicon.ico'
     })
   );
