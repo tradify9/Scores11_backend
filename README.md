@@ -199,20 +199,20 @@ req.user.userId
 
 Admin and role based routes use `authorize(...)` from role middleware.
 
-## Swagger Note
+## API Documentation
 
-Swagger config exists in `src/config/swagger.js`, but `setupSwagger(app)` is not currently mounted in `src/app.js`. To enable Swagger UI, call this before not-found/error middleware:
+Swagger/OpenAPI documentation is enabled from `src/config/swagger.js` and mounted in `src/app.js`.
 
-```js
-setupSwagger(app);
-```
-
-Then use:
+Use:
 
 ```text
 /api-docs
 /api-docs.json
 ```
+
+- `/api-docs` opens the interactive Swagger UI.
+- `/api-docs.json` returns the complete OpenAPI JSON document.
+- Protected routes in the docs use JWT Bearer auth. Click **Authorize** in Swagger UI and enter your token as `Bearer <token>`.
 
 ## Route Registry
 

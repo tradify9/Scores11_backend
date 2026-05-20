@@ -88,6 +88,12 @@ app.get('/health', async (req, res) => {
 app.use('/api/v1', routes);
 
 /* -------------------------
+   API DOCUMENTATION
+------------------------- */
+
+setupSwagger(app);
+
+/* -------------------------
    ERROR HANDLING
 ------------------------- */
 
