@@ -1,10 +1,10 @@
 ﻿<p align="center">
-  <img src="https://test.fintradify.com/assets/Logo-DOSciRuE.png" alt="Crick11 Logo" width="180" />
+  <img src="https://test.fintradify.com/assets/Logo-DOSciRuE.png" alt="Scores11 Logo" width="180" />
 </p>
 
-# Crick11 Backend API
+# Scores11 Backend API
 
-Crick11 Backend is a production-style Node.js, Express.js, MongoDB, Redis, and Socket.io API for a cricket scoring, tournament, fantasy contest, wallet, live streaming, and community platform.
+Scores11 Backend is a production-style Node.js, Express.js, MongoDB, Redis, and Socket.io API for a cricket scoring, tournament, fantasy contest, wallet, live streaming, and community platform.
 
 This README explains the backend setup, logic, architecture, route map, and module responsibilities so any developer can understand and continue the project quickly.
 
@@ -131,8 +131,8 @@ The backend reads configuration from `src/config/env.js`.
 PORT=3000
 NODE_ENV=development
 
-MONGODB_URI=mongodb://localhost:27017/crick11
-MONGODB_URI_PROD=mongodb://localhost:27017/crick11
+MONGODB_URI=mongodb://localhost:27017/Scores11
+MONGODB_URI_PROD=mongodb://localhost:27017/Scores11
 
 REDIS_HOST=localhost
 REDIS_PORT=6379
@@ -158,7 +158,7 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=
 SMTP_PASS=
-EMAIL_FROM="Crick11" <noreply@crick11.app>
+EMAIL_FROM="Scores11" <noreply@Scores11.app>
 
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX_REQUESTS=100
