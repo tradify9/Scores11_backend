@@ -9,7 +9,7 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - MONGODB_URI=mongodb://mongo:27017/crick11
+      - MONGODB_URI_PROD=mongodb://mongo:27017/crick11
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     depends_on:
