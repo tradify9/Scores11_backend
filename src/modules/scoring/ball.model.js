@@ -21,6 +21,8 @@ const ballSchema = new mongoose.Schema({
   isNoBall: { type: Boolean, default: false },
   isBye: { type: Boolean, default: false },
   isLegBye: { type: Boolean, default: false },
+  isPenalty: { type: Boolean, default: false },
+  forceStrikeChange: { type: Boolean },
   wagonZone: { type: Number },
   wagonLabel: { type: String },
   comment: { type: String },

@@ -181,6 +181,10 @@ console.log('[SCORING] Batting order set:', match.battingOrder.length, 'teams');
       isNoBall, 
       isBye,
       isLegBye,
+      isPenalty,
+      forceStrikeChange,
+      continueAfterTarget,
+      allowAllOutContinue,
       isFreeHit,
       wagonZone,
       wagonLabel,
@@ -211,7 +215,9 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     // PROFESSIONAL VALIDATIONS
     // 1. Check innings not completed
     if (innings.isCompleted) throw new ApiError(400, 'Innings already completed');
-    if (innings.totalWickets >= 10) throw new ApiError(400, '10 wickets fallen - innings ended');
+    if (innings.totalWickets >= 10 && allowAllOutContinue !== true) {
+      throw new ApiError(400, '10 wickets fallen - innings ended');
+    }
     
     // 2. Overs limit check
     const legalOvers = innings.totalOvers + (innings.totalBalls / 6);
@@ -232,16 +238,19 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     const scoringBatsmanId = innings.currentStriker;
 
     // Advance over/ball counters after creating ball
-    const isValidDelivery = !isWide && !isNoBall;
+    const isValidDelivery = !isWide && !isNoBall && !isPenalty;
     
 // STRIKER ROTATION LOGIC (Enhanced with odd runs)
     let rotationReason = '';
     let shouldRotate = false;
     
-    // Rotate on odd runs (1,3,5) or end of over
-    if ((runs % 2 === 1 && runs > 0) || (ballNumber === 6 && isValidDelivery)) {  
+    // Rotate on odd runs (1,3,5), end of over, or scorer override.
+    const autoRotate = (!isPenalty && runs % 2 === 1 && runs > 0) || (ballNumber === 6 && isValidDelivery);
+    if (typeof forceStrikeChange === 'boolean' ? forceStrikeChange : autoRotate) {  
       shouldRotate = true;
-      rotationReason = runs % 2 === 1 ? 'odd runs' : 'end of over';
+      rotationReason = typeof forceStrikeChange === 'boolean'
+        ? 'manual'
+        : (runs % 2 === 1 ? 'odd runs' : 'end of over');
     }
     
     let newStriker = innings.currentStriker;
@@ -299,7 +308,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       batsman: scoringBatsmanId,
       bowler: actualBowlerId,
       runs: runs || 0,
-      extras: isWide || isNoBall ? 1 : (isBye || isLegBye ? (runs || 0) : 0),
+      extras: isWide ? (runs || 0) + 1 : (isNoBall ? 1 : (isBye || isLegBye || isPenalty ? (runs || 0) : 0)),
       wicket: isWicket || false,
       wicketType: normalizedWicketType || null,
       wicketFielder: fielderId || null,
@@ -309,6 +318,8 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       isNoBall, 
       isBye, 
       isLegBye,
+      isPenalty: isPenalty || false,
+      forceStrikeChange: typeof forceStrikeChange === 'boolean' ? forceStrikeChange : undefined,
       wagonZone,
       wagonLabel,
       comment: comment || '',
@@ -320,8 +331,9 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     let extrasCount = 0;
     
     if (isWide) {
-      innings.extras.wides += 1;
-      extrasCount += 1;
+      const wideExtras = deliveryRuns + 1;
+      innings.extras.wides += wideExtras;
+      extrasCount += wideExtras;
     }
     if (isNoBall) {
       innings.extras.noBalls += 1;
@@ -335,14 +347,18 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       innings.extras.legByes += deliveryRuns;
       extrasCount += deliveryRuns;
     }
+    if (isPenalty) {
+      innings.extras.penalty = (innings.extras.penalty || 0) + deliveryRuns;
+      extrasCount += deliveryRuns;
+    }
     
-    const totalRuns = (isBye || isLegBye) ? extrasCount : deliveryRuns + extrasCount;
+    const totalRuns = (isWide || isBye || isLegBye || isPenalty) ? extrasCount : deliveryRuns + extrasCount;
     innings.extras.total += extrasCount;
     innings.totalRuns += totalRuns;
     if (isValidDelivery) innings.totalBalls += 1;
 
     // Update over count (only if not wide or no-ball)
-    if (!isWide && !isNoBall) {
+    if (isValidDelivery) {
       if (ballNumber === 6) {
         innings.totalOvers += 1;
         innings.totalBalls = 0;
@@ -357,9 +373,9 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     const dismissedBatsmanIndex = innings.battingScorecard.findIndex(b =>
       b.batsman.toString() === dismissedId
     );
-    const batsmanRuns = (isBye || isLegBye || isWide) ? 0 : deliveryRuns;
+    const batsmanRuns = (isBye || isLegBye || isWide || isPenalty) ? 0 : deliveryRuns;
     
-    if (batsmanIndex !== -1 && !isWide) {
+    if (batsmanIndex !== -1 && !isWide && !isPenalty) {
       const previousRuns = innings.battingScorecard[batsmanIndex].runs || 0;
       innings.battingScorecard[batsmanIndex].runs += batsmanRuns;
       innings.battingScorecard[batsmanIndex].balls += isValidDelivery ? 1 : 0;
@@ -415,16 +431,16 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
         bowler: actualBowlerId,
         overs: isValidDelivery ? 0.1 : 0,
         maidens: 0,
-        runsConceded: totalRuns,
+        runsConceded: isPenalty ? 0 : totalRuns,
         wickets: isBowlerWicket ? 1 : 0,
-        wide: isWide ? 1 : 0,
+        wide: isWide ? extrasCount : 0,
         noBall: isNoBall ? 1 : 0,
         economy: isValidDelivery ? (totalRuns + extrasCount) * 6 : 0
       });
     } else {
-      innings.bowlingScorecard[bowlerIndex].runsConceded += totalRuns;
+      innings.bowlingScorecard[bowlerIndex].runsConceded += isPenalty ? 0 : totalRuns;
       if (isBowlerWicket) innings.bowlingScorecard[bowlerIndex].wickets += 1;
-      if (isWide) innings.bowlingScorecard[bowlerIndex].wide += 1;
+      if (isWide) innings.bowlingScorecard[bowlerIndex].wide += extrasCount;
       if (isNoBall) innings.bowlingScorecard[bowlerIndex].noBall += 1;
       
       // Calculate cricket-style overs from legal deliveries only.
@@ -520,10 +536,10 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     
     if (overNumber <= 6) {
       if (match.currentInnings === 1) {
-        match.powerplay.firstInnings.runs += totalRuns + extrasCount;
+        match.powerplay.firstInnings.runs += totalRuns;
         match.powerplay.firstInnings.wickets += isWicket ? 1 : 0;
       } else {
-        match.powerplay.secondInnings.runs += totalRuns + extrasCount;
+        match.powerplay.secondInnings.runs += totalRuns;
         match.powerplay.secondInnings.wickets += isWicket ? 1 : 0;
       }
     }
@@ -552,7 +568,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       }
     }
 
-    if (match.currentInnings === 2 && match.innings[0]) {
+    if (match.currentInnings === 2 && match.innings[0] && continueAfterTarget !== true) {
       finalizeSecondInningsResult(match);
     }
 
@@ -584,6 +600,193 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
 
     return {
       ball: newBall,
+      innings,
+      score: match.score
+    };
+  },
+
+  // Undo the most recently scored delivery in the match, across innings.
+  undoLastBall: async (matchId, userId) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+
+    const lastBall = await Ball.findOne({ match: matchId })
+      .sort({ createdAt: -1, _id: -1 });
+
+    if (!lastBall) throw new ApiError(400, 'No ball available to undo');
+
+    const currentInningsNumber = lastBall.innings || match.currentInnings || 1;
+    const inningsIndex = match.innings.findIndex(i => i.inningsNumber === currentInningsNumber);
+    if (inningsIndex === -1) throw new ApiError(400, 'Current innings not found');
+
+    const innings = match.innings[inningsIndex];
+    match.currentInnings = currentInningsNumber;
+    if (match.status === MATCH_STATUS.COMPLETED) match.status = MATCH_STATUS.LIVE;
+
+    const deliveryRuns = lastBall.runs || 0;
+    const extrasCount = lastBall.extras || 0;
+    const isWide = lastBall.isWide === true;
+    const isNoBall = lastBall.isNoBall === true;
+    const isBye = lastBall.isBye === true;
+    const isLegBye = lastBall.isLegBye === true;
+    const isPenalty = lastBall.isPenalty === true;
+    const isValidDelivery = !isWide && !isNoBall && !isPenalty;
+    const totalRuns = (isWide || isBye || isLegBye || isPenalty) ? extrasCount : deliveryRuns + extrasCount;
+    const batsmanRuns = (isBye || isLegBye || isWide || isPenalty) ? 0 : deliveryRuns;
+    const bowlerWicketTypes = ['bowled', 'caught', 'lbw', 'stumped', 'hit_wicket'];
+    const isBowlerWicket = Boolean(lastBall.wicket && bowlerWicketTypes.includes(lastBall.wicketType));
+
+    innings.totalRuns = Math.max(0, (innings.totalRuns || 0) - totalRuns);
+    innings.totalWickets = Math.max(0, (innings.totalWickets || 0) - (lastBall.wicket ? 1 : 0));
+
+    if (isValidDelivery) {
+      const legalBallsAfter = ((innings.totalOvers || 0) * 6) + (innings.totalBalls || 0);
+      const legalBallsBefore = Math.max(0, legalBallsAfter - 1);
+      innings.totalOvers = Math.floor(legalBallsBefore / 6);
+      innings.totalBalls = legalBallsBefore % 6;
+    }
+
+    innings.currentOverNumber = lastBall.overNumber;
+    innings.currentBallNumber = lastBall.ballNumber;
+    innings.currentBowler = lastBall.bowler;
+
+    const shouldHaveRotated =
+      (deliveryRuns % 2 === 1 && deliveryRuns > 0) ||
+      (lastBall.ballNumber === 6 && isValidDelivery);
+    const strikerAfterBall = innings.currentStriker;
+    const dismissedId = lastBall.dismissedBatsman?.toString();
+
+    innings.currentStriker = lastBall.batsman;
+    if (lastBall.wicket && dismissedId && dismissedId !== lastBall.batsman.toString()) {
+      innings.currentNonStriker = lastBall.dismissedBatsman;
+    } else if (shouldHaveRotated && strikerAfterBall) {
+      innings.currentNonStriker = strikerAfterBall;
+    }
+
+    innings.extras.wides = Math.max(0, (innings.extras.wides || 0) - (isWide ? extrasCount : 0));
+    innings.extras.noBalls = Math.max(0, (innings.extras.noBalls || 0) - (isNoBall ? 1 : 0));
+    innings.extras.byes = Math.max(0, (innings.extras.byes || 0) - (isBye ? deliveryRuns : 0));
+    innings.extras.legByes = Math.max(0, (innings.extras.legByes || 0) - (isLegBye ? deliveryRuns : 0));
+    innings.extras.penalty = Math.max(0, (innings.extras.penalty || 0) - (isPenalty ? deliveryRuns : 0));
+    innings.extras.total = Math.max(0, (innings.extras.total || 0) - extrasCount);
+
+    const batsmanIndex = innings.battingScorecard.findIndex(b =>
+      b.batsman.toString() === lastBall.batsman.toString()
+    );
+    if (batsmanIndex !== -1 && !isWide && !isPenalty) {
+      const bat = innings.battingScorecard[batsmanIndex];
+      bat.runs = Math.max(0, (bat.runs || 0) - batsmanRuns);
+      bat.balls = Math.max(0, (bat.balls || 0) - (isValidDelivery ? 1 : 0));
+      if (batsmanRuns === 4) bat.fours = Math.max(0, (bat.fours || 0) - 1);
+      if (batsmanRuns === 6) bat.sixes = Math.max(0, (bat.sixes || 0) - 1);
+      bat.strikeRate = bat.balls > 0 ? (bat.runs / bat.balls) * 100 : 0;
+    }
+
+    if (lastBall.wicket && dismissedId) {
+      const dismissedIndex = innings.battingScorecard.findIndex(b =>
+        b.batsman.toString() === dismissedId
+      );
+      if (dismissedIndex !== -1) {
+        innings.battingScorecard[dismissedIndex].howOut = 'not_out';
+        innings.battingScorecard[dismissedIndex].fielder = null;
+        innings.battingScorecard[dismissedIndex].bowler = null;
+      }
+      const fallIndex = innings.fallOfWickets
+        .map(f => f.batsman?.toString())
+        .lastIndexOf(dismissedId);
+      if (fallIndex !== -1) innings.fallOfWickets.splice(fallIndex, 1);
+    }
+
+    const bowlerIndex = innings.bowlingScorecard.findIndex(b =>
+      b.bowler.toString() === lastBall.bowler.toString()
+    );
+    if (bowlerIndex !== -1) {
+      const bowl = innings.bowlingScorecard[bowlerIndex];
+      bowl.runsConceded = Math.max(0, (bowl.runsConceded || 0) - (isPenalty ? 0 : totalRuns));
+      bowl.wickets = Math.max(0, (bowl.wickets || 0) - (isBowlerWicket ? 1 : 0));
+      bowl.wide = Math.max(0, (bowl.wide || 0) - (isWide ? extrasCount : 0));
+      bowl.noBall = Math.max(0, (bowl.noBall || 0) - (isNoBall ? 1 : 0));
+
+      const [oversPart, ballsPart = 0] = (bowl.overs || 0).toString().split('.').map(Number);
+      const legalBalls = Math.max(0, (oversPart * 6) + ballsPart - (isValidDelivery ? 1 : 0));
+      bowl.overs = Number(`${Math.floor(legalBalls / 6)}.${legalBalls % 6}`);
+      bowl.economy = legalBalls > 0 ? bowl.runsConceded / (legalBalls / 6) : 0;
+
+      if (!bowl.runsConceded && !bowl.wickets && !bowl.wide && !bowl.noBall && !legalBalls) {
+        innings.bowlingScorecard.splice(bowlerIndex, 1);
+      }
+    }
+
+    innings.currentPartnership.runs = Math.max(0, (innings.currentPartnership.runs || 0) - batsmanRuns);
+    innings.currentPartnership.balls = Math.max(0, (innings.currentPartnership.balls || 0) - (isValidDelivery ? 1 : 0));
+    innings.isCompleted = false;
+    innings.endTime = null;
+
+    const battingScoreKey = innings.battingTeam.toString() === match.team1.toString() ? 'team1' : 'team2';
+    match.score ??= {};
+    match.score[battingScoreKey] = {
+      runs: innings.totalRuns,
+      wickets: innings.totalWickets,
+      overs: `${innings.totalOvers}.${innings.totalBalls}`,
+      innings: innings.inningsNumber
+    };
+
+    if (match.powerplay && lastBall.overNumber <= 6) {
+      const powerplayKey = currentInningsNumber === 1 ? 'firstInnings' : 'secondInnings';
+      if (match.powerplay[powerplayKey]) {
+        match.powerplay[powerplayKey].runs = Math.max(0, (match.powerplay[powerplayKey].runs || 0) - totalRuns);
+        match.powerplay[powerplayKey].wickets = Math.max(0, (match.powerplay[powerplayKey].wickets || 0) - (lastBall.wicket ? 1 : 0));
+      }
+    }
+
+    if (Array.isArray(match.commentary)) {
+      while (
+        match.commentary.length &&
+        match.commentary[match.commentary.length - 1].over === lastBall.overNumber &&
+        match.commentary[match.commentary.length - 1].ball === lastBall.ballNumber
+      ) {
+        match.commentary.pop();
+      }
+    }
+
+    if (currentInningsNumber === 2 && match.innings[0]) {
+      const target = (match.innings[0].totalRuns || 0) + 1;
+      const legalBallsBowled = (innings.totalOvers * 6) + innings.totalBalls;
+      const ballsRemaining = (match.overs * 6) - legalBallsBowled;
+      match.result ??= {};
+      match.result.target = target;
+      match.result.requiredRuns = Math.max(0, target - innings.totalRuns);
+      match.result.requiredBalls = Math.max(0, ballsRemaining);
+      match.result.requiredRunRate = ballsRemaining > 0
+        ? (match.result.requiredRuns / (ballsRemaining / 6)).toFixed(2)
+        : null;
+      match.result.winner = null;
+      match.result.margin = null;
+      match.result.message = null;
+    } else if (match.result) {
+      match.result.winner = null;
+      match.result.margin = null;
+      match.result.message = null;
+    }
+
+    await Ball.findByIdAndDelete(lastBall._id);
+    match.markModified('innings');
+    match.markModified('score');
+    match.markModified('powerplay');
+    match.markModified('commentary');
+    match.markModified('result');
+    await match.save();
+
+    emitToMatch(matchId, 'liveScoreUpdate', {
+      matchId,
+      action: 'undoLastBall',
+      score: match.score,
+      currentInnings: innings,
+      undoneBall: lastBall
+    });
+
+    return {
+      undoneBall: lastBall,
       innings,
       score: match.score
     };
@@ -780,7 +983,7 @@ console.log('[LIVE] getLiveScore populated:', {
         overs: `${currentInnings.totalOvers || 0}.${currentInnings.totalBalls || 0}`,
         runRate: currentInnings.totalBalls > 0 ? ((currentInnings.totalRuns / (currentInnings.totalOvers * 6 + currentInnings.totalBalls)) * 6).toFixed(2) : '0.00',
         extras: currentInnings.extras || { total: 0 },
-        battingScorecard: (currentInnings.battingScorecard || []).filter(b => (b.howOut || 'not_out') === 'not_out'),
+        battingScorecard: currentInnings.battingScorecard || [],
         bowlingScorecard: currentInnings.bowlingScorecard || []
       },
       recentBalls,

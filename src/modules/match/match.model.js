@@ -77,6 +77,7 @@ const inningsSchema = new mongoose.Schema({
     noBalls: { type: Number, default: 0 },
     byes: { type: Number, default: 0 },
     legByes: { type: Number, default: 0 },
+    penalty: { type: Number, default: 0 },
     total: { type: Number, default: 0 }
   },
   fallOfWickets: [fallOfWicketSchema],
