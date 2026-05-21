@@ -5,8 +5,8 @@ class ChatService {
   async getChats(userId) {
     const chats = await Chat.find({ 
       participants: userId 
-    }).populate('participants', 'name avatar')
-      .populate('lastMessage.sender', 'name')
+    }).populate('participants', 'name fullName username playerName avatar profileImage role')
+      .populate('lastMessage.sender', 'name fullName username avatar')
       .sort({ 'lastMessage.timestamp': -1 });
     
     return chats.map(chat => ({
@@ -18,13 +18,13 @@ class ChatService {
   }
 
   async getChat(chatId, userId) {
-    const chat = await Chat.findById(chatId).populate('participants');
+    const chat = await Chat.findById(chatId).populate('participants', 'name fullName username playerName avatar profileImage role');
     if (!chat || !chat.participants.some(p => p._id.toString() === userId)) {
       throw new Error('Chat not found');
     }
 
     const messages = await Message.find({ chat: chatId })
-      .populate('sender', 'name avatar')
+      .populate('sender', 'name fullName username avatar profileImage')
       .sort('timestamp');
 
     // Mark as read

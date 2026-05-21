@@ -352,8 +352,113 @@ const routeGroups = [
   }
 ];
 
+const apiTitle = 'Scores11 API';
+const productionUrl = process.env.API_BASE_URL || 'https://api.Scores11.com';
+
+const tagDescriptions = {
+  Auth: 'Registration, login, OTP, password reset, token refresh, and current-session APIs.',
+  Users: 'User profile, public profile, avatar, follow, FCM token, reports, and admin user management.',
+  Teams: 'Team discovery, roster management, captains, logos, ownership transfer, and verification.',
+  Players: 'Player discovery, profile management, stats, performance, and team player APIs.',
+  Matches: 'Match listing, scheduling, toss, result, officials, status, timeline, and scorecard APIs.',
+  Scoring: 'Live scoring workflow for match initialization, ball updates, innings, batters, and bowlers.',
+  Tournaments: 'Tournament listing, registration, fixtures, points table, generation, and statistics.',
+  Contests: 'Fantasy contests, joining flow, team entries, rankings, prize distribution, and locking.',
+  Wallet: 'Wallet balance, deposits, withdrawals, transfers, contest payments, prizes, and statements.',
+  'Live Streams': 'Live stream discovery, lifecycle, participation, chat, and reactions.',
+  Dashboard: 'Public dashboard cards for live matches, upcoming matches, stats, trends, and leaderboards.',
+  Leaderboard: 'Global, match, tournament, team, player, batting, bowling, and all-rounder rankings.',
+  Content: 'Blogs and news publishing, featured content, likes, and public reading APIs.',
+  Community: 'Community posts, comments, likes, reports, moderation, and pinned posts.',
+  Store: 'Product catalog, featured products, orders, cancellation, and store administration.',
+  Uploads: 'Cloud media uploads, multi-file upload, base64 upload, deletion, and signed upload support.',
+  Admin: 'Administrative dashboards, analytics, logs, backups, finance, verification, and platform controls.',
+  'More Modules': 'Additional platform modules including notifications, settings, discovery, chat, roles, subscriptions, clubs, awards, and support.'
+};
+
+const methodDescriptions = {
+  get: 'Fetches data from the Scores11 backend.',
+  post: 'Creates a resource or triggers a backend action.',
+  put: 'Replaces or updates an existing resource.',
+  patch: 'Applies a partial update to an existing resource.',
+  delete: 'Deletes or removes a resource.'
+};
+
+const sharedQueryParameters = [
+  {
+    name: 'page',
+    in: 'query',
+    required: false,
+    schema: { type: 'integer', minimum: 1, default: 1 },
+    description: 'Page number for paginated list endpoints.'
+  },
+  {
+    name: 'limit',
+    in: 'query',
+    required: false,
+    schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+    description: 'Maximum number of records to return.'
+  },
+  {
+    name: 'search',
+    in: 'query',
+    required: false,
+    schema: { type: 'string', example: 'virat' },
+    description: 'Search text used by endpoints that support filtering.'
+  },
+  {
+    name: 'sort',
+    in: 'query',
+    required: false,
+    schema: { type: 'string', example: '-createdAt' },
+    description: 'Sort expression when supported, for example `createdAt` or `-createdAt`.'
+  },
+  {
+    name: 'status',
+    in: 'query',
+    required: false,
+    schema: { type: 'string', example: 'active' },
+    description: 'Status filter for list endpoints that support lifecycle states.'
+  }
+];
+
 const toOperationId = (method, path) =>
-  `${method.toLowerCase()}_${path.replace(/^\/api\/v1\//, '').replace(/[{}]/g, '').replace(/[^a-zA-Z0-9]+/g, '_')}`;
+  `${method.toLowerCase()}_${path
+    .replace(/^\/api\/v1\//, '')
+    .replace(/[{}]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')}`;
+
+const toSentence = (value) =>
+  value
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const inferParameterSchema = (name) => {
+  if (/id$/i.test(name) || ['id', 'userId', 'teamId', 'playerId', 'matchId', 'tournamentId', 'contestId', 'streamId', 'receiverId'].includes(name)) {
+    return {
+      type: 'string',
+      pattern: '^[0-9a-fA-F]{24}$',
+      example: '64f1f2a7c5b4e9a123456789'
+    };
+  }
+
+  if (/token/i.test(name)) {
+    return { type: 'string', example: 'verification-token' };
+  }
+
+  if (/slug/i.test(name)) {
+    return { type: 'string', example: 'match-winning-knock' };
+  }
+
+  if (/position/i.test(name)) {
+    return { type: 'string', example: 'home_top' };
+  }
+
+  return { type: 'string', example: `${name}-value` };
+};
 
 const getPathParameters = (path) => {
   const params = path.match(/{[^}]+}/g) || [];
@@ -363,14 +468,27 @@ const getPathParameters = (path) => {
       name,
       in: 'path',
       required: true,
-      schema: { type: 'string' },
-      description: `${name} value`
+      schema: inferParameterSchema(name),
+      description: `${toSentence(name)} used to identify the requested resource.`
     };
   });
 };
 
-const makeRequestBody = (isMultipart = false) => ({
-  required: false,
+const shouldAddListQueryParams = (method, path, summary) => {
+  if (method.toLowerCase() !== 'get') return false;
+  return /list|search|leaderboard|rankings|featured|public|all|my|transactions|matches|players|teams|tournaments|contests|products|posts|blogs|news|notifications|logs|stats/i.test(
+    `${path} ${summary}`
+  );
+};
+
+const getQueryParameters = (method, path, summary) =>
+  shouldAddListQueryParams(method, path, summary) ? sharedQueryParameters : [];
+
+const makeRequestBody = (isMultipart = false, method = 'post') => ({
+  required: ['post', 'put'].includes(method.toLowerCase()),
+  description: isMultipart
+    ? 'Multipart form data payload. Include the file field expected by the endpoint plus any related metadata.'
+    : 'JSON payload accepted by this endpoint. See controller validation for exact field-level rules.',
   content: isMultipart
     ? {
         'multipart/form-data': {
@@ -380,7 +498,18 @@ const makeRequestBody = (isMultipart = false) => ({
             properties: {
               file: {
                 type: 'string',
-                format: 'binary'
+                format: 'binary',
+                description: 'File to upload.'
+              },
+              image: {
+                type: 'string',
+                format: 'binary',
+                description: 'Image file when the endpoint expects an image field.'
+              },
+              video: {
+                type: 'string',
+                format: 'binary',
+                description: 'Video file when the endpoint expects a video field.'
               }
             }
           }
@@ -388,9 +517,16 @@ const makeRequestBody = (isMultipart = false) => ({
       }
     : {
         'application/json': {
-          schema: {
-            type: 'object',
-            additionalProperties: true
+          schema: { $ref: '#/components/schemas/GenericRequest' },
+          examples: {
+            default: {
+              summary: 'Generic JSON payload',
+              value: {
+                name: 'Sample name',
+                description: 'Sample description',
+                status: 'active'
+              }
+            }
           }
         }
       }
@@ -398,33 +534,57 @@ const makeRequestBody = (isMultipart = false) => ({
 
 const makeOperation = ([method, path, summary, requiresAuth, isMultipart], tag) => {
   const lowerMethod = method.toLowerCase();
+  const successStatus = lowerMethod === 'post' ? 201 : lowerMethod === 'delete' ? 204 : 200;
+  const parameters = [...getPathParameters(path), ...getQueryParameters(method, path, summary)];
   const operation = {
     tags: [tag],
     summary,
+    description: `${summary}. ${methodDescriptions[lowerMethod]} ${
+      requiresAuth
+        ? 'Requires a valid JWT bearer token in the Authorization header.'
+        : 'This endpoint is publicly accessible unless restricted by runtime middleware.'
+    }`,
     operationId: toOperationId(method, path),
-    parameters: getPathParameters(path),
+    parameters,
+    security: requiresAuth ? [{ bearerAuth: [] }] : [],
     responses: {
-      200: {
-        description: 'Success',
-        content: {
-          'application/json': {
-            schema: { $ref: '#/components/schemas/SuccessResponse' }
-          }
-        }
+      [successStatus]: {
+        description: lowerMethod === 'delete' ? 'Resource deleted successfully' : 'Request completed successfully',
+        content:
+          lowerMethod === 'delete'
+            ? undefined
+            : {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/SuccessResponse' },
+                  examples: {
+                    success: {
+                      summary: 'Success response',
+                      value: {
+                        success: true,
+                        message: 'Operation completed successfully',
+                        data: {}
+                      }
+                    }
+                  }
+                }
+              }
       },
       400: { $ref: '#/components/responses/BadRequest' },
       401: { $ref: '#/components/responses/Unauthorized' },
+      403: { $ref: '#/components/responses/Forbidden' },
       404: { $ref: '#/components/responses/NotFound' },
+      422: { $ref: '#/components/responses/ValidationError' },
+      429: { $ref: '#/components/responses/TooManyRequests' },
       500: { $ref: '#/components/responses/ServerError' }
     }
   };
 
-  if (requiresAuth) {
-    operation.security = [{ bearerAuth: [] }];
+  if (operation.responses[successStatus].content === undefined) {
+    delete operation.responses[successStatus].content;
   }
 
   if (['post', 'put', 'patch'].includes(lowerMethod)) {
-    operation.requestBody = makeRequestBody(isMultipart);
+    operation.requestBody = makeRequestBody(isMultipart, lowerMethod);
   }
 
   return operation;
@@ -448,13 +608,19 @@ const buildPaths = () => {
 export const swaggerDocument = {
   openapi: '3.0.0',
   info: {
-    title: 'Scores Backend API',
+    title: `${apiTitle} Backend`,
     version: '1.0.0',
     description:
-      'Complete REST API documentation for Scores11 cricket scoring, tournament, fantasy contest, wallet, live stream, community, store, and admin backend.',
+      'Professional REST API documentation for the Scores11 cricket platform. Use this console to explore authentication, users, teams, players, matches, scoring, tournaments, contests, wallet, live streams, community, store, uploads, and admin modules.',
+    termsOfService: 'https://Scores11.com/terms',
     contact: {
       name: 'Scores11 API Support',
-      email: 'support@Scores11.com'
+      email: 'support@Scores11.com',
+      url: 'https://Scores11.com/support'
+    },
+    license: {
+      name: 'Private API',
+      url: 'https://Scores11.com'
     }
   },
   servers: [
@@ -463,13 +629,13 @@ export const swaggerDocument = {
       description: 'Local development server'
     },
     {
-      url: 'https://api.Scores11.com',
+      url: productionUrl,
       description: 'Production server'
     }
   ],
   tags: routeGroups.map(({ tag }) => ({
     name: tag,
-    description: `${tag} endpoints`
+    description: tagDescriptions[tag] || `${tag} endpoints.`
   })),
   paths: buildPaths(),
   components: {
@@ -477,27 +643,64 @@ export const swaggerDocument = {
       bearerAuth: {
         type: 'http',
         scheme: 'bearer',
-        bearerFormat: 'JWT'
+        bearerFormat: 'JWT',
+        description: 'Paste only the JWT access token. Swagger UI will send it as `Authorization: Bearer <token>`.'
       }
     },
     schemas: {
+      GenericRequest: {
+        type: 'object',
+        additionalProperties: true,
+        description: 'Flexible request object. Exact fields depend on the endpoint and validation middleware.',
+        example: {
+          name: 'Mumbai Strikers',
+          description: 'Sample payload',
+          status: 'active'
+        }
+      },
+      PaginationMeta: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', example: 1 },
+          limit: { type: 'integer', example: 10 },
+          total: { type: 'integer', example: 125 },
+          totalPages: { type: 'integer', example: 13 }
+        }
+      },
       SuccessResponse: {
         type: 'object',
+        required: ['success', 'message'],
         properties: {
           success: { type: 'boolean', example: true },
           message: { type: 'string', example: 'Operation completed successfully' },
           data: {
             type: 'object',
             additionalProperties: true
+          },
+          meta: {
+            $ref: '#/components/schemas/PaginationMeta'
           }
         }
       },
       ErrorResponse: {
         type: 'object',
+        required: ['success', 'message'],
         properties: {
           success: { type: 'boolean', example: false },
           message: { type: 'string', example: 'Something went wrong' },
-          error: { type: 'string', example: 'Error details' }
+          error: { type: 'string', example: 'Error details' },
+          errors: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: true
+            }
+          },
+          timestamp: {
+            type: 'string',
+            format: 'date-time',
+            example: '2026-05-21T10:30:00.000Z'
+          }
         }
       }
     },
@@ -518,8 +721,55 @@ export const swaggerDocument = {
           }
         }
       },
+      Forbidden: {
+        description: 'Authenticated user does not have permission for this resource',
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/ErrorResponse' },
+            examples: {
+              forbidden: {
+                value: {
+                  success: false,
+                  message: 'Access denied',
+                  error: 'Insufficient permissions'
+                }
+              }
+            }
+          }
+        }
+      },
       NotFound: {
         description: 'Resource not found',
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/ErrorResponse' }
+          }
+        }
+      },
+      ValidationError: {
+        description: 'Validation failed',
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/ErrorResponse' },
+            examples: {
+              validation: {
+                value: {
+                  success: false,
+                  message: 'Validation failed',
+                  errors: [
+                    {
+                      field: 'email',
+                      message: 'Valid email is required'
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      TooManyRequests: {
+        description: 'Rate limit exceeded',
         content: {
           'application/json': {
             schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -538,6 +788,187 @@ export const swaggerDocument = {
   }
 };
 
+const swaggerCustomCss = `
+  :root {
+    --crick-green: #0f7b4f;
+    --crick-green-dark: #095f3d;
+    --crick-ink: #172033;
+    --crick-muted: #657184;
+    --crick-line: #d9e2ec;
+    --crick-bg: #f4f7fb;
+    --crick-card: #ffffff;
+    --crick-accent: #d59a21;
+  }
+
+  body {
+    margin: 0;
+    background: var(--crick-bg);
+    color: var(--crick-ink);
+  }
+
+  .swagger-ui {
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  .swagger-ui .topbar {
+    display: none;
+  }
+
+  .swagger-ui .information-container {
+    background:
+      linear-gradient(135deg, rgba(15, 123, 79, 0.94), rgba(9, 95, 61, 0.94)),
+      linear-gradient(45deg, rgba(213, 154, 33, 0.18), rgba(255, 255, 255, 0));
+    color: #fff;
+    margin: 0 0 28px;
+    padding: 30px 0 34px;
+    box-shadow: 0 18px 42px rgba(23, 32, 51, 0.16);
+  }
+
+  .swagger-ui .info {
+    margin: 0 auto;
+    max-width: 1180px;
+    padding: 0 24px;
+  }
+
+  .swagger-ui .info .title {
+    color: #fff;
+    font-size: 36px;
+    line-height: 1.15;
+    letter-spacing: 0;
+    font-weight: 800;
+  }
+
+  .swagger-ui .info .title small,
+  .swagger-ui .info .title small pre {
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 999px;
+    color: #fff;
+  }
+
+  .swagger-ui .info p,
+  .swagger-ui .info li,
+  .swagger-ui .info a {
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 15px;
+  }
+
+  .swagger-ui .scheme-container {
+    max-width: 1180px;
+    margin: -18px auto 24px;
+    padding: 18px 22px;
+    background: var(--crick-card);
+    border: 1px solid var(--crick-line);
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(23, 32, 51, 0.1);
+  }
+
+  .swagger-ui .wrapper {
+    max-width: 1180px;
+    padding: 0 24px 40px;
+  }
+
+  .swagger-ui .opblock-tag {
+    border-bottom: 1px solid var(--crick-line);
+    color: var(--crick-ink);
+    font-size: 21px;
+    font-weight: 750;
+    padding: 18px 0 12px;
+  }
+
+  .swagger-ui .opblock-tag small {
+    color: var(--crick-muted);
+    font-size: 13px;
+  }
+
+  .swagger-ui .opblock {
+    border-radius: 8px;
+    border-width: 1px;
+    box-shadow: 0 8px 24px rgba(23, 32, 51, 0.07);
+    overflow: hidden;
+  }
+
+  .swagger-ui .opblock .opblock-summary {
+    min-height: 54px;
+    padding: 10px 14px;
+  }
+
+  .swagger-ui .opblock .opblock-summary-method {
+    border-radius: 6px;
+    min-width: 76px;
+    padding: 8px 0;
+    text-shadow: none;
+  }
+
+  .swagger-ui .opblock.opblock-get {
+    border-color: #a7d3f3;
+    background: rgba(245, 250, 255, 0.9);
+  }
+
+  .swagger-ui .opblock.opblock-post {
+    border-color: #a7dfc4;
+    background: rgba(246, 255, 250, 0.9);
+  }
+
+  .swagger-ui .opblock.opblock-put {
+    border-color: #f4d58d;
+    background: rgba(255, 251, 241, 0.9);
+  }
+
+  .swagger-ui .opblock.opblock-patch {
+    border-color: #d8c4f4;
+    background: rgba(251, 248, 255, 0.9);
+  }
+
+  .swagger-ui .opblock.opblock-delete {
+    border-color: #f2b7b7;
+    background: rgba(255, 247, 247, 0.9);
+  }
+
+  .swagger-ui .btn,
+  .swagger-ui .btn.authorize,
+  .swagger-ui button.execute {
+    border-radius: 6px;
+    box-shadow: none;
+    font-weight: 700;
+  }
+
+  .swagger-ui .btn.authorize {
+    border-color: var(--crick-green);
+    color: var(--crick-green);
+  }
+
+  .swagger-ui button.execute {
+    background: var(--crick-green);
+    border-color: var(--crick-green-dark);
+  }
+
+  .swagger-ui input,
+  .swagger-ui textarea,
+  .swagger-ui select {
+    border-radius: 6px;
+    border-color: var(--crick-line);
+  }
+
+  .swagger-ui table thead tr td,
+  .swagger-ui table thead tr th {
+    border-bottom: 1px solid var(--crick-line);
+    color: var(--crick-muted);
+  }
+
+  .swagger-ui .model-box,
+  .swagger-ui section.models {
+    border-radius: 8px;
+    border-color: var(--crick-line);
+  }
+
+  .swagger-ui .responses-inner h4,
+  .swagger-ui .responses-inner h5,
+  .swagger-ui .opblock-description-wrapper p {
+    color: var(--crick-ink);
+  }
+`;
+
 export const setupSwagger = (app) => {
   app.get('/api-docs.json', (req, res) => {
     res.setHeader('Content-Type', 'application/json');
@@ -549,9 +980,18 @@ export const setupSwagger = (app) => {
     swaggerUi.serve,
     swaggerUi.setup(swaggerDocument, {
       explorer: true,
-      customCss: '.swagger-ui .topbar { display: none }',
-      customSiteTitle: 'Scores11 API Docs',
-      customfavIcon: '/favicon.ico'
+      customCss: swaggerCustomCss,
+      customSiteTitle: 'Scores11 API Documentation',
+      customfavIcon: '/favicon.ico',
+      swaggerOptions: {
+        persistAuthorization: true,
+        displayRequestDuration: true,
+        docExpansion: 'none',
+        filter: true,
+        operationsSorter: 'method',
+        tagsSorter: 'alpha',
+        tryItOutEnabled: true
+      }
     })
   );
 
