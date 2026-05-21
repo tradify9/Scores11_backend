@@ -6,8 +6,6 @@ COPY package*.json ./
 
 RUN npm ci --only=production
 
-COPY --from=0 /app/node_modules ./node_modules
-
 COPY . .
 
 RUN mkdir -p logs uploads
