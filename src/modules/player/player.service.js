@@ -4,6 +4,36 @@ import Team from '../team/team.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
 
+const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const normalizePhone = (value = '') => value.replace(/\D/g, '');
+
+const playerLookupFilter = async (query, extraFilter = {}) => {
+  const searchQuery = query.trim();
+  const searchRegex = { $regex: escapeRegex(searchQuery), $options: 'i' };
+  const phoneDigits = normalizePhone(searchQuery);
+  const userMatches = await User.find({
+    $or: [
+      { email: searchRegex },
+      { phone: searchRegex },
+      ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : [])
+    ],
+    isActive: { $ne: false }
+  }).select('_id').lean();
+
+  return {
+    ...extraFilter,
+    isActive: true,
+    $or: [
+      { playerName: searchRegex },
+      { teamName: searchRegex },
+      { email: searchRegex },
+      { phone: searchRegex },
+      ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : []),
+      ...(userMatches.length ? [{ user: { $in: userMatches.map(user => user._id) } }] : [])
+    ]
+  };
+};
+
 export const playerService = {
   createPlayer: async (playerData, userId) => {
     // 🔥 PUBLIC PLAYER CREATION: Allow creating players without login
@@ -123,14 +153,14 @@ export const playerService = {
     const searchQuery = query.trim();
     console.log(`My player search: "${searchQuery}" limit: ${limit} user: ${userId}`);
 
-    const players = await Player.find({
+    const players = await Player.find(await playerLookupFilter(searchQuery, { user: userId }) || {
       isActive: true,
       user: userId,  // 🔥 Only user's players
       playerName: { $regex: searchQuery, $options: 'i' }
     })
       .populate({
         path: 'user',
-        select: 'name',
+        select: 'name fullName email phone',
         match: { isActive: { $ne: false } }
       })
       .populate({
@@ -185,13 +215,13 @@ export const playerService = {
       const searchQuery = query.trim();
       console.log(`Player search: "${searchQuery}" limit: ${limit}`);
 
-      const players = await Player.find({
+      const players = await Player.find(await playerLookupFilter(searchQuery) || {
         isActive: true,
         playerName: { $regex: searchQuery, $options: 'i' }
       })
         .populate({
           path: 'user',
-          select: 'name',
+          select: 'name fullName email phone',
           match: { isActive: { $ne: false } }
         })
         .populate({

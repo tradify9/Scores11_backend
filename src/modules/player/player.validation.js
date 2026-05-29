@@ -19,6 +19,7 @@ export const createPlayerSchema = Joi.object({
   bio: Joi.string().max(1000),
   team: Joi.string(),      
   teamName: Joi.string().optional().allow(''),
+  email: Joi.string().email().optional().allow(''),
   phone: Joi.string().optional(),
   nationality: Joi.string().optional()
 });
@@ -39,7 +40,9 @@ export const updatePlayerSchema = Joi.object({
   placeOfBirth: Joi.string(),
   height: Joi.string(),
   weight: Joi.string(),
-  bio: Joi.string().max(1000)
+  bio: Joi.string().max(1000),
+  email: Joi.string().email().optional().allow(''),
+  phone: Joi.string().optional().allow('')
 });
 
 export default {

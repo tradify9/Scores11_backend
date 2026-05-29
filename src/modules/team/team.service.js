@@ -178,7 +178,7 @@ export const teamService = {
     if (!team) throw new ApiError(404, 'Team not found');
 
     if (!playerId) {
-      throw new ApiError(400, 'Player ID is required');
+      throw new ApiError(400, 'Player ID, email, or mobile number is required');
     }
 
     const currentUser = await User.findById(userId).select('role');
@@ -217,11 +217,38 @@ export const teamService = {
     
     if (!canManageTeam) throw new ApiError(403, 'Not authorized to add players to this team');
 
-    let player = await Player.findById(playerId);
-    if (!player) {
-      player = await Player.findOne({ user: playerId });
+    const rawIdentifier = playerId.toString().trim();
+    const escapedIdentifier = rawIdentifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const phoneDigits = rawIdentifier.replace(/\D/g, '');
+    let player = null;
+
+    if (/^[0-9a-fA-F]{24}$/.test(rawIdentifier)) {
+      player = await Player.findById(rawIdentifier);
+      if (!player) player = await Player.findOne({ user: rawIdentifier });
     }
-    if (!player) throw new ApiError(404, 'Player not found');
+
+    if (!player) {
+      const matchedUser = await User.findOne({
+        $or: [
+          { email: { $regex: `^${escapedIdentifier}$`, $options: 'i' } },
+          { phone: rawIdentifier },
+          ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : [])
+        ],
+        isActive: { $ne: false }
+      }).select('_id');
+
+      player = await Player.findOne({
+        isActive: true,
+        $or: [
+          { email: { $regex: `^${escapedIdentifier}$`, $options: 'i' } },
+          { phone: rawIdentifier },
+          ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : []),
+          ...(matchedUser ? [{ user: matchedUser._id }] : [])
+        ]
+      });
+    }
+
+    if (!player) throw new ApiError(404, 'Player not found for this email/mobile');
 
     const resolvedPlayerId = player._id.toString();
 

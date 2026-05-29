@@ -40,7 +40,8 @@ export const WICKET_TYPE = {
   TIMED_OUT: 'timed_out',
   OBSTRUCTING_FIELD: 'obstructing_field',
   HIT_BALL_TWICE: 'hit_ball_twice',
-  RETIRED_HURT: 'retired_hurt'
+  RETIRED_HURT: 'retired_hurt',
+  RETIRED_OUT: 'retired_out'
 };
 
 export const BALL_RESULT = {

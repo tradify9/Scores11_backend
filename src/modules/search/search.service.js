@@ -26,15 +26,18 @@ export const searchService = {
       };
     }
 
-    const searchRegex = { $regex: query, $options: 'i' };
-    const searchText = { $text: { $search: query } };
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = { $regex: escapedQuery, $options: 'i' };
+    const phoneDigits = query.replace(/\D/g, '');
 
     // Search users
     const users = await User.find(
       { $or: [
         { fullName: searchRegex },
         { username: searchRegex },
-        { email: searchRegex }
+        { email: searchRegex },
+        { phone: searchRegex },
+        ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : [])
       ]}
     )
       .select('fullName username email avatar role')
@@ -57,10 +60,14 @@ export const searchService = {
     const players = await Player.find(
       { $or: [
         { playerName: searchRegex },
-        { teamName: searchRegex }
+        { teamName: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex },
+        ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : [])
       ]}
     )
-      .select('playerName jerseyNumber role teamName avatar')
+      .select('playerName jerseyNumber role teamName avatar email phone')
+      .populate('user', 'fullName name email phone')
       .limit(limit)
       .lean();
 

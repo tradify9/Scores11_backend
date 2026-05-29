@@ -18,6 +18,7 @@ const playerSchema = new mongoose.Schema({
   },
   dateOfBirth: Date,
   nationality: { type: String, default: 'India' },
+  email: { type: String, lowercase: true, trim: true },
   phone: { type: String },
   profileImage: { publicId: String, url: String },
   team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
@@ -37,10 +38,12 @@ const playerSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true }
 }, { timestamps: true });
 
-playerSchema.index({ playerName: 'text' });
+playerSchema.index({ playerName: 'text', email: 'text', phone: 'text', teamName: 'text' });
 playerSchema.index({ team: 1 });
 // 🔥 FIX: Add index on user field for MY PLAYERS query
 playerSchema.index({ user: 1 });
+playerSchema.index({ email: 1 });
+playerSchema.index({ phone: 1 });
 
 const Player = mongoose.model('Player', playerSchema);
 export default Player;

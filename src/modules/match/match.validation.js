@@ -42,7 +42,15 @@ export const createMatchSchema = Joi.object({
   overs: Joi.number().integer().min(1).max(100).default(20).messages({
     'number.min': 'Overs must be at least 1',
     'number.max': 'Overs cannot exceed 100'
-  })
+  }),
+  ballType: Joi.string().valid('leather', 'tennis', 'rubber', 'custom').default('leather'),
+  matchCategory: Joi.string().valid('standard', 'child').default('standard'),
+  penaltyOvers: Joi.number().min(0).default(0),
+  scoringRules: Joi.object({
+    ballType: Joi.string().valid('leather', 'tennis', 'rubber', 'custom').default('leather'),
+    matchCategory: Joi.string().valid('standard', 'child').default('standard'),
+    penaltyOvers: Joi.number().min(0).default(0)
+  }).optional()
 });
 
 export default {

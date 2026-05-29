@@ -33,6 +33,12 @@ const resultSchema = new mongoose.Schema({
   requiredRunRate: String
 });
 
+const scoringRulesSchema = new mongoose.Schema({
+  ballType: { type: String, enum: ['leather', 'tennis', 'rubber', 'custom'], default: 'leather' },
+  matchCategory: { type: String, enum: ['standard', 'child'], default: 'standard' },
+  penaltyOvers: { type: Number, default: 0 }
+}, { _id: false });
+
 const battingScorecardSchema = new mongoose.Schema({
   batsman: { type: mongoose.Schema.Types.ObjectId, ref: 'Player', required: true },
   runs: { type: Number, default: 0 },
@@ -121,6 +127,7 @@ const matchSchema = new mongoose.Schema({
   venue: venueSchema,
   scheduledDate: { type: Date, required: true },
   overs: { type: Number, default: 20 },
+  scoringRules: { type: scoringRulesSchema, default: () => ({}) },
 status: { type: String, enum: Object.values(MATCH_STATUS), default: 'scheduled' },
   team1Lineup: [{
     type: mongoose.Schema.Types.ObjectId,

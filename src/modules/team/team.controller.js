@@ -49,7 +49,7 @@ export const teamController = {
   addPlayer: catchAsync(async (req, res) => {
     const team = await teamService.addPlayer(
       req.params.id,
-      req.body.playerId,
+      req.body.playerId || req.body.identifier || req.body.email || req.body.phone,
       req.user.userId,
       req.body.matchId
     );

@@ -125,7 +125,12 @@ export const matchService = {
       format: matchData.format || 't20',
       matchType: matchData.matchType || 'league',
       venue: matchData.venue,
-      overs: matchData.overs || 20
+      overs: matchData.overs || 20,
+      scoringRules: {
+        ballType: matchData.ballType || matchData.scoringRules?.ballType || 'leather',
+        matchCategory: matchData.matchCategory || matchData.scoringRules?.matchCategory || 'standard',
+        penaltyOvers: matchData.penaltyOvers || matchData.scoringRules?.penaltyOvers || 0
+      }
     };
     
     const match = await Match.create(newMatchData);
