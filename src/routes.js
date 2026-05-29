@@ -34,6 +34,7 @@ import featureToggleRoutes from './modules/featureToggle/featureToggle.routes.js
 import dashboardRoutes from './modules/dashboard/dashboard.routes.js';
 import roleRoutes from './modules/role/role.routes.js';
 import chatRoutes from './modules/chat/chat.routes.js';
+import storyRoutes from './modules/story/story.routes.js';
 
 // import matchRoutes from './modules/match/match.routes.js';
 
@@ -72,6 +73,7 @@ router.use('/search', searchRoutes);
 router.use('/banners', bannerRoutes);
 router.use('/feature-toggles', featureToggleRoutes);
 router.use('/chat', chatRoutes);
+router.use('/stories', storyRoutes);
 router.use('/dashboard', dashboardRoutes);
 // router.use('/matches', matchRoutes);
 

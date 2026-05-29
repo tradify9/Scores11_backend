@@ -614,7 +614,7 @@ export const swaggerDocument = {
       'Professional REST API documentation for the Scores11 cricket platform. Use this console to explore authentication, users, teams, players, matches, scoring, tournaments, contests, wallet, live streams, community, store, uploads, and admin modules.',
     termsOfService: 'https://Scores11.com/terms',
     contact: {
-      name: 'Scores11 API Support',
+      name: 'Scores11 API Support', 
       email: 'support@Scores11.com',
       url: 'https://Scores11.com/support'
     },
