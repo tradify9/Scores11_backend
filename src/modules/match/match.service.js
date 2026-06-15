@@ -7,6 +7,7 @@ import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
 import { emitToMatch, emitToAll } from "../../config/socket.js";
+import { normalizeScoringRules } from '../../utils/cricketScoringRules.js';
 
 export const matchService = {
   // Create a new match - COMPLETELY FIXED
@@ -113,6 +114,12 @@ export const matchService = {
 
     const scheduledAt = resolveScheduledDate();
 
+    const normalizedScoringRules = normalizeScoringRules({
+      ballType: matchData.ballType || matchData.scoringRules?.ballType,
+      matchCategory: matchData.matchCategory || matchData.scoringRules?.matchCategory,
+      penaltyOvers: matchData.penaltyOvers || matchData.scoringRules?.penaltyOvers
+    });
+
     const newMatchData = {
       team1: team1Id,
       team2: team2Id,
@@ -127,9 +134,9 @@ export const matchService = {
       venue: matchData.venue,
       overs: matchData.overs || 20,
       scoringRules: {
-        ballType: matchData.ballType || matchData.scoringRules?.ballType || 'leather',
-        matchCategory: matchData.matchCategory || matchData.scoringRules?.matchCategory || 'standard',
-        penaltyOvers: matchData.penaltyOvers || matchData.scoringRules?.penaltyOvers || 0
+        ballType: normalizedScoringRules.ballType,
+        matchCategory: normalizedScoringRules.matchCategory,
+        penaltyOvers: normalizedScoringRules.penaltyOvers
       }
     };
     

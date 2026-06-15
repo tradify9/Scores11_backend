@@ -8,6 +8,7 @@ import { EXPERIENCE_POINTS } from '../../constants/userLevels.js';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { sendVerificationEmail } from '../../utils/sendVerificationEmail.js';
+import { notificationService } from '../notification/notification.service.js';
 
 export const userService = {
   getUserByEmail: async (email) => {
@@ -25,6 +26,67 @@ export const userService = {
       throw new ApiError(404, 'User not found');
     }
     return user;
+  },
+
+  getFullProfile: async (userId) => {
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      throw new ApiError(400, 'Invalid user ID format');
+    }
+
+    const user = await User.findById(userId).select('-password -refreshToken').lean();
+    if (!user) throw new ApiError(404, 'User not found');
+
+    const player = await Player.findOne({
+      $or: [
+        { user: user._id },
+        ...(user.email ? [{ email: user.email }] : []),
+        ...(user.phone ? [{ phone: user.phone }] : [])
+      ],
+      isActive: { $ne: false }
+    })
+      .populate('team', 'name shortName logo')
+      .lean();
+
+    const playerStats = player?.stats || {};
+    const stats = {
+      ...(user.stats || {}),
+      matches: playerStats.matches || user.stats?.matches || 0,
+      runs: playerStats.runs || user.stats?.runs || 0,
+      balls: playerStats.balls || user.stats?.balls || 0,
+      fours: playerStats.fours || user.stats?.fours || 0,
+      sixes: playerStats.sixes || user.stats?.sixes || 0,
+      average: playerStats.average || user.stats?.average || 0,
+      strikeRate: playerStats.strikeRate || user.stats?.strikeRate || 0,
+      highestScore: playerStats.highestScore || user.stats?.highestScore || 0,
+      wickets: playerStats.wickets || user.stats?.wickets || 0,
+      economy: playerStats.economy || user.stats?.economy || 0,
+      profileViews: user.profileViews || user.stats?.profileViews || 0,
+      followers: user.followers?.length || 0,
+      following: user.following?.length || 0
+    };
+
+    return {
+      user: {
+        ...user,
+        cricketProfile: {
+          ...(user.cricketProfile || {}),
+          playerId: player?._id || user.cricketProfile?.playerId,
+          playerType: player?.role || user.cricketProfile?.playerType,
+          battingStyle: player?.battingStyle || user.cricketProfile?.battingStyle,
+          bowlingStyle: player?.bowlingStyle || user.cricketProfile?.bowlingStyle,
+          teamName: player?.team?.name || player?.teamName || user.cricketProfile?.teamName
+        }
+      },
+      player,
+      stats,
+      social: {
+        profileViews: stats.profileViews,
+        followers: stats.followers,
+        following: stats.following
+      },
+      equipment: user.equipment || [],
+      achievements: user.achievements || []
+    };
   },
 
 // Registration & Authentication
@@ -265,6 +327,25 @@ export const userService = {
       targetUser.followers.push(userId);
       
       await Promise.all([user.save(), targetUser.save()]);
+      try {
+        const actorName = user.name || user.fullName || user.username || 'Someone';
+        await notificationService.sendNotification({
+          userId: targetUserId,
+          title: 'New follower',
+          message: `${actorName} started following you.`,
+          type: 'follow',
+          data: {
+            userId,
+            senderId: userId,
+            referenceId: userId,
+            actionUrl: `/profile/${userId}`,
+            sound: 'scores11'
+          },
+          skipIfSelfUserId: userId
+        });
+      } catch (error) {
+        console.warn('Follow notification skipped:', error.message);
+      }
     }
 
     return { message: 'User followed successfully' };

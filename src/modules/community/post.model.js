@@ -77,6 +77,17 @@ const postSchema = new mongoose.Schema({
 
   comments: [commentSchema],
 
+  shares: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+
+  sharedBy: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    createdAt: { type: Date, default: Date.now }
+  }],
+
   reports: [{
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     reason: { type: String, enum: ['spam', 'abuse', 'violence', 'other'] },
@@ -103,6 +114,7 @@ const postSchema = new mongoose.Schema({
 postSchema.index({ createdAt: -1 });
 postSchema.index({ tags: 1 });
 postSchema.index({ isPinned: -1 });
+postSchema.index({ user: 1, createdAt: -1 });
 
 const Post = mongoose.model('Post', postSchema);
 const Comment = mongoose.model('Comment', commentSchema);

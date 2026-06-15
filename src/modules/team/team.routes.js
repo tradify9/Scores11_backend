@@ -10,6 +10,8 @@ const router = express.Router();
 // Public routes
 router.get('/search', teamController.searchTeams);
 router.get('/rankings', teamController.getTeamRankings);
+router.get('/invite/:code', teamController.getInviteInfo);
+router.post('/invite/:code/join', teamController.joinByInvite);
 router.get('/public/:id', teamController.getTeamByIdPublic);
 router.get('/public/:id/players', teamController.getTeamByIdPublic); // 🔥 PUBLIC - Get team with all players (anyone can view team lineup)
 router.get('/list', teamController.getAllTeams);
@@ -25,6 +27,7 @@ router.put('/:id', authenticate, teamController.updateTeam);
 router.delete('/:id', authenticate, teamController.deleteTeam);
 
 // Player management
+router.post('/:id/invite', authenticate, teamController.createInviteLink);
 router.post('/:id/players', authenticate, teamController.addPlayer);
 router.delete('/:id/players/:playerId', authenticate, teamController.removePlayer);
 router.post('/:id/captain', authenticate, teamController.setCaptain);

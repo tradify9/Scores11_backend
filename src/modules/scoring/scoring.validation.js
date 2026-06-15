@@ -7,7 +7,7 @@ const validateBallData = Joi.object({
   ballNumber: Joi.number().integer().min(1).max(7).required(), // 7 for extras
   batsmanId: Joi.string().required(),
   bowlerId: Joi.string().required(),
-  runs: Joi.number().integer().min(0).max(6).default(0),
+  runs: Joi.number().integer().min(0).max(999).default(0),
   isWicket: Joi.boolean().default(false),
   wicketType: Joi.when('isWicket', {
     is: true,
@@ -25,6 +25,12 @@ const validateBallData = Joi.object({
   isNoBall: Joi.boolean().default(false),
   isBye: Joi.boolean().default(false),
   isLegBye: Joi.boolean().default(false),
+  isPenalty: Joi.boolean().default(false),
+  forceStrikeChange: Joi.boolean().optional(),
+  continueAfterTarget: Joi.boolean().optional(),
+  allowAllOutContinue: Joi.boolean().optional(),
+  wagonZone: Joi.number().integer().min(0).max(16).optional(),
+  wagonLabel: Joi.string().max(80).allow('', null),
   comment: Joi.string().max(200).allow(''),
   expectedVersion: Joi.number().optional() // For optimistic concurrency
 });

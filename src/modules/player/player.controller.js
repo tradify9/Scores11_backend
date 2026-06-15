@@ -29,9 +29,19 @@ export const playerController = {
     res.json(new ApiResponse(200, 'Player retrieved', player));
   }),
 
+  getFullPlayerProfile: catchAsync(async (req, res) => {
+    const profile = await playerService.getFullPlayerProfile(req.params.id);
+    res.json(new ApiResponse(200, 'Player profile retrieved', profile));
+  }),
+
   getPlayerMatches: catchAsync(async (req, res) => {
     const { matches, pagination, player } = await playerMatchesService.getPlayerMatches(req.params.id, req.query);
     res.json(new ApiResponse(200, 'Player matches retrieved successfully', matches, { pagination, player }));
+  }),
+
+  optOutFromMatch: catchAsync(async (req, res) => {
+    const match = await playerMatchesService.optOutFromMatch(req.params.id, req.params.matchId);
+    res.json(new ApiResponse(200, 'Player removed from match lineup', match));
   }),
 
   updatePlayer: catchAsync(async (req, res) => {

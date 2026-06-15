@@ -30,12 +30,13 @@ const resultSchema = new mongoose.Schema({
   target: Number,
   requiredRuns: Number,
   requiredBalls: Number,
-  requiredRunRate: String
+  requiredRunRate: String,
+  dls: mongoose.Schema.Types.Mixed
 });
 
 const scoringRulesSchema = new mongoose.Schema({
   ballType: { type: String, enum: ['leather', 'tennis', 'rubber', 'custom'], default: 'leather' },
-  matchCategory: { type: String, enum: ['standard', 'child'], default: 'standard' },
+  matchCategory: { type: String, enum: ['standard', 'professional', 'casual', 'gully', 'child', 'indoor', 'custom'], default: 'standard' },
   penaltyOvers: { type: Number, default: 0 }
 }, { _id: false });
 
@@ -136,6 +137,11 @@ status: { type: String, enum: Object.values(MATCH_STATUS), default: 'scheduled' 
   team2Lineup: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Player'
+  }],
+  optedOutPlayers: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Player',
+    default: []
   }],
   
   toss: tossSchema,

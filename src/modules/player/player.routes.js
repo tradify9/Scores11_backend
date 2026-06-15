@@ -11,16 +11,14 @@ router.get('/trending', playerController.getTrendingPlayers);
 router.get('/compare', playerController.comparePlayers);
 router.get('/search', playerController.searchPlayers);
 router.get('/public', playerController.getAllPlayers);
-router.get('/public/:id', playerController.getPlayerByIdPublic);
-router.get('/public/:id/matches', playerController.getPlayerMatches); // 🔥 NEW: Player-specific matches (public)
-
-// 🔥 PUBLIC PLAYER CREATION - Anyone can create players (no login required)
 router.post('/public/create', playerController.createPlayer);
-
-
+router.get('/public/:id/matches', playerController.getPlayerMatches);
+router.patch('/public/:id/matches/:matchId/opt-out', playerController.optOutFromMatch);
+router.get('/public/:id/full-profile', playerController.getFullPlayerProfile);
+router.get('/public/:id', playerController.getPlayerByIdPublic);
 
 /* =========================
-   🔥 USER-SPECIFIC ROUTES (VERY IMPORTANT ABOVE :id)
+   USER-SPECIFIC ROUTES
 ========================= */
 router.get('/my/search', authenticate, playerController.searchMyPlayers);
 router.get('/my', authenticate, playerController.getMyPlayers);
@@ -28,26 +26,21 @@ router.get('/my', authenticate, playerController.getMyPlayers);
 /* =========================
    OTHER PROTECTED ROUTES
 ========================= */
-// Protected player creation (for logged in users - kept for backward compatibility)
 router.post('/', authenticate, playerController.createPlayer);
 router.get('/', authenticate, playerController.getAllPlayers);
 router.get('/team/:teamId', authenticate, playerController.getPlayersByTeam);
-router.get('/:id', authenticate, playerController.getPlayerById);
 router.get('/:id/stats', playerController.getPlayerStats);
 router.get('/:id/performance', playerController.getPlayerPerformance);
+router.get('/:id', authenticate, playerController.getPlayerById);
 router.put('/:id', authenticate, playerController.updatePlayer);
 router.delete('/:id', authenticate, playerController.delete);
 
 /* =========================
-   ⚠️ DYNAMIC ROUTES (ALWAYS LAST)
+   OBJECTID-SAFE FALLBACKS
 ========================= */
-
-// 🔥 MongoDB ObjectId safe route (prevents conflict)
-router.get('/:id([0-9a-fA-F]{24})', authenticate, playerController.getPlayerById);
-
 router.get('/:id([0-9a-fA-F]{24})/stats', playerController.getPlayerStats);
 router.get('/:id([0-9a-fA-F]{24})/performance', playerController.getPlayerPerformance);
-
+router.get('/:id([0-9a-fA-F]{24})', authenticate, playerController.getPlayerById);
 router.put('/:id([0-9a-fA-F]{24})', authenticate, playerController.updatePlayer);
 router.delete('/:id([0-9a-fA-F]{24})', authenticate, playerController.delete);
 

@@ -49,11 +49,66 @@ export const teamController = {
   addPlayer: catchAsync(async (req, res) => {
     const team = await teamService.addPlayer(
       req.params.id,
-      req.body.playerId || req.body.identifier || req.body.email || req.body.phone,
+      req.body,
       req.user.userId,
       req.body.matchId
     );
     res.json(new ApiResponse(200, 'Player added to team', team));
+  }),
+
+  createInviteLink: catchAsync(async (req, res) => {
+    const invite = await teamService.createInviteLink(req.params.id, req.body, req.user.userId);
+    res.status(201).json(new ApiResponse(201, 'Team invite link created', invite));
+  }),
+
+  getInviteInfo: catchAsync(async (req, res) => {
+    const invite = await teamService.getInviteInfo(req.params.code);
+    const wantsJson = (req.get('accept') || '').includes('application/json');
+    if (!wantsJson) {
+      return res.type('html').send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Join ${invite.teamName}</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#f8f9fc;margin:0;padding:24px;color:#0f172a}
+    .card{max-width:480px;margin:0 auto;background:#fff;border:1px solid #e8ecf4;border-radius:18px;padding:22px;box-shadow:0 8px 24px rgba(15,23,42,.08)}
+    h1{margin:0 0 8px;font-size:24px} p{color:#64748b;line-height:1.45}
+    input,select,button{width:100%;box-sizing:border-box;margin-top:10px;padding:13px;border-radius:12px;border:1px solid #dbe3f0;font-size:15px}
+    button{background:#4f8ef7;color:#fff;font-weight:700;border:0;cursor:pointer}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Join ${invite.teamName}</h1>
+    <p>${invite.playersCount} players already in squad. Enter your details to join this team.</p>
+    <form method="post" action="/api/v1/teams/invite/${req.params.code}/join">
+      <input name="name" placeholder="Player name" required />
+      <input name="phone" placeholder="Mobile number" />
+      <input name="email" type="email" placeholder="Email address" />
+      <select name="role">
+        <option value="batsman">Batsman</option>
+        <option value="bowler">Bowler</option>
+        <option value="all-rounder">All-rounder</option>
+        <option value="wicket-keeper">Wicket keeper</option>
+      </select>
+      <button type="submit">Join Team</button>
+    </form>
+  </div>
+</body>
+</html>`);
+    }
+    res.json(new ApiResponse(200, 'Team invite loaded', invite));
+  }),
+
+  joinByInvite: catchAsync(async (req, res) => {
+    const result = await teamService.joinByInvite(req.params.code, req.body);
+    const wantsJson = (req.get('accept') || '').includes('application/json');
+    if (!wantsJson) {
+      return res.type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Joined Team</title></head><body style="font-family:Arial,sans-serif;background:#f8f9fc;padding:24px"><div style="max-width:480px;margin:0 auto;background:#fff;border-radius:18px;padding:22px;border:1px solid #e8ecf4"><h1>Joined successfully</h1><p>${result.message}</p></div></body></html>`);
+    }
+    res.status(201).json(new ApiResponse(201, 'Player joined team', result));
   }),
 
   // Remove player from team

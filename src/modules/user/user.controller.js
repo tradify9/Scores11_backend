@@ -28,6 +28,13 @@ getProfile: catchAsync(async (req, res) => {
     res.json(new ApiResponse(200, "Profile fetched", user));
   }),
 
+  getFullProfile: catchAsync(async (req, res) => {
+    const userId = req.user._id || req.user.userId || req.userId;
+    if (!userId) throw new ApiError(400, 'Missing user ID');
+    const profile = await userService.getFullProfile(userId);
+    res.json(new ApiResponse(200, 'Full profile fetched', profile));
+  }),
+
   getProfileByUsername: catchAsync(async (req, res) => {
     const user = await userService.getUserByUsername(req.params.username);
     res.json(new ApiResponse(200, "Profile fetched", user));

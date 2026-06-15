@@ -4,6 +4,7 @@ import User from '../user/user.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { uploadImage, deleteImage } from '../../config/cloudinary.js';
 import { getPagination } from '../../utils/pagination.js';
+import crypto from 'crypto';
 
 const toIdString = (value) => {
   if (!value) return '';
@@ -25,6 +26,123 @@ const includesId = (values, expectedId) => {
   }
 
   return idMatches(values, expectedId);
+};
+
+const normalizeTeamPlayerRole = (role) => {
+  const value = (role || '').toString().trim().toLowerCase();
+  const map = {
+    bat: 'batsman',
+    batsman: 'batsman',
+    batter: 'batsman',
+    bwl: 'bowler',
+    bowler: 'bowler',
+    ar: 'all-rounder',
+    allrounder: 'all-rounder',
+    'all-rounder': 'all-rounder',
+    wk: 'wicket-keeper',
+    keeper: 'wicket-keeper',
+    'wicket keeper': 'wicket-keeper',
+    'wicket-keeper': 'wicket-keeper'
+  };
+  return map[value] || 'batsman';
+};
+
+const normalizeContactInput = (input) => {
+  if (input && typeof input === 'object' && !input._id) {
+    const identifier = (input.playerId || input.identifier || input.email || input.phone || input.mobile || '').toString().trim();
+    return {
+      identifier,
+      name: (input.playerName || input.name || input.fullName || '').toString().trim(),
+      email: (input.email || '').toString().trim().toLowerCase(),
+      phone: (input.phone || input.mobile || '').toString().trim(),
+      role: normalizeTeamPlayerRole(input.role),
+      battingStyle: input.battingStyle || 'right-hand bat',
+      bowlingStyle: input.bowlingStyle || 'none',
+      jerseyNumber: input.jerseyNumber
+    };
+  }
+
+  const identifier = (input || '').toString().trim();
+  return { identifier, name: '', email: '', phone: '', role: 'batsman', battingStyle: 'right-hand bat', bowlingStyle: 'none' };
+};
+
+const buildPublicInviteUrl = (code) => `/api/v1/teams/invite/${code}`;
+
+const findPlayerByContact = async (contact) => {
+  const rawIdentifier = contact.identifier || contact.email || contact.phone;
+  if (!rawIdentifier) return null;
+  const escapedIdentifier = rawIdentifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const phoneDigits = (contact.phone || rawIdentifier).replace(/\D/g, '');
+
+  if (/^[0-9a-fA-F]{24}$/.test(rawIdentifier)) {
+    const byId = await Player.findById(rawIdentifier);
+    if (byId) return byId;
+    const byUser = await Player.findOne({ user: rawIdentifier, isActive: true });
+    if (byUser) return byUser;
+  }
+
+  const matchedUser = await User.findOne({
+    $or: [
+      { email: { $regex: `^${escapedIdentifier}$`, $options: 'i' } },
+      ...(contact.email ? [{ email: { $regex: `^${contact.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } }] : []),
+      { phone: rawIdentifier },
+      ...(contact.phone ? [{ phone: contact.phone }] : []),
+      ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : [])
+    ],
+    isActive: { $ne: false }
+  }).select('_id');
+
+  return Player.findOne({
+    isActive: true,
+    $or: [
+      { email: { $regex: `^${escapedIdentifier}$`, $options: 'i' } },
+      ...(contact.email ? [{ email: { $regex: `^${contact.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } }] : []),
+      { phone: rawIdentifier },
+      ...(contact.phone ? [{ phone: contact.phone }] : []),
+      ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : []),
+      ...(matchedUser ? [{ user: matchedUser._id }] : [])
+    ]
+  });
+};
+
+const findOrCreatePlayerForTeam = async (team, playerInput) => {
+  const contact = normalizeContactInput(playerInput);
+  let player = await findPlayerByContact(contact);
+
+  if (!player) {
+    if (!contact.name) {
+      throw new ApiError(404, 'Player not found. Send player name with email/mobile to create and add.');
+    }
+    if (!contact.email && !contact.phone) {
+      throw new ApiError(400, 'Email or mobile number is required to create player');
+    }
+
+    player = await Player.create({
+      playerName: contact.name,
+      email: contact.email || undefined,
+      phone: contact.phone || undefined,
+      role: contact.role,
+      battingStyle: contact.battingStyle,
+      bowlingStyle: contact.bowlingStyle,
+      jerseyNumber: contact.jerseyNumber,
+      team: team._id,
+      teamName: team.name,
+      user: null
+    });
+  }
+
+  if (team.players.some(p => p.toString() === player._id.toString())) {
+    return player;
+  }
+
+  if (team.players.length >= 25) {
+    throw new ApiError(400, 'Team is full (max 25 players)');
+  }
+
+  team.players.push(player._id);
+  await team.save();
+  await Player.findByIdAndUpdate(player._id, { team: team._id, teamName: team.name });
+  return player;
 };
 
 export const teamService = {
@@ -71,7 +189,7 @@ export const teamService = {
       .populate('owner', 'name email phone avatar')
       .populate('captain', 'playerName jerseyNumber role avatar')
       .populate('viceCaptain', 'playerName jerseyNumber role avatar')
-.populate('players', 'playerName name jerseyNumber role battingStyle bowlingStyle avatar stats')
+.populate('players', 'playerName name email phone jerseyNumber role battingStyle bowlingStyle avatar stats')
     
     if (!team) {
       throw new ApiError(404, 'Team not found');
@@ -84,7 +202,7 @@ export const teamService = {
     const team = await Team.findById(teamId)
       .populate('captain', 'playerName jerseyNumber role')
       .populate('viceCaptain', 'playerName jerseyNumber role')
-      .populate('players', 'playerName name jerseyNumber role');
+      .populate('players', 'playerName name email phone jerseyNumber role');
     
     if (!team) {
       throw new ApiError(404, 'Team not found');
@@ -145,7 +263,7 @@ export const teamService = {
 
     const [teams, total] = await Promise.all([
       Team.find(filter)
-.populate('players', 'playerName name jerseyNumber role')
+.populate('players', 'playerName name email phone jerseyNumber role')
 
         .populate('owner', 'name email')
         .populate('captain', 'playerName')
@@ -167,17 +285,18 @@ export const teamService = {
     const teams = await Team.find({ owner: userId, isActive: true })
       .populate('captain', 'playerName')
       .populate('viceCaptain', 'playerName')
-.populate('players', 'playerName name jerseyNumber role')
+.populate('players', 'playerName name email phone jerseyNumber role')
     return teams;
   },
 
   // Add player to team
-  addPlayer: async (teamId, playerId, userId, matchId = null) => {
+  addPlayer: async (teamId, playerInput, userId, matchId = null) => {
     const userIdString = toIdString(userId);
     const team = await Team.findById(teamId);
     if (!team) throw new ApiError(404, 'Team not found');
 
-    if (!playerId) {
+    const contact = normalizeContactInput(playerInput);
+    if (!contact.identifier && !contact.email && !contact.phone) {
       throw new ApiError(400, 'Player ID, email, or mobile number is required');
     }
 
@@ -217,57 +336,111 @@ export const teamService = {
     
     if (!canManageTeam) throw new ApiError(403, 'Not authorized to add players to this team');
 
-    const rawIdentifier = playerId.toString().trim();
-    const escapedIdentifier = rawIdentifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const phoneDigits = rawIdentifier.replace(/\D/g, '');
-    let player = null;
-
-    if (/^[0-9a-fA-F]{24}$/.test(rawIdentifier)) {
-      player = await Player.findById(rawIdentifier);
-      if (!player) player = await Player.findOne({ user: rawIdentifier });
-    }
-
-    if (!player) {
-      const matchedUser = await User.findOne({
-        $or: [
-          { email: { $regex: `^${escapedIdentifier}$`, $options: 'i' } },
-          { phone: rawIdentifier },
-          ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : [])
-        ],
-        isActive: { $ne: false }
-      }).select('_id');
-
-      player = await Player.findOne({
-        isActive: true,
-        $or: [
-          { email: { $regex: `^${escapedIdentifier}$`, $options: 'i' } },
-          { phone: rawIdentifier },
-          ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : []),
-          ...(matchedUser ? [{ user: matchedUser._id }] : [])
-        ]
-      });
-    }
-
-    if (!player) throw new ApiError(404, 'Player not found for this email/mobile');
+    const player = await findOrCreatePlayerForTeam(team, playerInput);
 
     const resolvedPlayerId = player._id.toString();
 
     if (team.players.some(p => p.toString() === resolvedPlayerId)) {
       return await Team.findById(teamId)
-        .populate('players', 'playerName name jerseyNumber role battingStyle bowlingStyle avatar stats');
+        .populate('players', 'playerName name email phone jerseyNumber role battingStyle bowlingStyle avatar stats');
+    }
+    return await Team.findById(teamId)
+      .populate('players', 'playerName name email phone jerseyNumber role battingStyle bowlingStyle avatar stats');
+  },
+
+  createInviteLink: async (teamId, inviteData = {}, userId) => {
+    const userIdString = toIdString(userId);
+    const team = await Team.findById(teamId);
+    if (!team) throw new ApiError(404, 'Team not found');
+    const currentUser = await User.findById(userId).select('role');
+    const userRole = currentUser?.role?.toString().toLowerCase();
+    if (!idMatches(team.owner, userIdString) && userRole !== 'admin') {
+      throw new ApiError(403, 'Not authorized to create invite link');
     }
 
-    if (team.players.length >= 25) {
-      throw new ApiError(400, 'Team is full (max 25 players)');
-    }
+    const expiresInDays = Math.max(1, Math.min(Number(inviteData.expiresInDays || 7), 90));
+    const maxUses = Math.max(0, Math.min(Number(inviteData.maxUses || 0), 25));
+    const code = crypto.randomBytes(12).toString('hex');
+    const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
 
-    team.players.push(player._id);
+    team.inviteLinks.push({
+      code,
+      createdBy: userId,
+      expiresAt,
+      maxUses,
+      uses: 0,
+      isActive: true
+    });
     await team.save();
 
-    await Player.findByIdAndUpdate(player._id, { team: teamId });
+    return {
+      code,
+      inviteUrl: buildPublicInviteUrl(code),
+      appPath: `/team-invite/${code}`,
+      expiresAt,
+      maxUses,
+      team: {
+        id: team._id,
+        name: team.name,
+        shortName: team.shortName,
+        city: team.city
+      }
+    };
+  },
 
-    return await Team.findById(teamId)
-      .populate('players', 'playerName name jerseyNumber role battingStyle bowlingStyle avatar stats');
+  getInviteInfo: async (code) => {
+    const team = await Team.findOne({
+      'inviteLinks.code': code,
+      isActive: true
+    }).select('name shortName city state country players inviteLinks');
+    if (!team) throw new ApiError(404, 'Invite link not found');
+    const invite = team.inviteLinks.find(link => link.code === code);
+    if (!invite || !invite.isActive || (invite.expiresAt && invite.expiresAt < new Date())) {
+      throw new ApiError(410, 'Invite link expired');
+    }
+    if (invite.maxUses > 0 && invite.uses >= invite.maxUses) {
+      throw new ApiError(410, 'Invite link usage limit reached');
+    }
+    return {
+      teamId: team._id,
+      teamName: team.name,
+      shortName: team.shortName,
+      city: team.city,
+      state: team.state,
+      country: team.country,
+      playersCount: team.players.length,
+      expiresAt: invite.expiresAt,
+      remainingUses: invite.maxUses > 0 ? Math.max(0, invite.maxUses - invite.uses) : null
+    };
+  },
+
+  joinByInvite: async (code, playerInput = {}) => {
+    const team = await Team.findOne({
+      'inviteLinks.code': code,
+      isActive: true
+    });
+    if (!team) throw new ApiError(404, 'Invite link not found');
+
+    const invite = team.inviteLinks.find(link => link.code === code);
+    if (!invite || !invite.isActive || (invite.expiresAt && invite.expiresAt < new Date())) {
+      throw new ApiError(410, 'Invite link expired');
+    }
+    if (invite.maxUses > 0 && invite.uses >= invite.maxUses) {
+      throw new ApiError(410, 'Invite link usage limit reached');
+    }
+
+    const player = await findOrCreatePlayerForTeam(team, playerInput);
+    invite.uses += 1;
+    await team.save();
+
+    const populatedTeam = await Team.findById(team._id)
+      .populate('players', 'playerName name email phone jerseyNumber role battingStyle bowlingStyle avatar stats');
+
+    return {
+      team: populatedTeam,
+      player,
+      message: `${player.playerName} joined ${team.name}`
+    };
   },
 
   // Remove player from team

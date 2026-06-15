@@ -81,6 +81,39 @@ export const playerService = {
     return player;
   },
 
+  getFullPlayerProfile: async (playerId) => {
+    const player = await Player.findById(playerId)
+      .populate('user', 'name fullName username email phone avatar')
+      .populate('team', 'name shortName logo city state')
+      .lean();
+
+    if (!player) throw new ApiError(404, 'Player not found');
+
+    const stats = {
+      matches: player.stats?.matches || 0,
+      runs: player.stats?.runs || 0,
+      balls: player.stats?.balls || 0,
+      fours: player.stats?.fours || 0,
+      sixes: player.stats?.sixes || 0,
+      average: player.stats?.average || 0,
+      strikeRate: player.stats?.strikeRate || 0,
+      highestScore: player.stats?.highestScore || 0,
+      wickets: player.stats?.wickets || 0,
+      economy: player.stats?.economy || 0,
+      hundreds: player.stats?.hundreds || 0,
+      fifties: player.stats?.fifties || 0,
+      bestBowlingRuns: player.stats?.bestBowlingRuns || 0,
+      bestBowlingWickets: player.stats?.bestBowlingWickets || 0
+    };
+
+    return {
+      player: { ...player, stats },
+      stats,
+      team: player.team || null,
+      user: player.user || null
+    };
+  },
+
   updatePlayer: async (playerId, updateData) => {
     const allowedUpdates = [
       'playerName', 'jerseyNumber', 'role', 'battingStyle', 

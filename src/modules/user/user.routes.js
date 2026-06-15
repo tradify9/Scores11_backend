@@ -31,6 +31,7 @@ router.get('/players/public', userController.getPublicPlayers);
 router.use(authenticate);
 
 router.get('/me', userController.getProfile);
+router.get('/me/full-profile', userController.getFullProfile);
 router.put('/me', validate(updateProfileSchema), userController.updateProfile);
 router.get('/me/stats', userController.getUserStats);
 router.get('/stats', userController.getUserStats);

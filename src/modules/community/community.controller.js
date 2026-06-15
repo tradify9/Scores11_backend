@@ -11,13 +11,13 @@ export const communityController = {
 
   // Get all posts
   getAllPosts: catchAsync(async (req, res) => {
-    const { posts, pagination } = await communityService.getAllPosts(req.query);
+    const { posts, pagination } = await communityService.getAllPosts(req.query, req.user?.userId || req.user?._id);
     res.json(new ApiResponse(200, 'Posts retrieved', posts, pagination));
   }),
 
   // Get post by ID
   getPostById: catchAsync(async (req, res) => {
-    const post = await communityService.getPostById(req.params.id);
+    const post = await communityService.getPostById(req.params.id, req.user?.userId || req.user?._id);
     res.json(new ApiResponse(200, 'Post retrieved', post));
   }),
 
@@ -43,6 +43,12 @@ export const communityController = {
   likePost: catchAsync(async (req, res) => {
     const post = await communityService.likePost(req.params.id, req.user.userId);
     res.json(new ApiResponse(200, 'Post like updated', post));
+  }),
+
+  // Share post
+  sharePost: catchAsync(async (req, res) => {
+    const post = await communityService.sharePost(req.params.id, req.user.userId);
+    res.json(new ApiResponse(200, 'Post share recorded', post));
   }),
 
   // Add comment

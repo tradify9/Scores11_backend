@@ -3,7 +3,8 @@ import { catchAsync } from '../../utils/catchAsync.js';
 import ApiError from '../../utils/ApiError.js';
 
 const getChats = catchAsync(async (req, res) => {
-  const chats = await chatService.getChats(req.user._id.toString());
+  const userId = (req.user.userId || req.user._id).toString();
+  const chats = await chatService.getChats(userId);
   res.status(200).json({
     status: 'success',
     data: chats
@@ -12,7 +13,8 @@ const getChats = catchAsync(async (req, res) => {
 
 const getChat = catchAsync(async (req, res) => {
   const { chatId } = req.params;
-  const messages = await chatService.getChat(chatId, req.user._id.toString());
+  const userId = (req.user.userId || req.user._id).toString();
+  const messages = await chatService.getChat(chatId, userId);
   res.status(200).json({
     status: 'success',
     data: messages
@@ -20,11 +22,11 @@ const getChat = catchAsync(async (req, res) => {
 });
 
 const sendMessage = catchAsync(async (req, res) => {
-  const { receiverId } = req.body;
+  const receiverId = req.body.receiverId || req.params.receiverId;
+  const userId = (req.user.userId || req.user._id).toString();
   const message = await chatService.sendMessage(
-    req.params.receiverId, 
-    req.user._id.toString(), 
-    receiverId, 
+    userId,
+    receiverId,
     req.body.text
   );
   res.status(201).json({

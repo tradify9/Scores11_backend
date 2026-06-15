@@ -1,6 +1,59 @@
 import Post from './post.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
+import User from '../user/user.model.js';
+import { notificationService } from '../notification/notification.service.js';
+
+const decoratePost = (post, viewerId = null) => {
+  const obj = post?.toObject ? post.toObject() : { ...(post || {}) };
+  const viewer = viewerId?.toString();
+  const likes = Array.isArray(obj.likes) ? obj.likes : [];
+  const comments = Array.isArray(obj.comments)
+    ? obj.comments.filter(comment => comment?.isActive !== false)
+    : [];
+  const authorId = obj.user?._id?.toString?.() || obj.user?.toString?.();
+  const followerIds = Array.isArray(obj.user?.followers) ? obj.user.followers : [];
+
+  return {
+    ...obj,
+    comments,
+    likesCount: likes.length,
+    commentsCount: comments.length,
+    sharesCount: obj.shares || 0,
+    isLiked: !!viewer && likes.some(id => id?.toString?.() === viewer),
+    isFollowingAuthor: !!viewer && followerIds.some(id => id?.toString?.() === viewer),
+    canFollowAuthor: !!viewer && !!authorId && authorId !== viewer
+  };
+};
+
+const getActorName = async (userId) => {
+  const user = await User.findById(userId).select('name fullName username playerName').lean();
+  return user?.name || user?.fullName || user?.username || user?.playerName || 'Someone';
+};
+
+const notifyPostOwner = async ({ post, actorId, title, message, type = 'post', extraData = {} }) => {
+  const ownerId = post?.user?.toString?.();
+  if (!ownerId || ownerId === actorId?.toString?.()) return;
+  try {
+    await notificationService.sendNotification({
+      userId: ownerId,
+      title,
+      message,
+      type,
+      data: {
+        postId: post._id,
+        senderId: actorId,
+        referenceId: post._id,
+        actionUrl: `/post-detail/${post._id}`,
+        sound: 'scores11',
+        ...extraData
+      },
+      skipIfSelfUserId: actorId
+    });
+  } catch (error) {
+    console.warn('Post notification skipped:', error.message);
+  }
+};
 
 export const communityService = {
   // Create post
@@ -58,7 +111,7 @@ export const communityService = {
       user: userId,
     });
 
-    return post;
+    return decoratePost(post, userId);
 
   } catch (error) {
     console.log("❌ CREATE POST ERROR:", error);
@@ -67,7 +120,7 @@ export const communityService = {
 },
 
   // Get all posts
-  getAllPosts: async (query) => {
+  getAllPosts: async (query, viewerId = null) => {
     const { page, limit, skip } = getPagination(query);
     
     const filter = { isActive: true };
@@ -76,8 +129,8 @@ export const communityService = {
 
     const [posts, total] = await Promise.all([
       Post.find(filter)
-        .populate('user', 'name avatar')
-        .populate('comments.user', 'name avatar')
+        .populate('user', 'name fullName username avatar profileImage followers following')
+        .populate('comments.user', 'name fullName username avatar profileImage')
         .sort({ isPinned: -1, createdAt: -1 })
         .skip(skip)
         .limit(limit),
@@ -85,21 +138,21 @@ export const communityService = {
     ]);
 
     return {
-      posts,
+      posts: posts.map(post => decoratePost(post, viewerId)),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) }
     };
   },
 
   // Get post by ID
-  getPostById: async (postId) => {
+  getPostById: async (postId, viewerId = null) => {
     const post = await Post.findById(postId)
-      .populate('user', 'name email avatar')
-      .populate('comments.user', 'name avatar');
+      .populate('user', 'name fullName username email avatar profileImage followers following')
+      .populate('comments.user', 'name fullName username avatar profileImage');
     
     if (!post || !post.isActive) {
       throw new ApiError(404, 'Post not found');
     }
-    return post;
+    return decoratePost(post, viewerId);
   },
 
   // Update post
@@ -146,7 +199,8 @@ export const communityService = {
       throw new ApiError(404, 'Post not found');
     }
 
-    const likeIndex = post.likes.indexOf(userId);
+    const likeIndex = post.likes.findIndex(id => id.toString() === userId.toString());
+    const actorName = likeIndex === -1 ? await getActorName(userId) : null;
     if (likeIndex > -1) {
       post.likes.splice(likeIndex, 1);
     } else {
@@ -154,7 +208,41 @@ export const communityService = {
     }
 
     await post.save();
-    return post;
+    if (actorName) {
+      await notifyPostOwner({
+        post,
+        actorId: userId,
+        title: 'New like on your post',
+        message: `${actorName} liked your post.`,
+        type: 'like'
+      });
+    }
+    return decoratePost(await Post.findById(postId)
+      .populate('user', 'name fullName username avatar profileImage followers following')
+      .populate('comments.user', 'name fullName username avatar profileImage'), userId);
+  },
+
+  sharePost: async (postId, userId) => {
+    const post = await Post.findById(postId);
+    if (!post || !post.isActive) {
+      throw new ApiError(404, 'Post not found');
+    }
+
+    post.shares = (post.shares || 0) + 1;
+    post.sharedBy.push({ user: userId, createdAt: new Date() });
+    await post.save();
+    const actorName = await getActorName(userId);
+    await notifyPostOwner({
+      post,
+      actorId: userId,
+      title: 'Your post was shared',
+      message: `${actorName} shared your post.`,
+      type: 'post'
+    });
+
+    return decoratePost(await Post.findById(postId)
+      .populate('user', 'name fullName username avatar profileImage followers following')
+      .populate('comments.user', 'name fullName username avatar profileImage'), userId);
   },
 
   // Add comment
@@ -171,8 +259,20 @@ export const communityService = {
     });
 
     await post.save();
-    return await Post.findById(postId)
-      .populate('comments.user', 'name avatar');
+    const actorName = await getActorName(userId);
+    await notifyPostOwner({
+      post,
+      actorId: userId,
+      title: 'New comment on your post',
+      message: `${actorName} commented: ${content.toString().slice(0, 90)}`,
+      type: 'comment',
+      extraData: {
+        commentId: post.comments[post.comments.length - 1]?._id
+      }
+    });
+    return decoratePost(await Post.findById(postId)
+      .populate('user', 'name fullName username avatar profileImage followers following')
+      .populate('comments.user', 'name fullName username avatar profileImage'), userId);
   },
 
   // Delete comment
@@ -195,7 +295,7 @@ export const communityService = {
     post.comments.pull(commentId);
     await post.save();
 
-    return post;
+    return decoratePost(post, userId);
   },
 
   // Like comment
@@ -210,7 +310,7 @@ export const communityService = {
       throw new ApiError(404, 'Comment not found');
     }
 
-    const likeIndex = comment.likes.indexOf(userId);
+    const likeIndex = comment.likes.findIndex(id => id.toString() === userId.toString());
     if (likeIndex > -1) {
       comment.likes.splice(likeIndex, 1);
     } else {
@@ -264,7 +364,7 @@ export const communityService = {
     
     const [posts, total] = await Promise.all([
       Post.find({ user: userId, isActive: true })
-        .populate('user', 'name avatar')
+        .populate('user', 'name fullName username avatar profileImage followers following')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
@@ -272,7 +372,7 @@ export const communityService = {
     ]);
 
     return {
-      posts,
+      posts: posts.map(post => decoratePost(post, userId)),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) }
     };
   }

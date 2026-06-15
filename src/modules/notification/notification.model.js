@@ -18,13 +18,39 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['match', 'tournament', 'wallet', 'system', 'promotion', 'blog', 'fantasy', 'contest'],
+    enum: [
+      'match',
+      'tournament',
+      'wallet',
+      'system',
+      'promotion',
+      'blog',
+      'fantasy',
+      'contest',
+      'team',
+      'social',
+      'post',
+      'comment',
+      'like',
+      'follow',
+      'chat',
+      'score',
+      'achievement'
+    ],
     default: 'system'
   },
   data: {
     matchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Match' },
     tournamentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament' },
-    teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' }
+    teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+    postId: { type: mongoose.Schema.Types.ObjectId, ref: 'Post' },
+    commentId: { type: mongoose.Schema.Types.ObjectId },
+    chatId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chat' },
+    senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    referenceId: { type: String },
+    actionUrl: { type: String },
+    sound: { type: String, default: 'scores11' }
   },
   isRead: {
     type: Boolean,

@@ -5,6 +5,32 @@ import { getPagination } from '../../utils/pagination.js';
 import { sendPushNotification } from '../../config/firebase.js';
 import { emitToUser } from '../../config/socket.js';
 
+const buildReferenceId = (data = {}) => {
+  return (
+    data.referenceId ||
+    data.matchId ||
+    data.tournamentId ||
+    data.teamId ||
+    data.postId ||
+    data.chatId ||
+    data.userId ||
+    data.senderId ||
+    null
+  );
+};
+
+const normalizeNotification = (notification) => {
+  const obj = notification?.toObject ? notification.toObject() : { ...(notification || {}) };
+  const data = obj.data || {};
+  const referenceId = buildReferenceId(data);
+  return {
+    ...obj,
+    body: obj.message,
+    referenceId: referenceId?.toString?.() || referenceId || null,
+    sound: data.sound || 'scores11'
+  };
+};
+
 export const notificationService = {
   getNotifications: async (userId, query) => {
     const { page, limit, skip } = getPagination(query);
@@ -18,7 +44,7 @@ export const notificationService = {
     ]);
 
     return {
-      notifications,
+      notifications: notifications.map(normalizeNotification),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) }
     };
   },
@@ -26,7 +52,7 @@ export const notificationService = {
   getNotificationById: async (notificationId, userId) => {
     const notification = await Notification.findOne({ _id: notificationId, user: userId });
     if (!notification) throw new ApiError(404, 'Notification not found');
-    return notification;
+    return normalizeNotification(notification);
   },
 
   getUnreadCount: async (userId) => {
@@ -36,18 +62,19 @@ export const notificationService = {
   markAsRead: async (notificationId, userId) => {
     const notification = await Notification.findOneAndUpdate(
       { _id: notificationId, user: userId },
-      { isRead: true },
+      { isRead: true, readAt: new Date() },
       { new: true }
     );
     if (!notification) throw new ApiError(404, 'Notification not found');
-    return notification;
+    return normalizeNotification(notification);
   },
 
   markAllAsRead: async (userId) => {
     await Notification.updateMany(
       { user: userId, isRead: false },
-      { isRead: true }
+      { isRead: true, readAt: new Date() }
     );
+    emitToUser(userId, 'notification:count', { count: 0 });
   },
 
   deleteNotification: async (notificationId, userId) => {
@@ -60,47 +87,75 @@ export const notificationService = {
   },
 
   sendNotification: async (notificationData) => {
-    const { userId, title, body, type, data, sendPush = false } = notificationData;
+    const {
+      userId,
+      title,
+      body,
+      message,
+      type = 'system',
+      data = {},
+      sendPush = false,
+      skipIfSelfUserId = null
+    } = notificationData;
+    if (!userId) return null;
+    if (skipIfSelfUserId && userId.toString() === skipIfSelfUserId.toString()) return null;
+
+    const safeTitle = (title || 'Scores11 update').toString().trim();
+    const safeMessage = (message || body || '').toString().trim();
+    if (!safeMessage) return null;
 
     const notification = await Notification.create({
       user: userId,
-      title,
-      body,
+      title: safeTitle,
+      message: safeMessage,
       type,
-      data
+      data: {
+        ...data,
+        referenceId: buildReferenceId(data),
+        sound: data.sound || 'scores11'
+      },
+      sentAt: new Date()
     });
 
-    emitToUser(userId, 'notification', notification);
+    const decorated = normalizeNotification(notification);
+    emitToUser(userId, 'notification', decorated);
+    emitToUser(userId, 'notification:new', decorated);
+    emitToUser(userId, 'notification:count', { count: await notificationService.getUnreadCount(userId) });
 
     if (sendPush) {
-      const user = await User.findById(userId);
-      if (user?.fcmToken) {
-        await sendPushNotification(user.fcmToken, title, body, data);
+      const user = await User.findById(userId).select('fcmTokens preferences notificationSettings');
+      const tokens = Array.isArray(user?.fcmTokens) ? user.fcmTokens.map(item => item.token).filter(Boolean) : [];
+      for (const token of tokens) {
+        await sendPushNotification(token, safeTitle, safeMessage, data);
       }
     }
 
-    return notification;
+    return decorated;
   },
 
   broadcastNotification: async (notificationData) => {
-    const { userIds, title, body, type, data } = notificationData;
+    const { userIds, title, body, message, type = 'system', data = {} } = notificationData;
+    const safeMessage = message || body || '';
 
     const notifications = await Notification.insertMany(
       userIds.map(userId => ({
         user: userId,
         title,
-        body,
+        message: safeMessage,
         type,
-        data,
+        data: { ...data, referenceId: buildReferenceId(data), sound: data.sound || 'scores11' },
+        sentAt: new Date(),
         isRead: false
       }))
     );
 
-    userIds.forEach(userId => {
-      emitToUser(userId, 'notification', { title, body, type, data });
+    const counts = await Promise.all(userIds.map(userId => notificationService.getUnreadCount(userId)));
+    userIds.forEach((userId, index) => {
+      emitToUser(userId, 'notification', { title, message: safeMessage, body: safeMessage, type, data });
+      emitToUser(userId, 'notification:count', { count: counts[index] });
     });
 
-    return notifications;
+    return notifications.map(normalizeNotification);
   },
 
   subscribeToTopic: async (userId, topic) => {

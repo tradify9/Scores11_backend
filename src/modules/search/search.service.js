@@ -71,16 +71,29 @@ export const searchService = {
       .limit(limit)
       .lean();
 
-    // Search matches
+    // Search matches by populated team/tournament/venue fields used by this app.
+    const matchingTeams = await Team.find(
+      { $or: [{ name: searchRegex }, { shortName: searchRegex }, { city: searchRegex }], isActive: true }
+    ).select('_id').lean();
+    const matchingTournamentIds = await Tournament.find(
+      { $or: [{ name: searchRegex }, { venue: searchRegex }, { description: searchRegex }], isActive: true }
+    ).select('_id').lean();
+    const teamIds = matchingTeams.map(team => team._id);
+    const tournamentIds = matchingTournamentIds.map(tournament => tournament._id);
+
     const matches = await Match.find(
-      { $or: [
-        { title: searchRegex },
-        { teamA: searchRegex },
-        { teamB: searchRegex },
-        { venue: searchRegex }
+      { isActive: true, $or: [
+        { matchId: searchRegex },
+        { 'venue.name': searchRegex },
+        { 'venue.city': searchRegex },
+        ...(teamIds.length ? [{ team1: { $in: teamIds } }, { team2: { $in: teamIds } }] : []),
+        ...(tournamentIds.length ? [{ tournament: { $in: tournamentIds } }] : [])
       ]}
     )
-      .select('title teamA teamB venue status date')
+      .select('matchId team1 team2 venue status scheduledDate score')
+      .populate('team1', 'name shortName logo')
+      .populate('team2', 'name shortName logo')
+      .populate('tournament', 'name')
       .limit(limit)
       .lean();
 
@@ -96,12 +109,21 @@ export const searchService = {
       .limit(limit)
       .lean();
 
+    const categories = [
+      { key: 'players', label: 'Players', count: players.length },
+      { key: 'matches', label: 'Matches', count: matches.length },
+      { key: 'teams', label: 'Teams', count: teams.length },
+      { key: 'tournaments', label: 'Tournaments', count: tournaments.length },
+      { key: 'users', label: 'Users', count: users.length }
+    ];
+
     return {
       users,
       teams,
       players,
       matches,
       tournaments,
+      categories,
       total: users.length + teams.length + players.length + matches.length + tournaments.length
     };
   }

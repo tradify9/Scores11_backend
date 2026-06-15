@@ -84,6 +84,21 @@ export const scoringController = {
     }
   },
 
+  getRulesCatalogue: async (req, res) => {
+    try {
+      const rules = await scoringService.getRulesCatalogue();
+      res.status(200).json({
+        success: true,
+        data: rules
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || 'Failed to load scoring rules'
+      });
+    }
+  },
+
   // POST /match/:matchId/undo-last-ball
   undoLastBall: async (req, res) => {
     try {
@@ -167,6 +182,25 @@ export const scoringController = {
       const result = await scoringService.updateResult(
         req.params.matchId,
         req.body
+      );
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
+
+  applyRainDls: async (req, res) => {
+    try {
+      const result = await scoringService.applyRainDls(
+        req.params.matchId,
+        req.body,
+        req.user.userId
       );
       res.status(200).json({
         success: true,

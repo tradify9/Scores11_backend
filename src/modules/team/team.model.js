@@ -14,6 +14,15 @@ const teamSchema = new mongoose.Schema({
   country: { type: String, default: 'India' },
   description: { type: String, maxlength: 1000 },
   players: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Player' }],
+  inviteLinks: [{
+    code: { type: String, required: true, index: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    expiresAt: Date,
+    maxUses: { type: Number, default: 0 },
+    uses: { type: Number, default: 0 },
+    isActive: { type: Boolean, default: true },
+    createdAt: { type: Date, default: Date.now }
+  }],
   stats: {
     matchesPlayed: { type: Number, default: 0 },
     matchesWon: { type: Number, default: 0 },
@@ -44,6 +53,7 @@ const teamSchema = new mongoose.Schema({
 teamSchema.index({ name: 1 });
 teamSchema.index({ owner: 1 });
 teamSchema.index({ isActive: 1 });
+teamSchema.index({ 'inviteLinks.code': 1 });
 teamSchema.index({ name: 'text', shortName: 'text', city: 'text' });
 
 const Team = mongoose.model('Team', teamSchema);
