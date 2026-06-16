@@ -1,5 +1,6 @@
 import Team from './team.model.js';
 import Player from '../player/player.model.js';
+import PlayerProfile from '../playerProfile/playerProfile.model.js';
 import User from '../user/user.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { uploadImage, deleteImage } from '../../config/cloudinary.js';
@@ -42,9 +43,37 @@ const normalizeTeamPlayerRole = (role) => {
     wk: 'wicket-keeper',
     keeper: 'wicket-keeper',
     'wicket keeper': 'wicket-keeper',
-    'wicket-keeper': 'wicket-keeper'
+    'wicket-keeper': 'wicket-keeper',
+    'wicket-keeper batsman': 'wicket-keeper'
   };
   return map[value] || 'batsman';
+};
+
+const normalizeTeamBattingStyle = (style) => {
+  const value = (style || '').toString().trim().toLowerCase();
+  if (value === 'left-hand' || value === 'left-hand bat') return 'left-hand bat';
+  return 'right-hand bat';
+};
+
+const normalizeTeamBowlingStyle = (style) => {
+  const value = (style || '').toString().trim().toLowerCase();
+  const map = {
+    'right-arm fast': 'right-arm fast',
+    'right-arm-fast': 'right-arm-fast',
+    'right-arm medium': 'right-arm medium',
+    'right-arm-medium': 'right-arm-medium',
+    'left-arm fast': 'left-arm fast',
+    'left-arm-fast': 'left-arm-fast',
+    'left-arm medium': 'left-arm medium',
+    'left-arm-medium': 'left-arm-medium',
+    'off-spin': 'off-spin',
+    'off spin': 'off spin',
+    'leg-spin': 'leg-spin',
+    'leg spin': 'leg spin',
+    spin: 'off-spin',
+    none: 'none'
+  };
+  return map[value] || 'none';
 };
 
 const normalizeContactInput = (input) => {
@@ -56,8 +85,8 @@ const normalizeContactInput = (input) => {
       email: (input.email || '').toString().trim().toLowerCase(),
       phone: (input.phone || input.mobile || '').toString().trim(),
       role: normalizeTeamPlayerRole(input.role),
-      battingStyle: input.battingStyle || 'right-hand bat',
-      bowlingStyle: input.bowlingStyle || 'none',
+      battingStyle: normalizeTeamBattingStyle(input.battingStyle),
+      bowlingStyle: normalizeTeamBowlingStyle(input.bowlingStyle),
       jerseyNumber: input.jerseyNumber
     };
   }
@@ -73,22 +102,35 @@ const findPlayerByContact = async (contact) => {
   if (!rawIdentifier) return null;
   const escapedIdentifier = rawIdentifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const phoneDigits = (contact.phone || rawIdentifier).replace(/\D/g, '');
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(rawIdentifier);
 
-  if (/^[0-9a-fA-F]{24}$/.test(rawIdentifier)) {
+  if (isObjectId) {
     const byId = await Player.findById(rawIdentifier);
     if (byId) return byId;
     const byUser = await Player.findOne({ user: rawIdentifier, isActive: true });
     if (byUser) return byUser;
+    const profile = await PlayerProfile.findById(rawIdentifier).select('player user');
+    if (profile?.player) {
+      const byProfilePlayer = await Player.findById(profile.player);
+      if (byProfilePlayer) return byProfilePlayer;
+    }
+    if (profile?.user) {
+      const byProfileUser = await Player.findOne({ user: profile.user, isActive: true });
+      if (byProfileUser) return byProfileUser;
+    }
   }
 
+  const userLookups = [
+    ...(isObjectId ? [{ _id: rawIdentifier }] : []),
+    { email: { $regex: `^${escapedIdentifier}$`, $options: 'i' } },
+    ...(contact.email ? [{ email: { $regex: `^${contact.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } }] : []),
+    { phone: rawIdentifier },
+    ...(contact.phone ? [{ phone: contact.phone }] : []),
+    ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : [])
+  ];
+
   const matchedUser = await User.findOne({
-    $or: [
-      { email: { $regex: `^${escapedIdentifier}$`, $options: 'i' } },
-      ...(contact.email ? [{ email: { $regex: `^${contact.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } }] : []),
-      { phone: rawIdentifier },
-      ...(contact.phone ? [{ phone: contact.phone }] : []),
-      ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : [])
-    ],
+    $or: userLookups,
     isActive: { $ne: false }
   }).select('_id');
 
@@ -110,6 +152,29 @@ const findOrCreatePlayerForTeam = async (team, playerInput) => {
   let player = await findPlayerByContact(contact);
 
   if (!player) {
+    const rawIdentifier = contact.identifier || contact.email || contact.phone;
+    if (/^[0-9a-fA-F]{24}$/.test(rawIdentifier || '')) {
+      const [profile, user] = await Promise.all([
+        PlayerProfile.findById(rawIdentifier)
+          .select('fullName phone role battingStyle bowlingStyle jerseyNumber user')
+          .lean(),
+        User.findById(rawIdentifier)
+          .select('fullName name email phone cricketProfile')
+          .lean()
+      ]);
+
+      const source = profile || user;
+      if (source) {
+        contact.name ||= source.fullName || source.name || '';
+        contact.email ||= source.email || '';
+        contact.phone ||= source.phone || '';
+        contact.role = normalizeTeamPlayerRole(source.role || source.cricketProfile?.playerType || contact.role);
+        contact.battingStyle = normalizeTeamBattingStyle(source.battingStyle || source.cricketProfile?.battingStyle || contact.battingStyle);
+        contact.bowlingStyle = normalizeTeamBowlingStyle(source.bowlingStyle || source.cricketProfile?.bowlingStyle || contact.bowlingStyle);
+        contact.jerseyNumber ||= source.jerseyNumber;
+      }
+    }
+
     if (!contact.name) {
       throw new ApiError(404, 'Player not found. Send player name with email/mobile to create and add.');
     }
@@ -429,8 +494,12 @@ export const teamService = {
       throw new ApiError(410, 'Invite link usage limit reached');
     }
 
+    const beforePlayerIds = new Set((team.players || []).map(playerId => playerId.toString()));
     const player = await findOrCreatePlayerForTeam(team, playerInput);
-    invite.uses += 1;
+    const joinedNow = !beforePlayerIds.has(player._id.toString());
+    if (joinedNow) {
+      invite.uses += 1;
+    }
     await team.save();
 
     const populatedTeam = await Team.findById(team._id)
@@ -439,7 +508,10 @@ export const teamService = {
     return {
       team: populatedTeam,
       player,
-      message: `${player.playerName} joined ${team.name}`
+      joinedNow,
+      message: joinedNow
+        ? `${player.playerName} joined ${team.name}`
+        : `${player.playerName} is already in ${team.name}`
     };
   },
 

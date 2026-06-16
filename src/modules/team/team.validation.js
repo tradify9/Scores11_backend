@@ -33,9 +33,20 @@ export const updateTeamSchema = Joi.object({
 });
 
 export const addPlayerSchema = Joi.object({
-  playerId: Joi.string().required(),
+  playerId: Joi.string().allow(''),
+  identifier: Joi.string().allow(''),
+  name: Joi.string().max(100).allow(''),
+  playerName: Joi.string().max(100).allow(''),
+  fullName: Joi.string().max(100).allow(''),
+  email: Joi.string().email().allow(''),
+  phone: Joi.string().allow(''),
+  mobile: Joi.string().allow(''),
+  role: Joi.string().allow(''),
+  battingStyle: Joi.string().allow(''),
+  bowlingStyle: Joi.string().allow(''),
+  jerseyNumber: Joi.number().min(0).max(999),
   matchId: Joi.string().allow('')
-});
+}).or('playerId', 'identifier', 'email', 'phone', 'mobile', 'name', 'playerName', 'fullName');
 
 export const removePlayerSchema = Joi.object({
   playerId: Joi.string().required()

@@ -15,6 +15,10 @@ const liveStreamSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  matchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Match'
+  },
   streamType: {
     type: String,
     enum: ['mobile', 'professional', 'session', 'watch', 'camera', 'youtube'],
@@ -42,6 +46,9 @@ const liveStreamSchema = new mongoose.Schema({
   youtubeUrl: String,
   youtubeVideoId: String,
   youtubeEmbedUrl: String,
+  youtubeBroadcastId: String,
+  youtubeStreamId: String,
+  youtubeIngestionAddress: String,
   status: {
     type: String,
     enum: ['pending', 'live', 'ended', 'scheduled'],

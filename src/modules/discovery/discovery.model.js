@@ -7,7 +7,7 @@ const discoverySchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['umpire', 'player', 'commentator', 'ground', 'opponentTeam', 'tournamentTeam'],
+    enum: ['umpire', 'player', 'commentator', 'ground', 'opponentTeam', 'tournamentTeam', 'tournament', 'scorer'],
     required: true,
   },
   name: {

@@ -1,11 +1,146 @@
 import Player from './player.model.js';
 import User from '../user/user.model.js';
 import Team from '../team/team.model.js';
+import Match from '../match/match.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const normalizePhone = (value = '') => value.replace(/\D/g, '');
+
+const toId = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (value._id) return value._id.toString();
+  return value.toString();
+};
+
+const oversToBalls = (overs = 0) => {
+  const [whole = '0', part = '0'] = overs.toString().split('.');
+  return (Number.parseInt(whole, 10) || 0) * 6 + Math.min(Number.parseInt(part, 10) || 0, 5);
+};
+
+const ballsToOvers = (balls = 0) => Number(`${Math.floor(balls / 6)}.${balls % 6}`);
+
+const round = (value, digits = 2) => Number((Number(value) || 0).toFixed(digits));
+
+const buildDynamicPlayerStats = async (playerId, fallbackStats = {}) => {
+  const playerKey = playerId.toString();
+  const matches = await Match.find({
+    isActive: { $ne: false },
+    $or: [
+      { 'innings.battingScorecard.batsman': playerId },
+      { 'innings.bowlingScorecard.bowler': playerId },
+      { battingOrder: playerId }
+    ]
+  })
+    .select('innings status scheduledDate')
+    .lean();
+
+  const playedMatchIds = new Set();
+  let innings = 0;
+  let dismissals = 0;
+  let runs = 0;
+  let balls = 0;
+  let fours = 0;
+  let sixes = 0;
+  let highestScore = 0;
+  let hundreds = 0;
+  let fifties = 0;
+  let bowlingInnings = 0;
+  let wickets = 0;
+  let runsConceded = 0;
+  let bowlingBalls = 0;
+  let bestBowlingWickets = 0;
+  let bestBowlingRuns = 0;
+
+  for (const match of matches) {
+    let appeared = false;
+    for (const inning of match.innings || []) {
+      for (const card of inning.battingScorecard || []) {
+        if (toId(card.batsman) !== playerKey) continue;
+        appeared = true;
+        innings += 1;
+        const cardRuns = Number(card.runs) || 0;
+        runs += cardRuns;
+        balls += Number(card.balls) || 0;
+        fours += Number(card.fours) || 0;
+        sixes += Number(card.sixes) || 0;
+        highestScore = Math.max(highestScore, cardRuns);
+        if (cardRuns >= 100) {
+          hundreds += 1;
+        } else if (cardRuns >= 50) {
+          fifties += 1;
+        }
+        const howOut = (card.howOut || 'not_out').toString().toLowerCase();
+        if (howOut && howOut !== 'not_out' && howOut !== 'retired_hurt') dismissals += 1;
+      }
+
+      for (const card of inning.bowlingScorecard || []) {
+        if (toId(card.bowler) !== playerKey) continue;
+        appeared = true;
+        bowlingInnings += 1;
+        const cardWickets = Number(card.wickets) || 0;
+        const cardRunsConceded = Number(card.runsConceded) || 0;
+        wickets += cardWickets;
+        runsConceded += cardRunsConceded;
+        bowlingBalls += oversToBalls(card.overs);
+        if (
+          cardWickets > bestBowlingWickets ||
+          (cardWickets === bestBowlingWickets && cardWickets > 0 && (bestBowlingRuns === 0 || cardRunsConceded < bestBowlingRuns))
+        ) {
+          bestBowlingWickets = cardWickets;
+          bestBowlingRuns = cardRunsConceded;
+        }
+      }
+    }
+    if (appeared) playedMatchIds.add(match._id.toString());
+  }
+
+  if (!playedMatchIds.size && fallbackStats && Object.keys(fallbackStats).length) {
+    return {
+      matches: fallbackStats.matches || 0,
+      innings: fallbackStats.innings || 0,
+      runs: fallbackStats.runs || 0,
+      balls: fallbackStats.balls || 0,
+      fours: fallbackStats.fours || 0,
+      sixes: fallbackStats.sixes || 0,
+      average: fallbackStats.average || 0,
+      strikeRate: fallbackStats.strikeRate || 0,
+      highestScore: fallbackStats.highestScore || 0,
+      wickets: fallbackStats.wickets || 0,
+      economy: fallbackStats.economy || 0,
+      hundreds: fallbackStats.hundreds || 0,
+      fifties: fallbackStats.fifties || 0,
+      bestBowlingRuns: fallbackStats.bestBowlingRuns || 0,
+      bestBowlingWickets: fallbackStats.bestBowlingWickets || 0,
+      bowlingInnings: fallbackStats.bowlingInnings || 0,
+      bowlingOvers: fallbackStats.bowlingOvers || 0,
+      runsConceded: fallbackStats.runsConceded || 0
+    };
+  }
+
+  return {
+    matches: playedMatchIds.size,
+    innings,
+    runs,
+    balls,
+    fours,
+    sixes,
+    average: round(dismissals > 0 ? runs / dismissals : runs),
+    strikeRate: round(balls > 0 ? (runs / balls) * 100 : 0),
+    highestScore,
+    wickets,
+    economy: round(bowlingBalls > 0 ? runsConceded / (bowlingBalls / 6) : 0),
+    hundreds,
+    fifties,
+    bestBowlingRuns,
+    bestBowlingWickets,
+    bowlingInnings,
+    bowlingOvers: ballsToOvers(bowlingBalls),
+    runsConceded
+  };
+};
 
 const playerLookupFilter = async (query, extraFilter = {}) => {
   const searchQuery = query.trim();
@@ -89,22 +224,21 @@ export const playerService = {
 
     if (!player) throw new ApiError(404, 'Player not found');
 
-    const stats = {
-      matches: player.stats?.matches || 0,
-      runs: player.stats?.runs || 0,
-      balls: player.stats?.balls || 0,
-      fours: player.stats?.fours || 0,
-      sixes: player.stats?.sixes || 0,
-      average: player.stats?.average || 0,
-      strikeRate: player.stats?.strikeRate || 0,
-      highestScore: player.stats?.highestScore || 0,
-      wickets: player.stats?.wickets || 0,
-      economy: player.stats?.economy || 0,
-      hundreds: player.stats?.hundreds || 0,
-      fifties: player.stats?.fifties || 0,
-      bestBowlingRuns: player.stats?.bestBowlingRuns || 0,
-      bestBowlingWickets: player.stats?.bestBowlingWickets || 0
-    };
+    const stats = await buildDynamicPlayerStats(playerId, player.stats || {});
+    await Player.findByIdAndUpdate(playerId, {
+      $set: {
+        'stats.matches': stats.matches,
+        'stats.runs': stats.runs,
+        'stats.balls': stats.balls,
+        'stats.fours': stats.fours,
+        'stats.sixes': stats.sixes,
+        'stats.average': stats.average,
+        'stats.strikeRate': stats.strikeRate,
+        'stats.highestScore': stats.highestScore,
+        'stats.wickets': stats.wickets,
+        'stats.economy': stats.economy
+      }
+    }).catch(() => null);
 
     return {
       player: { ...player, stats },
@@ -303,20 +437,16 @@ export const playerService = {
   getPlayerStats: async (playerId) => {
     const player = await Player.findById(playerId)
       .populate('user', 'name')
-      .populate('team', 'name shortName');
-    
+      .populate('team', 'name shortName')
+      .lean();
+
     if (!player) throw new ApiError(404, 'Player not found');
 
-    // Return player with basic stats - actual stats would come from performance module
+    const stats = await buildDynamicPlayerStats(playerId, player.stats || {});
+
     return {
       player,
-      stats: {
-        matches: player.matches || 0,
-        runs: player.totalRuns || 0,
-        wickets: player.totalWickets || 0,
-        average: player.average || 0,
-        strikeRate: player.strikeRate || 0
-      }
+      stats
     };
   },
 

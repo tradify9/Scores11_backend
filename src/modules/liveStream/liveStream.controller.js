@@ -9,6 +9,44 @@ export const createLiveStream = catchAsync(async (req, res) => {
   ApiResponse.created(res, 'Live stream created successfully', stream);
 });
 
+export const getYoutubeAuthUrl = catchAsync(async (req, res) => {
+  const data = await liveStreamService.getYoutubeAuthUrl(req.user._id);
+  ApiResponse.success(res, 'YouTube authorization URL generated', data);
+});
+
+export const getYoutubeStatus = catchAsync(async (req, res) => {
+  const data = await liveStreamService.getYoutubeConnectionStatus(req.user._id);
+  ApiResponse.success(res, 'YouTube connection status fetched', data);
+});
+
+export const disconnectYoutube = catchAsync(async (req, res) => {
+  const data = await liveStreamService.disconnectYoutube(req.user._id);
+  ApiResponse.success(res, 'YouTube channel disconnected', data);
+});
+
+export const youtubeCallback = catchAsync(async (req, res) => {
+  const data = await liveStreamService.handleYoutubeCallback(req.query);
+  res.type('html').send(`<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouTube Connected</title>
+  <style>
+    body{margin:0;font-family:Arial,sans-serif;background:#0f172a;color:#fff;display:grid;min-height:100vh;place-items:center;padding:24px}
+    .card{max-width:420px;background:#111827;border:1px solid #334155;border-radius:18px;padding:24px;text-align:center}
+    h1{margin:0 0 10px;font-size:24px}
+    p{color:#cbd5e1;line-height:1.5}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>YouTube connected</h1>
+    <p>${data.channelTitle} is connected with Scores11. You can return to the app and create YouTube Live streams.</p>
+  </div>
+</body>
+</html>`);
+});
+
 export const getLiveStreams = catchAsync(async (req, res) => {
   const streams = await liveStreamService.getLiveStreams(req.query);
   ApiResponse.success(res, 'Live streams fetched successfully', streams);

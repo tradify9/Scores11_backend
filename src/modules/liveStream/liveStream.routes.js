@@ -8,6 +8,10 @@ const router = express.Router();
 router.get('/', liveStreamController.getLiveStreams);
 router.get('/featured', liveStreamController.getFeaturedStreams);
 router.get('/my/streams', auth, liveStreamController.getMyStreams);
+router.get('/youtube/status', auth, liveStreamController.getYoutubeStatus);
+router.get('/youtube/auth-url', auth, liveStreamController.getYoutubeAuthUrl);
+router.get('/youtube/callback', liveStreamController.youtubeCallback);
+router.post('/youtube/disconnect', auth, liveStreamController.disconnectYoutube);
 router.get('/:streamId', liveStreamController.getLiveStreamById);
 
 // Protected routes

@@ -43,7 +43,10 @@ export const authController = {
   }),
 
   refreshToken: catchAsync(async (req, res) => {
-    const { refreshToken: token } = req.cookies;
+    const token =
+      req.cookies?.refreshToken ||
+      req.body?.refreshToken ||
+      req.headers['x-refresh-token'];
     const { user, accessToken, refreshToken } = await authService.refreshToken(token);
     
     const options = {

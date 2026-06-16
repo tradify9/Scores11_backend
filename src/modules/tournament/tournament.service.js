@@ -7,6 +7,120 @@ import { getPagination } from '../../utils/pagination.js';
 import { TOURNAMENT_FORMAT, TOURNAMENT_STATUS, TOURNAMENT_TYPE } from '../../constants/tournamentStatus.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
 
+const toId = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (value._id) return value._id.toString();
+  return value.toString();
+};
+
+const inningsOvers = (innings) => {
+  const balls = ((Number(innings?.totalOvers) || 0) * 6) + (Number(innings?.totalBalls) || 0);
+  return balls > 0 ? balls / 6 : 0;
+};
+
+const emptyStanding = (teamId) => ({
+  team: teamId,
+  matchesPlayed: 0,
+  matchesWon: 0,
+  matchesLost: 0,
+  matchesTied: 0,
+  noResult: 0,
+  points: 0,
+  netRunRate: 0,
+  runsScored: 0,
+  runsConceded: 0,
+  oversFaced: 0,
+  oversBowled: 0
+});
+
+const recalculatePointsTable = async (tournament) => {
+  let pointsTable = tournament.pointsTable
+    ? await PointsTable.findById(tournament.pointsTable)
+    : null;
+
+  if (!pointsTable) {
+    pointsTable = await PointsTable.create({
+      tournament: tournament._id,
+      teams: []
+    });
+    tournament.pointsTable = pointsTable._id;
+    await tournament.save();
+  }
+
+  const table = new Map();
+  for (const teamId of tournament.teams || []) {
+    table.set(toId(teamId), emptyStanding(teamId));
+  }
+
+  const matches = await Match.find({
+    tournament: tournament._id,
+    isActive: { $ne: false },
+    status: { $in: [MATCH_STATUS.COMPLETED, MATCH_STATUS.TIE, MATCH_STATUS.ABANDONED, MATCH_STATUS.WASHED_OUT] }
+  }).lean();
+
+  for (const match of matches) {
+    const team1Id = toId(match.team1);
+    const team2Id = toId(match.team2);
+    if (!table.has(team1Id)) table.set(team1Id, emptyStanding(match.team1));
+    if (!table.has(team2Id)) table.set(team2Id, emptyStanding(match.team2));
+
+    const team1 = table.get(team1Id);
+    const team2 = table.get(team2Id);
+    team1.matchesPlayed += 1;
+    team2.matchesPlayed += 1;
+
+    const innings = Array.isArray(match.innings) ? match.innings : [];
+    for (const inning of innings) {
+      const battingId = toId(inning.battingTeam);
+      const bowlingId = toId(inning.bowlingTeam);
+      const batting = table.get(battingId);
+      const bowling = table.get(bowlingId);
+      if (!batting || !bowling) continue;
+      const runs = Number(inning.totalRuns) || 0;
+      const overs = inningsOvers(inning);
+      batting.runsScored += runs;
+      batting.oversFaced += overs;
+      bowling.runsConceded += runs;
+      bowling.oversBowled += overs;
+    }
+
+    const status = match.status?.toString();
+    const message = match.result?.message?.toString().toLowerCase() || '';
+    const winnerId = toId(match.result?.winner);
+    if (status === MATCH_STATUS.ABANDONED || status === MATCH_STATUS.WASHED_OUT) {
+      team1.noResult += 1;
+      team2.noResult += 1;
+      team1.points += 1;
+      team2.points += 1;
+    } else if (status === MATCH_STATUS.TIE || message.includes('tied') || !winnerId) {
+      team1.matchesTied += 1;
+      team2.matchesTied += 1;
+      team1.points += 1;
+      team2.points += 1;
+    } else if (winnerId === team1Id) {
+      team1.matchesWon += 1;
+      team2.matchesLost += 1;
+      team1.points += 2;
+    } else if (winnerId === team2Id) {
+      team2.matchesWon += 1;
+      team1.matchesLost += 1;
+      team2.points += 2;
+    }
+  }
+
+  for (const standing of table.values()) {
+    const forRate = standing.oversFaced > 0 ? standing.runsScored / standing.oversFaced : 0;
+    const againstRate = standing.oversBowled > 0 ? standing.runsConceded / standing.oversBowled : 0;
+    standing.netRunRate = Number((forRate - againstRate).toFixed(4));
+  }
+
+  pointsTable.teams = Array.from(table.values());
+  pointsTable.isCalculated = true;
+  await pointsTable.save();
+  return pointsTable;
+};
+
 export const tournamentService = {
   // Create a new tournament
   createTournament: async (tournamentData, userId) => {
@@ -217,7 +331,7 @@ export const tournamentService = {
     if (!team) throw new ApiError(404, 'Team not found');
 
     // Check if team is already registered
-    if (tournament.teams.includes(teamId)) {
+    if (tournament.teams.some(team => team.toString() === teamId.toString())) {
       throw new ApiError(400, 'Team already registered');
     }
 
@@ -234,10 +348,10 @@ export const tournamentService = {
     if (pointsTable) {
       pointsTable.teams.push({
         team: teamId,
-        played: 0,
-        won: 0,
-        lost: 0,
-        tied: 0,
+        matchesPlayed: 0,
+        matchesWon: 0,
+        matchesLost: 0,
+        matchesTied: 0,
         noResult: 0,
         points: 0,
         netRunRate: 0
@@ -261,7 +375,7 @@ export const tournamentService = {
     }
 
     // Check if team is registered
-    if (!tournament.teams.includes(teamId)) {
+    if (!tournament.teams.some(team => team.toString() === teamId.toString())) {
       throw new ApiError(400, 'Team not registered in this tournament');
     }
 
@@ -315,15 +429,16 @@ export const tournamentService = {
     const tournament = await Tournament.findById(tournamentId);
     if (!tournament) throw new ApiError(404, 'Tournament not found');
 
-    const pointsTable = await PointsTable.findById(tournament.pointsTable)
+    const pointsTable = await recalculatePointsTable(tournament);
+    const populatedTable = await PointsTable.findById(pointsTable._id)
       .populate('teams.team', 'name shortName logo');
 
-    if (!pointsTable) {
+    if (!populatedTable) {
       throw new ApiError(404, 'Points table not found');
     }
 
     // Sort by points, then net run rate
-    pointsTable.teams.sort((a, b) => {
+    populatedTable.teams.sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
       return b.netRunRate - a.netRunRate;
     });
@@ -334,16 +449,20 @@ export const tournamentService = {
         name: tournament.name,
         format: tournament.format
       },
-      points: pointsTable.teams.map((team, index) => ({
+      points: populatedTable.teams.map((team, index) => ({
         position: index + 1,
         team: team.team,
-        played: team.played,
-        won: team.won,
-        lost: team.lost,
-        tied: team.tied,
+        matchesPlayed: team.matchesPlayed,
+        matchesWon: team.matchesWon,
+        matchesLost: team.matchesLost,
+        matchesTied: team.matchesTied,
         noResult: team.noResult,
         points: team.points,
-        netRunRate: team.netRunRate.toFixed(4)
+        netRunRate: Number(team.netRunRate || 0).toFixed(4),
+        runsFor: team.runsScored,
+        runsAgainst: team.runsConceded,
+        oversFor: team.oversFaced,
+        oversAgainst: team.oversBowled
       }))
     };
   },
@@ -379,7 +498,7 @@ export const tournamentService = {
           team1: teams[i],
           team2: teams[j],
           matchNumber,
-          matchType: 'LEAGUE',
+          matchType: 'league',
           format: tournament.format,
           overs: tournament.overs || 20,
           scheduledDate: currentDate,
@@ -432,12 +551,15 @@ export const tournamentService = {
       const numMatches = Math.pow(2, knockoutRounds - round);
       
       for (let i = 0; i < numMatches; i++) {
+        const team1 = teams[i] || null;
+        const team2 = teams[numMatches + i] || null;
+        if (!team1 || !team2) continue;
         const match = await Match.create({
           tournament: tournamentId,
-          team1: teams[i] || null,
-          team2: teams[numMatches + i] || null,
+          team1,
+          team2,
           matchNumber,
-          matchType: round === knockoutRounds ? 'FINAL' : 'KNOCKOUT',
+          matchType: round === knockoutRounds ? 'final' : 'knockout',
           format: tournament.format,
           overs: tournament.overs || 20,
           scheduledDate: currentDate,

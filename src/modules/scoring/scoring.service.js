@@ -637,12 +637,13 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       }
     }
 
-    const effectiveChaseBalls = getEffectiveChaseBalls(match, match.currentInnings);
-    const chaseBallsBowled = (innings.totalOvers * 6) + innings.totalBalls;
-    if (match.currentInnings === 2 && chaseBallsBowled >= effectiveChaseBalls) {
-      finalizeSecondInningsResult(match);
-    } else if (match.currentInnings === 2 && match.innings[0] && continueAfterTarget !== true) {
-      finalizeSecondInningsResult(match);
+    if (match.currentInnings === 2 && match.innings[0]) {
+      const didFinalize = finalizeSecondInningsResult(match);
+      if (didFinalize) {
+        match.markModified('result');
+        match.markModified('innings');
+        match.markModified('score');
+      }
     }
 
     await match.save();

@@ -80,12 +80,12 @@ export default {
   // YouTube Live integration
   youtube: {
     apiKey: process.env.YOUTUBE_API_KEY || '',
-    clientId: process.env.YOUTUBE_CLIENT_ID || '',
-    clientSecret: process.env.YOUTUBE_CLIENT_SECRET || '',
-    redirectUri: process.env.YOUTUBE_REDIRECT_URI || 'http://localhost:3000/api/v1/live-streams/youtube/callback',
-    scopes: [
-      'https://www.googleapis.com/auth/youtube',
-      'https://www.googleapis.com/auth/youtube.force-ssl'
-    ]
+    clientId: process.env.GOOGLE_CLIENT_ID || process.env.YOUTUBE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || process.env.YOUTUBE_CLIENT_SECRET || '',
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || process.env.YOUTUBE_REDIRECT_URI || 'http://localhost:3000/api/v1/live-streams/youtube/callback',
+    scopes: (process.env.YOUTUBE_API_SCOPE || process.env.GOOGLE_YOUTUBE_SCOPE || 'https://www.googleapis.com/auth/youtube')
+      .split(',')
+      .map(scope => scope.trim())
+      .filter(Boolean)
   }
 };
