@@ -531,6 +531,26 @@ export const matchService = {
     }
   },
 
+  undoToss: async (matchId) => {
+    const match = await Match.findById(matchId);
+    if (!match || !match.isActive) throw new ApiError(404, 'Match not found or inactive');
+    const hasScoring = (match.innings || []).some(innings =>
+      (innings.totalRuns || 0) > 0 || (innings.totalWickets || 0) > 0 ||
+      (innings.totalOvers || 0) > 0 || (innings.totalBalls || 0) > 0
+    );
+    if (hasScoring) throw new ApiError(400, 'Toss cannot be undone after scoring has started');
+
+    match.toss = undefined;
+    match.status = MATCH_STATUS.SCHEDULED;
+    match.innings = [];
+    match.currentInnings = 1;
+    match.battingOrder = [];
+    await match.save();
+    return Match.findById(matchId)
+      .populate('team1', 'name shortName logo')
+      .populate('team2', 'name shortName logo');
+  },
+
   // Set match lineups for team selection - OWNER ONLY
   setMatchLineups: async (matchId, lineupData, userId) => {
     const { team1Lineup, team2Lineup } = lineupData;
@@ -544,8 +564,8 @@ export const matchService = {
     if (match.status !== MATCH_STATUS.TEAM_SELECTING) throw new ApiError(400, 'Can only set lineups during team selecting phase');
 
     // Validate team1Lineup
-    if (!Array.isArray(team1Lineup) || team1Lineup.length < 2 || team1Lineup.length > 11) {
-      throw new ApiError(400, 'Team1 lineup must have 2-11 players');
+    if (!Array.isArray(team1Lineup) || team1Lineup.length < 2 || team1Lineup.length > 25) {
+      throw new ApiError(400, 'Team1 playing squad must have 2-25 players');
     }
     // Validate all in team1.players
     const team1 = await Team.findById(match.team1).select('players');
@@ -555,8 +575,8 @@ export const matchService = {
     }
 
     // Validate team2Lineup similarly
-    if (!Array.isArray(team2Lineup) || team2Lineup.length < 2 || team2Lineup.length > 11) {
-      throw new ApiError(400, 'Team2 lineup must have 2-11 players');
+    if (!Array.isArray(team2Lineup) || team2Lineup.length < 2 || team2Lineup.length > 25) {
+      throw new ApiError(400, 'Team2 playing squad must have 2-25 players');
     }
     const team2 = await Team.findById(match.team2).select('players');
     const team2PlayerIds = team2.players.map(p => p.toString());

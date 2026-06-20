@@ -118,6 +118,24 @@ export const scoringController = {
     }
   },
 
+  retireBatter: async (req, res) => {
+    try {
+      const result = await scoringService.retireBatter(req.params.matchId, req.body, req.user.userId);
+      res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  },
+
+  updateInningsContinuation: async (req, res) => {
+    try {
+      const result = await scoringService.updateInningsContinuation(req.params.matchId, req.body);
+      res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  },
+
 
   // POST /match/:matchId/innings/start
   startInnings: async (req, res) => {

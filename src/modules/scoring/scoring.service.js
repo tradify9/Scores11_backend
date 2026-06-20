@@ -110,8 +110,8 @@ if (!match.team1Lineup?.length || !match.team2Lineup?.length) {
     Team.findById(match.team1).select('players').lean(),
     Team.findById(match.team2).select('players').lean()
   ]);
-  match.team1Lineup = team1?.players?.slice(0, 11) || [];
-  match.team2Lineup = team2?.players?.slice(0, 11) || [];
+  match.team1Lineup = team1?.players?.slice(0, 25) || [];
+  match.team2Lineup = team2?.players?.slice(0, 25) || [];
 }
 
 const tossWinnerId = match.toss?.winner?.toString();
@@ -284,13 +284,15 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     // PROFESSIONAL VALIDATIONS
     // 1. Check innings not completed
     if (innings.isCompleted) throw new ApiError(400, 'Innings already completed');
-    if (innings.totalWickets >= 10 && allowAllOutContinue !== true) {
+    if (innings.totalWickets >= 10 && allowAllOutContinue !== true && innings.continuation?.afterAllOut !== true) {
       throw new ApiError(400, '10 wickets fallen - innings ended');
     }
     
     // 2. Overs limit check
     const legalOvers = innings.totalOvers + (innings.totalBalls / 6);
-    if (legalOvers >= match.overs) throw new ApiError(400, `Innings overs completed (${match.overs})`);
+    if (legalOvers >= match.overs && innings.continuation?.afterOvers !== true) {
+      throw new ApiError(400, `Innings overs completed (${match.overs}). Enable innings continuation to keep scoring.`);
+    }
 
     // 3. Current striker validation
     if (!innings.currentStriker) throw new ApiError(400, 'Set striker first');
@@ -638,7 +640,9 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     }
 
     if (match.currentInnings === 2 && match.innings[0]) {
-      const didFinalize = finalizeSecondInningsResult(match);
+      const didFinalize = finalizeSecondInningsResult(match, {
+        continueAfterTarget: continueAfterTarget === true || innings.continuation?.afterTarget === true
+      });
       if (didFinalize) {
         match.markModified('result');
         match.markModified('innings');
@@ -884,6 +888,73 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       innings,
       score: match.score
     };
+  },
+
+  retireBatter: async (matchId, retirementData, userId) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+    if (![MATCH_STATUS.LIVE, MATCH_STATUS.DUCKWORTH_LEWIS].includes(match.status)) {
+      throw new ApiError(400, 'Match is not live');
+    }
+    const innings = match.innings.find(item => item.inningsNumber === match.currentInnings);
+    if (!innings || innings.isCompleted) throw new ApiError(400, 'No active innings found');
+
+    const batsmanId = retirementData.batsmanId?.toString();
+    const type = retirementData.type === 'retired_out' ? 'retired_out' : 'retired_hurt';
+    const activeIds = [innings.currentStriker, innings.currentNonStriker].filter(Boolean).map(String);
+    if (!batsmanId || !activeIds.includes(batsmanId)) throw new ApiError(400, 'Select an active batter to retire');
+    const batter = innings.battingScorecard.find(item => item.batsman.toString() === batsmanId);
+    if (!batter) throw new ApiError(400, 'Batter is not in the active scorecard');
+
+    const reason = String(retirementData.reason || (type === 'retired_out' ? 'Retired out' : 'Retired hurt')).trim().slice(0, 160);
+    batter.howOut = type;
+    batter.dismissalNote = reason;
+    if (type === 'retired_out') {
+      innings.totalWickets += 1;
+      innings.fallOfWickets.push({
+        wicketNumber: innings.totalWickets,
+        batsman: batsmanId,
+        runs: innings.totalRuns,
+        overs: `${innings.totalOvers}.${innings.totalBalls}`,
+        partnership: innings.currentPartnership?.runs || 0
+      });
+    }
+    if (innings.currentStriker?.toString() === batsmanId) innings.currentStriker = null;
+    if (innings.currentNonStriker?.toString() === batsmanId) innings.currentNonStriker = null;
+    match.commentary ??= [];
+    match.commentary.push({
+      over: innings.totalOvers,
+      ball: innings.totalBalls,
+      text: `${type === 'retired_out' ? 'Retired out' : 'Retired hurt'} - ${reason}`,
+      batsmanRuns: 0,
+      totalRuns: innings.totalRuns,
+      isWicket: type === 'retired_out',
+      timestamp: new Date()
+    });
+    await match.save();
+    emitToMatch(matchId, 'liveScoreUpdate', { matchId, action: 'batterRetired', type, batsmanId, reason });
+    return { innings, score: match.score, retirement: { batsmanId, type, reason }, recordedBall: false };
+  },
+
+  updateInningsContinuation: async (matchId, continuationData) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+    const innings = match.innings.find(item => item.inningsNumber === match.currentInnings);
+    if (!innings) throw new ApiError(400, 'No active innings found');
+    innings.continuation = {
+      afterOvers: continuationData.afterOvers === true,
+      afterAllOut: continuationData.afterAllOut === true,
+      afterTarget: continuationData.afterTarget === true
+    };
+    if (innings.continuation.afterOvers || innings.continuation.afterAllOut || innings.continuation.afterTarget) {
+      innings.isCompleted = false;
+      innings.endTime = undefined;
+      match.status = MATCH_STATUS.LIVE;
+      if (match.currentInnings === 2) match.result = { target: (match.innings[0]?.totalRuns || 0) + 1 };
+    }
+    await match.save();
+    emitToMatch(matchId, 'liveScoreUpdate', { matchId, action: 'inningsContinuation', continuation: innings.continuation });
+    return { innings, match };
   },
 
   // Get match scoring data with full details
@@ -1858,7 +1929,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
   }
 };
 
-function finalizeSecondInningsResult(match, { force = false } = {}) {
+function finalizeSecondInningsResult(match, { force = false, continueAfterTarget = false } = {}) {
   const first = match.innings?.[0];
   const second = match.innings?.find(i => i.inningsNumber === 2) || match.innings?.[1];
   if (!first || !second) return false;
@@ -1867,7 +1938,10 @@ function finalizeSecondInningsResult(match, { force = false } = {}) {
   const ballsLimit = getEffectiveChaseBalls(match, 2);
   const legalBalls = ((second.totalOvers || 0) * 6) + (second.totalBalls || 0);
   const chaseWon = (second.totalRuns || 0) >= target;
-  const inningsDone = force || chaseWon || (second.totalWickets || 0) >= 10 || legalBalls >= ballsLimit;
+  const inningsDone = force ||
+    (chaseWon && !continueAfterTarget && second.continuation?.afterTarget !== true) ||
+    ((second.totalWickets || 0) >= 10 && second.continuation?.afterAllOut !== true) ||
+    (legalBalls >= ballsLimit && second.continuation?.afterOvers !== true);
 
   match.result ??= {};
   const chase = calculateChaseState(match, second);

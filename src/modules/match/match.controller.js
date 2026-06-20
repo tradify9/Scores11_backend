@@ -156,6 +156,11 @@ export const matchController = {
     res.json(new ApiResponse(200, 'Toss completed - proceed to team selection', match));
   }),
 
+  undoToss: catchAsync(async (req, res) => {
+    const match = await matchService.undoToss(req.params.id);
+    res.json(new ApiResponse(200, 'Toss undone successfully', match));
+  }),
+
   // Update result
   updateResult: catchAsync(async (req, res) => {
     const match = await matchService.updateResult(req.params.id, req.body);

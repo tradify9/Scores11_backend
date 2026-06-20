@@ -78,6 +78,7 @@ router.patch('/:id/status', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, R
 router.patch('/:id/start', authenticate, matchController.startMatch);
 router.patch('/:id/schedule', authenticate, authorize(ROLES.ADMIN), matchController.scheduleMatch);
 router.patch('/:id/toss', matchController.updateToss);
+router.delete('/:id/toss', authenticate, matchController.undoToss);
 router.patch('/:id/result', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE), matchController.updateResult);
 router.patch('/:id/officials', authenticate, authorize(ROLES.ADMIN), matchController.setOfficials);
 router.patch(

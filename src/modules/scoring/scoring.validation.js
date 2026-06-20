@@ -39,7 +39,7 @@ const validateInitializeMatch = Joi.object({
   battingOrder: Joi.array().items(
     Joi.object({
       team: Joi.string().required(),
-      players: Joi.array().items(Joi.string()).min(11).max(15).required()
+      players: Joi.array().items(Joi.string()).min(2).max(25).required()
     })
   ).length(2).required()
 });

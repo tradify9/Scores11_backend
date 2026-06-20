@@ -10,6 +10,8 @@ const router = express.Router();
 router.post('/match/:matchId/initialize', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.initializeMatch);
 router.post('/match/:matchId/ball', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.addBall);
 router.post('/match/:matchId/undo-last-ball', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.undoLastBall);
+router.post('/match/:matchId/batter/retire', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.retireBatter);
+router.patch('/match/:matchId/innings/continuation', authenticate, authorize(ROLES.ADMIN, ROLES.UMPIRE, ROLES.SCORER, ROLES.PLAYER, ROLES.USER), scoringController.updateInningsContinuation);
 router.get('/rules', scoringController.getRulesCatalogue);
 router.get('/match/:matchId/live', scoringController.getLiveScore);
 router.get('/match/:matchId/scorecard', scoringController.getFullScorecard);

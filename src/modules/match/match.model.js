@@ -48,6 +48,7 @@ const battingScorecardSchema = new mongoose.Schema({
   sixes: { type: Number, default: 0 },
   strikeRate: { type: Number, default: 0 },
   howOut: { type: String, default: 'not_out' },
+  dismissalNote: { type: String, default: '' },
   fielder: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' },
   bowler: { type: mongoose.Schema.Types.ObjectId, ref: 'Player' }
 });
@@ -104,6 +105,11 @@ const inningsSchema = new mongoose.Schema({
     balls: { type: Number, default: 0 }
   },
   isCompleted: { type: Boolean, default: false },
+  continuation: {
+    afterOvers: { type: Boolean, default: false },
+    afterAllOut: { type: Boolean, default: false },
+    afterTarget: { type: Boolean, default: false }
+  },
   startTime: Date,
   endTime: Date
 });
