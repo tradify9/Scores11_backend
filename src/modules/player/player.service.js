@@ -179,19 +179,25 @@ export const playerService = {
       if (!user) throw new ApiError(404, 'User not found');
     }
 
+    let team = null;
+    if (playerData.team) {
+      team = await Team.findOne({ _id: playerData.team, isActive: true });
+      if (!team) throw new ApiError(404, 'Team not found');
+      if (!userId || team.owner.toString() !== userId.toString()) {
+        throw new ApiError(403, 'Only the team owner can register a player in this team');
+      }
+    }
+
     // 🔥 Public player: create without user association if no userId
     const player = await Player.create({
       ...playerData,
       user: userId || null  // Allow null for public players
     });
 
-    if (playerData.team) {
-      const team = await Team.findById(playerData.team);
-      if (team) {
-        if (!team.players.includes(player._id)) {
-          team.players.push(player._id);
-          await team.save();
-        }
+    if (team) {
+      if (!team.players.some(id => id.toString() === player._id.toString())) {
+        team.players.push(player._id);
+        await team.save();
       }
     }
 

@@ -19,7 +19,7 @@ router.get('/list/populate', teamController.getAllTeams);
 
 // Protected routes - require authentication
 router.post('/', authenticate, teamController.createTeam);
-router.get('/', authenticate, teamController.getAllTeams);
+router.get('/', authenticate, teamController.getMyTeams);
 router.get('/my-teams', authenticate, teamController.getMyTeams);
 router.get('/teams', authenticate, teamController.getMyTeams);
 router.get('/:id', authenticate, teamController.getTeamById);
