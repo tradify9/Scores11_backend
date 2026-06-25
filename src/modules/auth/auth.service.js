@@ -115,7 +115,11 @@ export const authService = {
     if (!user) {
       const fullName = name?.toString().trim();
       if (!fullName || fullName.length < 2) {
-        throw new ApiError(400, 'Name is required for new mobile registration');
+        throw new ApiError(409, 'Create your Scores11 account to continue', [{
+          code: 'PROFILE_REQUIRED',
+          field: 'name',
+          message: 'Full name is required for a new mobile account'
+        }]);
       }
       const username = await buildUniqueUsername(fullName, phone);
       const generatedPassword = crypto.randomBytes(24).toString('hex');
