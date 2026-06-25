@@ -7,8 +7,7 @@ const routeGroups = [
     routes: [
       ['POST', '/api/v1/auth/register', 'Register user', false],
       ['POST', '/api/v1/auth/login', 'Login user', false],
-      ['POST', '/api/v1/auth/send-otp', 'Send OTP', false],
-      ['POST', '/api/v1/auth/verify-otp', 'Verify OTP', false],
+      ['POST', '/api/v1/auth/phone/firebase', 'Exchange Firebase phone token for app login', false],
       ['POST', '/api/v1/auth/forgot-password', 'Start password reset', false],
       ['POST', '/api/v1/auth/reset-password', 'Reset password', false],
       ['POST', '/api/v1/auth/logout', 'Logout current user', true],

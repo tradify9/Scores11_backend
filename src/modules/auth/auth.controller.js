@@ -3,6 +3,31 @@ import ApiResponse from '../../utils/ApiResponse.js';
 import catchAsync from '../../utils/catchAsync.js';
 
 export const authController = {
+  firebasePhoneLogin: catchAsync(async (req, res) => {
+    const { user, accessToken, refreshToken } =
+      await authService.firebasePhoneLogin(req.body);
+    const options = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    };
+    res
+      .status(200)
+      .cookie('refreshToken', refreshToken, {
+        ...options,
+        maxAge: 90 * 24 * 60 * 60 * 1000
+      })
+      .cookie('accessToken', accessToken, {
+        ...options,
+        maxAge: 24 * 60 * 60 * 1000
+      })
+      .json(new ApiResponse(200, 'Firebase phone authentication successful', {
+        user,
+        accessToken,
+        refreshToken
+      }));
+  }),
+
   register: catchAsync(async (req, res) => {
     const { user, accessToken, refreshToken } = await authService.register(req.body);
     const options = {
@@ -70,20 +95,6 @@ export const authController = {
   changePassword: catchAsync(async (req, res) => {
     await authService.changePassword(req.user.userId, req.body);
     res.json(new ApiResponse(200, 'Password changed successfully'));
-  }),
-
-  // Send OTP to phone/email
-  sendOTP: catchAsync(async (req, res) => {
-    const { identifier } = req.body;
-    const result = await authService.sendOTP(identifier);
-    res.json(new ApiResponse(200, result.message, { otp: result.otp }));
-  }),
-
-  // Verify OTP
-  verifyOTP: catchAsync(async (req, res) => {
-    const { identifier, otp } = req.body;
-    const result = await authService.verifyOTP(identifier, otp);
-    res.json(new ApiResponse(200, result.message));
   }),
 
   // Forgot password - send OTP

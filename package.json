@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "seed": "node src/seeds/admin.seed.js"
+    "seed": "node src/seeds/admin.seed.js",
+    "db:reset-test": "node src/scripts/resetTestDatabase.js"
   },
   "dependencies": {
     "agora-access-token": "^2.0.4",

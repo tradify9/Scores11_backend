@@ -36,6 +36,8 @@ const userSchema = new mongoose.Schema({
   phone: {
     type: String,
     trim: true,
+    unique: true,
+    sparse: true,
     match: [/^\+?[\d\s-]{10,}$/, 'Please enter a valid phone number']
   },
   
@@ -339,7 +341,6 @@ const userSchema = new mongoose.Schema({
 });
 
 // Indexes for faster queries (unique fields already have indexes from unique: true)
-userSchema.index({ phone: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ level: 1 });
 userSchema.index({ 'location.coordinates': '2dsphere' });

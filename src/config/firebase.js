@@ -32,6 +32,17 @@ export const initializeFirebase = () => {
   }
 };
 
+export const verifyFirebaseIdToken = async (idToken) => {
+  if (!idToken) {
+    throw new Error('Firebase ID token is required');
+  }
+  const firebaseAdmin = initializeFirebase();
+  if (!firebaseAdmin) {
+    throw new Error('Firebase Admin is not configured');
+  }
+  return firebaseAdmin.auth().verifyIdToken(idToken, true);
+};
+
 export const sendPushNotification = async (fcmToken, title, body, data = {}) => {
   try {
     const firebaseAdmin = initializeFirebase();

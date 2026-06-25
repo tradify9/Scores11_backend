@@ -4,12 +4,13 @@ import config from './env.js';
 const connectDatabase = async () => {
   try {
     const conn = await mongoose.connect(config.mongodb.uri, {
+      dbName: config.mongodb.dbName,
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     });
     
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    console.log(`MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`);
     
     mongoose.connection.on('error', (err) => {
       console.error('MongoDB connection error:', err);

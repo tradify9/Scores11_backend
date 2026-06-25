@@ -15,7 +15,8 @@ export default {
   mongodb: {
     uri: process.env.NODE_ENV === 'production' 
       ? process.env.MONGODB_URI_PROD 
-      : process.env.MONGODB_URI || 'mongodb://localhost:27017/crick11'
+      : process.env.MONGODB_URI || 'mongodb://localhost:27017/crick11',
+    dbName: process.env.MONGODB_DB_NAME || 'crick11'
   },
   
   redis: {

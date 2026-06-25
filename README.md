@@ -252,8 +252,7 @@ All routes below are mounted under `/api/v1` from `src/routes.js`.
 | --- | --- | --- | --- |
 | POST | `/register` | No | Register user |
 | POST | `/login` | No | Login user |
-| POST | `/send-otp` | No | Send OTP |
-| POST | `/verify-otp` | No | Verify OTP |
+| POST | `/phone/firebase` | No | Verify Firebase phone token and login/register |
 | POST | `/forgot-password` | No | Start password reset |
 | POST | `/reset-password` | No | Reset password |
 | POST | `/logout` | Yes | Logout |

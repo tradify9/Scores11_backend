@@ -2,9 +2,10 @@ import User from '../user/user.model.js';
 import Wallet from '../wallet/wallet.model.js';
 import { hashPassword, comparePassword } from '../../utils/passwordHasher.js';
 import { generateTokenPair, verifyRefreshToken } from '../../utils/generateToken.js';
-import { sendOTP, sendRegistrationSuccessSMS } from '../../utils/smsSender.js';
 import { sendWelcomeEmail, sendPasswordResetEmail } from '../../utils/emailSender.js';
 import ApiError from '../../utils/ApiError.js';
+import crypto from 'crypto';
+import { verifyFirebaseIdToken } from '../../config/firebase.js';
 
 // Generate 6-digit OTP
 const generateOTP = () => {
@@ -13,6 +14,40 @@ const generateOTP = () => {
 
 // OTP expiry time (10 minutes)
 const OTP_EXPIRY = 10 * 60 * 1000;
+
+const normalizePhone = (value = '') => {
+  let digits = value.toString().replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  if (digits.length < 10 || digits.length > 15) {
+    throw new ApiError(400, 'Enter a valid mobile number');
+  }
+  return digits;
+};
+
+const buildUniqueUsername = async (name, phone) => {
+  const base = (name || `player_${phone.slice(-4)}`)
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 20) || `player_${phone.slice(-4)}`;
+  let username = base;
+  let suffix = 1;
+  while (await User.exists({ username })) username = `${base}_${suffix++}`;
+  return username;
+};
+
+const issueAuthSession = async (user) => {
+  if (!user.isActive) {
+    throw new ApiError(403, 'Your account has been blocked. Please contact support.');
+  }
+  const { accessToken, refreshToken } = generateTokenPair(user._id, user.role);
+  user.refreshToken = refreshToken;
+  user.lastLogin = new Date();
+  await user.save();
+  const userResponse = user.toJSON();
+  userResponse.name = user.fullName;
+  return { user: userResponse, accessToken, refreshToken };
+};
 
 const normalizePlayerRole = (value) => {
   const role = value?.toString().toLowerCase();
@@ -63,6 +98,63 @@ const normalizePlayerBowlingStyle = (value) => {
 };
 
 export const authService = {
+  firebasePhoneLogin: async ({ idToken, name }) => {
+    let decoded;
+    try {
+      decoded = await verifyFirebaseIdToken(idToken);
+    } catch (error) {
+      throw new ApiError(401, `Firebase phone verification failed: ${error.message}`);
+    }
+    if (!decoded.phone_number) {
+      throw new ApiError(400, 'Firebase token does not contain a verified phone number');
+    }
+
+    const phone = normalizePhone(decoded.phone_number);
+    const existingUser = await User.findOne({ phone });
+    let user = existingUser;
+    if (!user) {
+      const fullName = name?.toString().trim();
+      if (!fullName || fullName.length < 2) {
+        throw new ApiError(400, 'Name is required for new mobile registration');
+      }
+      const username = await buildUniqueUsername(fullName, phone);
+      const generatedPassword = crypto.randomBytes(24).toString('hex');
+      user = await User.create({
+        email: `${phone}@mobile.crick11.app`,
+        password: await hashPassword(generatedPassword),
+        username,
+        fullName,
+        phone,
+        role: 'user',
+        isPhoneVerified: true,
+        isPublicPlayer: true,
+        cricketProfile: {
+          playerType: 'batsman',
+          battingStyle: 'right-hand',
+          bowlingStyle: 'none',
+          preferredRole: ['batsman']
+        }
+      });
+      const Player = (await import('../player/player.model.js')).default;
+      const player = await Player.create({
+        user: user._id,
+        playerName: fullName,
+        phone,
+        role: 'batsman',
+        battingStyle: 'right-hand bat',
+        bowlingStyle: 'none',
+        isActive: true
+      });
+      user.cricketProfile.playerId = player._id;
+      await user.save();
+      await Wallet.create({ user: user._id, balance: 0 });
+    } else if (!user.isPhoneVerified) {
+      user.isPhoneVerified = true;
+    }
+
+    return issueAuthSession(user);
+  },
+
   // Register new user
   register: async (userData) => {
       const { email, password, name, phone, role } = userData;
@@ -173,15 +265,6 @@ export const authService = {
         throw new ApiError(500, 'Failed to generate authentication tokens');
       }
 
-      // Send welcome notifications asynchronously (don't block registration)
-      if (phone) {
-        try {
-          await sendRegistrationSuccessSMS(phone, name);
-        } catch (smsError) {
-          console.error('Welcome SMS failed (non-fatal):', smsError.message);
-        }
-      }
-
       if (email) {
         try {
           await sendWelcomeEmail(email, name);
@@ -263,81 +346,6 @@ export const authService = {
     };
   },
 
-  // Send OTP for phone verification
-  sendOTP: async (identifier) => {
-    const user = await User.findOne({
-      $or: [
-        { email: identifier?.toLowerCase() },
-        { phone: identifier }
-      ]
-    });
-
-    if (!user) {
-      throw new ApiError(404, 'User not found with this identifier');
-    }
-
-    const otp = generateOTP();
-    const otpExpiry = new Date(Date.now() + OTP_EXPIRY);
-
-    await User.findByIdAndUpdate(user._id, {
-      phoneVerificationCode: otp,
-      phoneVerificationExpire: otpExpiry
-    });
-
-    // Send OTP via SMS
-    if (user.phone) {
-      try {
-        await sendOTP(user.phone, otp);
-      } catch (smsError) {
-        // Don't fail the flow if SMS fails - log for development
-        console.error('OTP SMS failed:', smsError.message);
-      }
-    }
-
-    // In production, send OTP via SMS
-    // For development, log the OTP
-    console.log(`OTP for ${identifier}: ${otp}`);
-
-    return {
-      message: 'OTP sent successfully',
-      // Remove this in production
-      otp: otp
-    };
-  },
-
-  // Verify OTP
-  verifyOTP: async (identifier, otp) => {
-    const user = await User.findOne({
-      $or: [
-        { email: identifier?.toLowerCase() },
-        { phone: identifier }
-      ]
-    });
-
-    if (!user) {
-      throw new ApiError(404, 'User not found');
-    }
-
-    if (!user.phoneVerificationCode || user.phoneVerificationCode !== otp) {
-      throw new ApiError(400, 'Invalid OTP');
-    }
-
-    if (user.phoneVerificationExpire && new Date() > user.phoneVerificationExpire) {
-      throw new ApiError(400, 'OTP has expired');
-    }
-
-    // Mark phone as verified
-    await User.findByIdAndUpdate(user._id, {
-      isPhoneVerified: true,
-      phoneVerificationCode: null,
-      phoneVerificationExpire: null
-    });
-
-    return {
-      message: 'Phone verified successfully'
-    };
-  },
-
   // Forgot password - send OTP via email
   forgotPassword: async (identifier) => {
     const user = await User.findOne({
@@ -367,15 +375,6 @@ export const authService = {
         console.log(`Password reset email sent to: ${user.email}`);
       } catch (emailError) {
         console.error('Password reset email failed:', emailError.message);
-      }
-    }
-
-    // Also try SMS if phone exists
-    if (user.phone) {
-      try {
-        await sendOTP(user.phone, otp);
-      } catch (smsError) {
-        console.error('Password reset OTP SMS failed:', smsError.message);
       }
     }
 

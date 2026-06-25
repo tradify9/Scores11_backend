@@ -8,8 +8,9 @@ const router = express.Router();
 // Public routes
 router.post('/register', authLimiter, authController.register);
 router.post('/login', authLimiter, authController.login);
-router.post('/send-otp', authLimiter, authController.sendOTP);
-router.post('/verify-otp', authLimiter, authController.verifyOTP);
+router.post('/phone/firebase', authLimiter, authController.firebasePhoneLogin);
+router.post('/firebase/phone', authLimiter, authController.firebasePhoneLogin);
+router.post('/phone-login', authLimiter, authController.firebasePhoneLogin);
 router.post('/forgot-password', authLimiter, authController.forgotPassword);
 router.post('/reset-password', authLimiter, authController.resetPassword);
 
