@@ -33,6 +33,14 @@ export default {
   
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID,
+    authProjectIds: [
+      process.env.FIREBASE_PROJECT_ID,
+      process.env.FIREBASE_AUTH_PROJECT_ID,
+      'scores11-9a227',
+      ...(process.env.FIREBASE_AUTH_PROJECT_IDS || '').split(',')
+    ]
+      .map(projectId => projectId?.trim())
+      .filter(Boolean),
     privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
     databaseUrl: process.env.FIREBASE_DATABASE_URL

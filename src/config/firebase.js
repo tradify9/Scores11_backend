@@ -1,7 +1,77 @@
 import admin from 'firebase-admin';
+import crypto from 'crypto';
 import config from './env.js';
 
 let firebaseInitialized = false;
+let firebaseCertCache = { expiresAt: 0, certs: {} };
+
+const base64UrlDecode = (value) => {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), '=');
+  return Buffer.from(padded, 'base64');
+};
+
+const decodeJwtPart = (value) => JSON.parse(base64UrlDecode(value).toString('utf8'));
+
+const getFirebasePublicCerts = async () => {
+  if (firebaseCertCache.expiresAt > Date.now()) {
+    return firebaseCertCache.certs;
+  }
+  const response = await fetch(
+    'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com'
+  );
+  if (!response.ok) {
+    throw new Error(`Unable to fetch Firebase public certificates (${response.status})`);
+  }
+  const cacheControl = response.headers.get('cache-control') || '';
+  const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
+  const maxAgeMs = maxAgeMatch ? Number(maxAgeMatch[1]) * 1000 : 60 * 60 * 1000;
+  firebaseCertCache = {
+    expiresAt: Date.now() + maxAgeMs,
+    certs: await response.json()
+  };
+  return firebaseCertCache.certs;
+};
+
+const verifyFirebaseIdTokenWithPublicCerts = async (idToken) => {
+  const [encodedHeader, encodedPayload, encodedSignature] = idToken.split('.');
+  if (!encodedHeader || !encodedPayload || !encodedSignature) {
+    throw new Error('Invalid Firebase ID token format');
+  }
+
+  const header = decodeJwtPart(encodedHeader);
+  const payload = decodeJwtPart(encodedPayload);
+  const allowedProjectIds = [...new Set(config.firebase.authProjectIds || [])];
+
+  if (!allowedProjectIds.includes(payload.aud)) {
+    throw new Error(`Firebase ID token project mismatch. Expected ${allowedProjectIds.join(', ')}, got ${payload.aud}`);
+  }
+  if (payload.iss !== `https://securetoken.google.com/${payload.aud}`) {
+    throw new Error('Firebase ID token issuer is invalid');
+  }
+  if (!payload.sub) {
+    throw new Error('Firebase ID token subject is missing');
+  }
+  if (payload.exp * 1000 <= Date.now()) {
+    throw new Error('Firebase ID token has expired');
+  }
+
+  const certs = await getFirebasePublicCerts();
+  const cert = certs[header.kid];
+  if (!cert) {
+    throw new Error('Firebase ID token certificate is not recognized');
+  }
+
+  const verifier = crypto.createVerify('RSA-SHA256');
+  verifier.update(`${encodedHeader}.${encodedPayload}`);
+  verifier.end();
+  const valid = verifier.verify(cert, base64UrlDecode(encodedSignature));
+  if (!valid) {
+    throw new Error('Firebase ID token signature is invalid');
+  }
+
+  return payload;
+};
 
 export const initializeFirebase = () => {
   if (firebaseInitialized) return admin;
@@ -36,11 +106,15 @@ export const verifyFirebaseIdToken = async (idToken) => {
   if (!idToken) {
     throw new Error('Firebase ID token is required');
   }
-  const firebaseAdmin = initializeFirebase();
-  if (!firebaseAdmin) {
-    throw new Error('Firebase Admin is not configured');
+  try {
+    const firebaseAdmin = initializeFirebase();
+    if (!firebaseAdmin) {
+      throw new Error('Firebase Admin is not configured');
+    }
+    return await firebaseAdmin.auth().verifyIdToken(idToken, true);
+  } catch (error) {
+    return verifyFirebaseIdTokenWithPublicCerts(idToken);
   }
-  return firebaseAdmin.auth().verifyIdToken(idToken, true);
 };
 
 export const sendPushNotification = async (fcmToken, title, body, data = {}) => {
