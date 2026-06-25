@@ -1,16 +1,19 @@
 import express from 'express';
 import { authController } from './auth.controller.js';
 import { authenticate } from '../../middleware/auth.middleware.js';
-import { authLimiter } from '../../middleware/rateLimiter.middleware.js';
+import {
+  authLimiter,
+  firebasePhoneAuthLimiter
+} from '../../middleware/rateLimiter.middleware.js';
 
 const router = express.Router();
 
 // Public routes
 router.post('/register', authLimiter, authController.register);
 router.post('/login', authLimiter, authController.login);
-router.post('/phone/firebase', authLimiter, authController.firebasePhoneLogin);
-router.post('/firebase/phone', authLimiter, authController.firebasePhoneLogin);
-router.post('/phone-login', authLimiter, authController.firebasePhoneLogin);
+router.post('/phone/firebase', firebasePhoneAuthLimiter, authController.firebasePhoneLogin);
+router.post('/firebase/phone', firebasePhoneAuthLimiter, authController.firebasePhoneLogin);
+router.post('/phone-login', firebasePhoneAuthLimiter, authController.firebasePhoneLogin);
 router.post('/forgot-password', authLimiter, authController.forgotPassword);
 router.post('/reset-password', authLimiter, authController.resetPassword);
 
