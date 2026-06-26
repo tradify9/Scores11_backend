@@ -98,7 +98,15 @@ const normalizePlayerBowlingStyle = (value) => {
 };
 
 export const authService = {
-  firebasePhoneLogin: async ({ idToken, name }) => {
+  firebasePhoneLogin: async ({
+    idToken,
+    name,
+    email,
+    role,
+    playerRole,
+    battingStyle,
+    bowlingStyle
+  }) => {
     let decoded;
     try {
       decoded = await verifyFirebaseIdToken(idToken);
@@ -121,22 +129,30 @@ export const authService = {
           message: 'Full name is required for a new mobile account'
         }]);
       }
+      const emailValue = email?.toString().trim().toLowerCase();
+      if (emailValue && await User.exists({ email: emailValue })) {
+        throw new ApiError(400, 'Email is already registered with another account');
+      }
+      const userRole = role === 'player' ? 'player' : 'user';
+      const normalizedPlayerRole = normalizePlayerRole(playerRole);
+      const userBattingStyle = normalizeUserBattingStyle(battingStyle);
+      const userBowlingStyle = normalizeUserBowlingStyle(bowlingStyle);
       const username = await buildUniqueUsername(fullName, phone);
       const generatedPassword = crypto.randomBytes(24).toString('hex');
       user = await User.create({
-        email: `${phone}@mobile.crick11.app`,
+        email: emailValue || `${phone}@mobile.crick11.app`,
         password: await hashPassword(generatedPassword),
         username,
         fullName,
         phone,
-        role: 'user',
+        role: userRole,
         isPhoneVerified: true,
         isPublicPlayer: true,
         cricketProfile: {
-          playerType: 'batsman',
-          battingStyle: 'right-hand',
-          bowlingStyle: 'none',
-          preferredRole: ['batsman']
+          playerType: normalizedPlayerRole,
+          battingStyle: userBattingStyle,
+          bowlingStyle: userBowlingStyle,
+          preferredRole: [normalizedPlayerRole]
         }
       });
       const Player = (await import('../player/player.model.js')).default;
@@ -144,9 +160,9 @@ export const authService = {
         user: user._id,
         playerName: fullName,
         phone,
-        role: 'batsman',
-        battingStyle: 'right-hand bat',
-        bowlingStyle: 'none',
+        role: normalizedPlayerRole,
+        battingStyle: normalizePlayerBattingStyle(battingStyle),
+        bowlingStyle: normalizePlayerBowlingStyle(bowlingStyle),
         isActive: true
       });
       user.cricketProfile.playerId = player._id;

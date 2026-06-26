@@ -694,14 +694,21 @@ export const userService = {
       throw new ApiError(404, 'User not found');
     }
 
+    const experiencePoints = Number(user.experiencePoints || 0);
+    const level = Number(user.level || 1);
     const rank = await User.countDocuments({
-      experiencePoints: { $gt: user.experiencePoints }
+      experiencePoints: { $gt: experiencePoints }
     }) + 1;
 
     return {
       ...user.toObject(),
+      stats: user.stats || {},
+      cricketProfile: user.cricketProfile || {},
+      achievements: user.achievements || [],
+      experiencePoints,
+      level,
       rank,
-      nextLevelExp: this.getNextLevelExperience(user.level, user.experiencePoints)
+      nextLevelExp: userService.getNextLevelExperience(level, experiencePoints)
     };
   },
 
