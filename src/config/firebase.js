@@ -1,9 +1,16 @@
 import admin from 'firebase-admin';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import config from './env.js';
 
 let firebaseInitialized = false;
 let firebaseCertCache = { expiresAt: 0, certs: {} };
+let bundledFirebaseProjectIds;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const base64UrlDecode = (value) => {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
@@ -12,6 +19,26 @@ const base64UrlDecode = (value) => {
 };
 
 const decodeJwtPart = (value) => JSON.parse(base64UrlDecode(value).toString('utf8'));
+
+const getBundledFirebaseProjectIds = () => {
+  if (bundledFirebaseProjectIds) return bundledFirebaseProjectIds;
+  const candidates = [
+    path.resolve(__dirname, '../../../cric11_app/android/app/google-services.json'),
+    path.resolve(process.cwd(), '../cric11_app/android/app/google-services.json'),
+    path.resolve(process.cwd(), 'cric11_app/android/app/google-services.json')
+  ];
+  bundledFirebaseProjectIds = candidates.flatMap((candidate) => {
+    try {
+      const googleServices = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+      return googleServices?.project_info?.project_id
+        ? [googleServices.project_info.project_id]
+        : [];
+    } catch (_) {
+      return [];
+    }
+  });
+  return bundledFirebaseProjectIds;
+};
 
 const getFirebasePublicCerts = async () => {
   if (firebaseCertCache.expiresAt > Date.now()) {
@@ -41,10 +68,17 @@ const verifyFirebaseIdTokenWithPublicCerts = async (idToken) => {
 
   const header = decodeJwtPart(encodedHeader);
   const payload = decodeJwtPart(encodedPayload);
-  const allowedProjectIds = [...new Set(config.firebase.authProjectIds || [])];
+  const allowedProjectIds = [
+    ...new Set([
+      ...(config.firebase.authProjectIds || []),
+      ...getBundledFirebaseProjectIds()
+    ])
+  ];
 
   if (!allowedProjectIds.includes(payload.aud)) {
-    throw new Error(`Firebase ID token project mismatch. Expected ${allowedProjectIds.join(', ')}, got ${payload.aud}`);
+    throw new Error(
+      `Firebase ID token project mismatch. Expected ${allowedProjectIds.join(', ') || 'no configured project'}, got ${payload.aud}`
+    );
   }
   if (payload.iss !== `https://securetoken.google.com/${payload.aud}`) {
     throw new Error('Firebase ID token issuer is invalid');
