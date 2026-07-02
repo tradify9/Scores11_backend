@@ -61,8 +61,23 @@ export const WICKET_RULES = [
   { key: 'absent_hurt', label: 'Absent hurt', countsAsWicket: false, bowlerCredit: false, needsFielder: false, freeHitAllowed: false }
 ];
 
+export const normalizeWicketType = (wicketType) => {
+  const raw = (wicketType || '').toString().trim();
+  const normalized = {
+    runOut: 'run_out',
+    runout: 'run_out',
+    run_out_striker: 'run_out',
+    mankad: 'run_out_non_striker',
+    retire_out: 'retired_out',
+    retired: 'retired_hurt',
+    retiredhurt: 'retired_hurt',
+    absent: 'absent_hurt'
+  }[raw] || raw;
+  return WICKET_RULES.some(rule => rule.key === normalized) ? normalized : normalized;
+};
+
 export const getWicketRule = (wicketType) =>
-  WICKET_RULES.find(rule => rule.key === (wicketType || '').toString()) || null;
+  WICKET_RULES.find(rule => rule.key === normalizeWicketType(wicketType)) || null;
 
 export const normalizeScoringRules = (rules = {}) => {
   const rawBallType = (rules.ballType || 'leather').toString().toLowerCase();

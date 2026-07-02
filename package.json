@@ -7,6 +7,8 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "seed": "node src/seeds/admin.seed.js",
+    "seed:admin": "node src/seeds/admin.seed.js",
+    "seed:user": "node src/seeds/seedUser.js",
     "db:reset-test": "node src/scripts/resetTestDatabase.js"
   },
   "dependencies": {

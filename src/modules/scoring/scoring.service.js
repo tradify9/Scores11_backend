@@ -22,6 +22,7 @@ import {
   isBowlerCreditedWicket,
   applyChildMatchDeliveryRules,
   isLegalDelivery,
+  normalizeWicketType,
   normalizeScoringRules
 } from '../../utils/cricketScoringRules.js';
 
@@ -254,12 +255,14 @@ console.log('[SCORING] Batting order set:', match.battingOrder.length, 'teams');
     const rules = normalizeScoringRules(match.scoringRules);
     const scoredRuns = applyChildMatchDeliveryRules({ runs, isBye, rules });
 
-    const normalizedWicketType = wicketType === 'runOut'
-      ? 'run_out'
-      : wicketType === 'retire_out'
-        ? 'retired_out'
-        : wicketType;
+    const normalizedWicketType = normalizeWicketType(wicketType);
     const wicketRule = getWicketRule(normalizedWicketType);
+    if (isWicket && !wicketRule) {
+      throw new ApiError(400, `Unsupported wicket type: ${wicketType}`);
+    }
+    if (isWicket && wicketRule?.needsFielder && !fielderId) {
+      throw new ApiError(400, `${wicketRule.label} requires a fielder/keeper`);
+    }
     const wicketCounts = Boolean(isWicket && (wicketRule ? wicketRule.countsAsWicket : normalizedWicketType !== 'retired_hurt'));
     const freeHitAllowedWickets = getScoringRuleCatalogue().freeHitAllowedWicketTypes;
     if ((isFreeHit || isNoBall) && isWicket && !freeHitAllowedWickets.includes(normalizedWicketType)) {
@@ -493,7 +496,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     const bowlerIndex = innings.bowlingScorecard.findIndex(b => 
       b.bowler.toString() === actualBowlerId.toString()
     );
-    const isBowlerWicket = Boolean(isWicket && isBowlerCreditedWicket(normalizedWicketType));
+    const isBowlerWicket = Boolean(wicketCounts && isBowlerCreditedWicket(normalizedWicketType));
     
     if (bowlerIndex === -1) {
       // Add new bowler
@@ -593,7 +596,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
         text: generateCommentary({ ...ballData, runs: deliveryRuns }, innings.totalRuns),
       batsmanRuns,
       totalRuns: innings.totalRuns,
-      isWicket: isWicket || false,
+      isWicket: wicketCounts,
       timestamp: new Date()
     });
 
@@ -615,12 +618,13 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       }
     }
 
-    if (isWicket && actualBowlerId) {
+    if (isBowlerWicket && actualBowlerId) {
       const recentWickets = await Ball.find({
         match: matchId,
         innings: match.currentInnings,
         bowler: actualBowlerId,
         wicket: true,
+        wicketType: { $in: getScoringRuleCatalogue().bowlerCreditedWicketTypes },
         isWide: { $ne: true },
         isNoBall: { $ne: true }
       }).sort({ createdAt: -1 }).limit(3).lean();

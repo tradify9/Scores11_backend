@@ -2,6 +2,18 @@ import Joi from 'joi';
 import { WICKET_TYPE, BALL_RESULT } from '../../constants/matchStatus.js';
 import { ROLES } from '../../constants/roles.js';
 
+const wicketTypeValues = [
+  ...Object.values(WICKET_TYPE),
+  'runOut',
+  'runout',
+  'run_out_striker',
+  'mankad',
+  'retire_out',
+  'retired',
+  'retiredhurt',
+  'absent'
+];
+
 const validateBallData = Joi.object({
   overNumber: Joi.number().integer().min(1).max(50).required(),
   ballNumber: Joi.number().integer().min(1).max(7).required(), // 7 for extras
@@ -11,7 +23,7 @@ const validateBallData = Joi.object({
   isWicket: Joi.boolean().default(false),
   wicketType: Joi.when('isWicket', {
     is: true,
-    then: Joi.string().valid(...Object.values(WICKET_TYPE)).required(),
+    then: Joi.string().valid(...wicketTypeValues).required(),
     otherwise: Joi.string().allow(null, '')
   }),
   fielderId: Joi.string().when('isWicket', {
