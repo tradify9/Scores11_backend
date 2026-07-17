@@ -97,6 +97,27 @@ export const authController = {
     res.json(new ApiResponse(200, 'Password changed successfully'));
   }),
 
+  // Send/resend an email OTP for OTP-only login or registration
+  sendEmailOtp: catchAsync(async (req, res) => {
+    const result = await authService.requestEmailOtp(req.body);
+    res.json(new ApiResponse(200, result.message, { isNewUser: result.isNewUser }));
+  }),
+
+  // Verify an email OTP and log the user in
+  verifyEmailOtp: catchAsync(async (req, res) => {
+    const { user, accessToken, refreshToken } = await authService.verifyEmailOtp(req.body);
+    const options = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    };
+    res
+      .status(200)
+      .cookie('refreshToken', refreshToken, { ...options, maxAge: 90 * 24 * 60 * 60 * 1000 })
+      .cookie('accessToken', accessToken, { ...options, maxAge: 24 * 60 * 60 * 1000 })
+      .json(new ApiResponse(200, 'Email verified', { user, accessToken, refreshToken }));
+  }),
+
   // Forgot password - send OTP
   forgotPassword: catchAsync(async (req, res) => {
     const { identifier } = req.body;

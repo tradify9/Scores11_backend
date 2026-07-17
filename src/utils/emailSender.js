@@ -56,6 +56,21 @@ export const sendPasswordResetEmail = async (email, otp) => {
   return sendEmail(email, subject, html);
 };
 
+export const sendLoginOtpEmail = async (email, otp) => {
+  const subject = 'Your Crick11 sign-in code';
+  const html = `
+    <h1>Sign-in verification code</h1>
+    <p>Use the code below to sign in to your Crick11 account.</p>
+    <p>Your OTP code is: <strong style="font-size: 24px; color: #1E88E5;">${otp}</strong></p>
+    <p>This code will expire in 10 minutes.</p>
+    <p>If you did not request this, you can safely ignore this email.</p>
+    <br/>
+    <p>Best regards,</p>
+    <p>The Crick11 Team</p>
+  `;
+  return sendEmail(email, subject, html);
+};
+
 export const sendMatchReminderEmail = async (email, matchDetails) => {
   const subject = `Match Reminder: ${matchDetails.team1} vs ${matchDetails.team2}`;
   const html = `

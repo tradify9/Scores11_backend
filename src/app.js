@@ -13,6 +13,7 @@ import errorMiddleware from './middleware/error.middleware.js';
 import notFoundMiddleware from './middleware/notFound.middleware.js';
 import rateLimiter from './middleware/rateLimiter.middleware.js';
 import routes from './routes.js';
+import schedulePurgeDeletedAccounts from './jobs/purgeDeletedAccounts.js';
 
 const app = express();
 
@@ -110,6 +111,7 @@ const startServer = async (server) => {
     await connectRedis();
     initializeFirebase();
     initializeSocket(server);
+    schedulePurgeDeletedAccounts();
 
     server.listen(config.port, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${config.port}`);

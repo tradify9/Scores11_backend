@@ -26,9 +26,8 @@ export const createMatchSchema = Joi.object({
   }).required().messages({
     'any.required': 'Venue information is required'
   }),
-  scheduledDate: Joi.date().iso().required().messages({
-    'date.format': 'Scheduled date must be valid ISO date',
-    'any.required': 'Scheduled date is required'
+  scheduledDate: Joi.date().iso().optional().allow(null, '').messages({
+    'date.format': 'Scheduled date must be valid ISO date'
   }),
   startTime: Joi.string().optional().allow('').pattern(/^(?:[01]\d|2[0-3]):[0-5]\d$/).messages({
     'string.pattern.base': 'Start time must be HH:MM format'

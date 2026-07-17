@@ -44,7 +44,16 @@ const getMatchNotificationRecipients = async (match) => {
   return [...ids];
 };
 
-const notifyMatchFollowers = async (match, payload) => {
+// Resolves a Player document's linked User id, for notification
+// self-exclusion (recipients/skipIfSelfUserId are User ids, but in-match
+// actors like the striker/dismissed batsman are only known as Player ids).
+const resolvePlayerUserId = async (playerId) => {
+  if (!playerId) return undefined;
+  const player = await Player.findById(playerId).select('user').lean();
+  return player?.user ? player.user.toString() : undefined;
+};
+
+const notifyMatchFollowers = async (match, payload, actorUserId) => {
   try {
     const recipients = await getMatchNotificationRecipients(match);
     await Promise.all(recipients.map(userId => notificationService.sendNotification({
@@ -52,6 +61,7 @@ const notifyMatchFollowers = async (match, payload) => {
       title: payload.title,
       message: payload.message,
       type: payload.type || 'score',
+      skipIfSelfUserId: actorUserId,
       data: {
         matchId: match._id,
         tournamentId: match.tournament,
@@ -196,7 +206,7 @@ console.log('[SCORING] Batting order set:', match.battingOrder.length, 'teams');
       title: 'Match is live',
       message: 'Live scoring has started. Follow every update now.',
       type: 'match'
-    });
+    }, userId);
 
     return await Match.findById(matchId)
       .populate('team1', 'name shortName')
@@ -561,8 +571,22 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
             batsman: dismissedId,
             runs: innings.totalRuns,
             overs: `${innings.totalOvers}.${innings.totalBalls}`,
-            partnership: 0 // Calculate this
+            partnership: innings.currentPartnership.runs
           });
+
+          // Archive the partnership that just ended, then reset for the
+          // next pair - previously never recorded, so `partnerships` was
+          // always empty and the scoreboard's partnership stat was stuck at 0.
+          const survivingBatsmanId = innings.currentStriker?.toString() === dismissedId
+            ? innings.currentNonStriker
+            : innings.currentStriker;
+          innings.partnerships.push({
+            wicketNumber: innings.totalWickets,
+            batsmen: [dismissedId, survivingBatsmanId].filter(Boolean),
+            runs: innings.currentPartnership.runs,
+            balls: innings.currentPartnership.balls
+          });
+          innings.currentPartnership = { runs: 0, balls: 0 };
         }
       }
       if (innings.currentStriker?.toString() === dismissedId) innings.currentStriker = null;
@@ -685,21 +709,23 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
         title: 'Match completed',
         message: match.result?.message || 'The match result is ready.',
         type: 'match'
-      });
+      }, userId);
     } else if (isWicket) {
+      const dismissedUserId = await resolvePlayerUserId(dismissedId);
       await notifyMatchFollowers(match, {
         title: 'Wicket!',
         message: `${normalizedWicketType || 'Wicket'} at ${innings.totalRuns}/${innings.totalWickets}.`,
         type: 'score',
         data: { event: 'wicket' }
-      });
+      }, dismissedUserId);
     } else if (scoredRuns === 4 || scoredRuns === 6) {
+      const strikerUserId = await resolvePlayerUserId(scoringBatsmanId);
       await notifyMatchFollowers(match, {
         title: scoredRuns === 6 ? 'Six!' : 'Four!',
         message: `${scoredRuns} runs. Score ${innings.totalRuns}/${innings.totalWickets}.`,
         type: 'score',
         data: { event: scoredRuns === 6 ? 'six' : 'four' }
-      });
+      }, strikerUserId);
     }
 
     return {
@@ -1372,7 +1398,8 @@ console.log('[LIVE] getLiveScore populated:', {
           batsman: playerPayload(w.batsman)
         };
       }),
-      partnerships: innings.partnerships
+      partnerships: innings.partnerships,
+      currentPartnership: innings.currentPartnership
     }));
 
     // Calculate match stats
@@ -1626,8 +1653,36 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
 
     currentInnings.currentNonStriker = batsmanId;
     await match.save();
-    
+
     return { currentStriker: currentInnings.currentStriker, currentNonStriker: batsmanId };
+  },
+
+  // Manual "swap strike" control - atomically exchanges striker/non-striker
+  // so a scorer can correct rotation without hitting the "same player"
+  // guard that setStriker/setNonStriker would trip if called sequentially.
+  swapStrike: async (matchId) => {
+    const match = await Match.findById(matchId);
+    if (!match) throw new ApiError(404, 'Match not found');
+
+    const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
+    if (!currentInnings) throw new ApiError(400, 'Innings not found');
+    if (!currentInnings.currentStriker || !currentInnings.currentNonStriker) {
+      throw new ApiError(400, 'Set both striker and non-striker first');
+    }
+
+    const striker = currentInnings.currentStriker;
+    currentInnings.currentStriker = currentInnings.currentNonStriker;
+    currentInnings.currentNonStriker = striker;
+    await match.save();
+
+    emitToMatch(matchId, 'liveScoreUpdate', {
+      matchId,
+      action: 'strikeSwapped',
+      currentStriker: currentInnings.currentStriker,
+      currentNonStriker: currentInnings.currentNonStriker
+    });
+
+    return { currentStriker: currentInnings.currentStriker, currentNonStriker: currentInnings.currentNonStriker };
   },
 
   // Set bowler

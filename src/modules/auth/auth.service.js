@@ -2,7 +2,7 @@ import User from '../user/user.model.js';
 import Wallet from '../wallet/wallet.model.js';
 import { hashPassword, comparePassword } from '../../utils/passwordHasher.js';
 import { generateTokenPair, verifyRefreshToken } from '../../utils/generateToken.js';
-import { sendWelcomeEmail, sendPasswordResetEmail } from '../../utils/emailSender.js';
+import { sendWelcomeEmail, sendPasswordResetEmail, sendLoginOtpEmail } from '../../utils/emailSender.js';
 import ApiError from '../../utils/ApiError.js';
 import crypto from 'crypto';
 import { verifyFirebaseIdToken } from '../../config/firebase.js';
@@ -101,11 +101,7 @@ export const authService = {
   firebasePhoneLogin: async ({
     idToken,
     name,
-    email,
-    role,
-    playerRole,
-    battingStyle,
-    bowlingStyle
+    email
   }) => {
     let decoded;
     try {
@@ -133,10 +129,10 @@ export const authService = {
       if (emailValue && await User.exists({ email: emailValue })) {
         throw new ApiError(400, 'Email is already registered with another account');
       }
-      const userRole = role === 'player' ? 'player' : 'user';
-      const normalizedPlayerRole = normalizePlayerRole(playerRole);
-      const userBattingStyle = normalizeUserBattingStyle(battingStyle);
-      const userBowlingStyle = normalizeUserBowlingStyle(bowlingStyle);
+      // Everyone registers as a plain 'user' (Fan). Player status and the
+      // linked Player document are granted later when the account
+      // completes its Cricket Profile (see userService.promoteToPlayer),
+      // not chosen/created at sign-up.
       const username = await buildUniqueUsername(fullName, phone);
       const generatedPassword = crypto.randomBytes(24).toString('hex');
       user = await User.create({
@@ -145,28 +141,9 @@ export const authService = {
         username,
         fullName,
         phone,
-        role: userRole,
-        isPhoneVerified: true,
-        isPublicPlayer: true,
-        cricketProfile: {
-          playerType: normalizedPlayerRole,
-          battingStyle: userBattingStyle,
-          bowlingStyle: userBowlingStyle,
-          preferredRole: [normalizedPlayerRole]
-        }
+        role: 'user',
+        isPhoneVerified: true
       });
-      const Player = (await import('../player/player.model.js')).default;
-      const player = await Player.create({
-        user: user._id,
-        playerName: fullName,
-        phone,
-        role: normalizedPlayerRole,
-        battingStyle: normalizePlayerBattingStyle(battingStyle),
-        bowlingStyle: normalizePlayerBowlingStyle(bowlingStyle),
-        isActive: true
-      });
-      user.cricketProfile.playerId = player._id;
-      await user.save();
       await Wallet.create({ user: user._id, balance: 0 });
     } else if (!user.isPhoneVerified) {
       user.isPhoneVerified = true;
@@ -364,6 +341,84 @@ export const authService = {
       accessToken,
       refreshToken
     };
+  },
+
+  // Send (or resend) a login/registration OTP to an email address.
+  // Existing verified accounts just get a fresh OTP; unknown emails require
+  // a name and are created on the spot (mirrors firebasePhoneLogin's
+  // auto-provisioning), matching the app's OTP-only auth flow.
+  requestEmailOtp: async ({ email, name }) => {
+    const normalizedEmail = email?.toString().trim().toLowerCase();
+    if (!normalizedEmail) {
+      throw new ApiError(400, 'Email is required');
+    }
+
+    let user = await User.findOne({ email: normalizedEmail });
+    let isNewUser = false;
+
+    if (!user) {
+      const fullName = name?.toString().trim();
+      if (!fullName || fullName.length < 2) {
+        throw new ApiError(409, 'Enter your name to create your Scores11 account', [{
+          code: 'PROFILE_REQUIRED',
+          field: 'name',
+          message: 'Full name is required for a new email account'
+        }]);
+      }
+      const username = await buildUniqueUsername(fullName, normalizedEmail.split('@')[0]);
+      const generatedPassword = crypto.randomBytes(24).toString('hex');
+      user = await User.create({
+        email: normalizedEmail,
+        password: await hashPassword(generatedPassword),
+        username,
+        fullName,
+        role: 'user',
+        isEmailVerified: false
+      });
+      try {
+        await Wallet.create({ user: user._id, balance: 0 });
+      } catch (walletError) {
+        console.error('Wallet creation failed (non-fatal):', walletError.message);
+      }
+      isNewUser = true;
+    }
+
+    const otp = generateOTP();
+    user.phoneVerificationCode = otp;
+    user.phoneVerificationExpire = new Date(Date.now() + OTP_EXPIRY);
+    await user.save();
+
+    try {
+      await sendLoginOtpEmail(normalizedEmail, otp);
+    } catch (emailError) {
+      console.error('Login OTP email failed:', emailError.message);
+    }
+    console.log(`Email OTP for ${normalizedEmail}: ${otp}`);
+
+    return { isNewUser, message: 'OTP sent to your email' };
+  },
+
+  // Verify an email OTP and log the user in (creates the session the same
+  // way login()/firebasePhoneLogin() do).
+  verifyEmailOtp: async ({ email, otp }) => {
+    const normalizedEmail = email?.toString().trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      throw new ApiError(404, 'Account not found. Please request a new OTP.');
+    }
+    if (!user.phoneVerificationCode || user.phoneVerificationCode !== otp) {
+      throw new ApiError(400, 'Invalid OTP');
+    }
+    if (user.phoneVerificationExpire && new Date() > user.phoneVerificationExpire) {
+      throw new ApiError(400, 'OTP has expired');
+    }
+
+    user.phoneVerificationCode = null;
+    user.phoneVerificationExpire = null;
+    user.isEmailVerified = true;
+    await user.save();
+
+    return issueAuthSession(user);
   },
 
   // Forgot password - send OTP via email

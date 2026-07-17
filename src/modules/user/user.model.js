@@ -272,6 +272,15 @@ const userSchema = new mongoose.Schema({
     default: false
   },
   blockedReason: String,
+  // Soft-delete: set by userService.deleteAccount, hard-purged by
+  // purgeDeletedAccounts 30 days later.
+  isDeleted: {
+    type: Boolean,
+    default: false
+  },
+  deletedAt: {
+    type: Date
+  },
   
   // Public Player Visibility (for players to be searchable by captains)
   isPublicPlayer: {

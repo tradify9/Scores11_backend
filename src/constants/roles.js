@@ -36,17 +36,11 @@ export const ROLE_PERMISSIONS = {
   ],
   [ROLES.USER]: [
     'view_own_profile',
-    'update_own_profile', 
+    'update_own_profile',
     'view_matches',
     'view_tournaments',
     'create_team',
-    'join_tournament',
-    'manage_match_scoring',
-    'update_match_status',
-    'initialize_live_score',
-    'control_live_stream',
-    'add_ball',
-    'set_striker_bowler'
+    'join_tournament'
   ]
 };
 

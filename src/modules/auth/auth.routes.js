@@ -14,6 +14,8 @@ router.post('/login', authLimiter, authController.login);
 router.post('/phone/firebase', firebasePhoneAuthLimiter, authController.firebasePhoneLogin);
 router.post('/firebase/phone', firebasePhoneAuthLimiter, authController.firebasePhoneLogin);
 router.post('/phone-login', firebasePhoneAuthLimiter, authController.firebasePhoneLogin);
+router.post('/email/send-otp', authLimiter, authController.sendEmailOtp);
+router.post('/email/verify-otp', authLimiter, authController.verifyEmailOtp);
 router.post('/forgot-password', authLimiter, authController.forgotPassword);
 router.post('/reset-password', authLimiter, authController.resetPassword);
 

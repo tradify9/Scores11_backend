@@ -21,6 +21,22 @@ export const scoringController = {
     }
   },
 
+  // GET /match/:matchId/over-summary - Public over-by-over breakdown
+  getOverSummaryData: async (req, res) => {
+    try {
+      const overs = await scoringService.getOverSummaryData(req.params.matchId);
+      res.status(200).json({
+        success: true,
+        data: overs
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message || 'Failed to load over summary'
+      });
+    }
+  },
+
   // GET /match/:matchId/live - Public live score
   getLiveScore: async (req, res) => {
     try {
@@ -259,6 +275,22 @@ export const scoringController = {
         req.params.matchId,
         req.body.batsmanId
       );
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      res.status(error.statusCode || 500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
+
+  // PATCH /match/:matchId/swap-strike
+  swapStrike: async (req, res) => {
+    try {
+      const result = await scoringService.swapStrike(req.params.matchId);
       res.status(200).json({
         success: true,
         data: result

@@ -10,6 +10,16 @@ import bcrypt from 'bcryptjs';
 import { sendVerificationEmail } from '../../utils/sendVerificationEmail.js';
 import { notificationService } from '../notification/notification.service.js';
 
+const normalizePlayingStyleToPlayerType = (playingStyle) => {
+  const value = playingStyle?.toString().trim().toLowerCase();
+  if (!value) return null;
+  if (value.includes('wicket')) return 'wicket-keeper';
+  if (value.includes('all')) return 'all-rounder';
+  if (value.includes('bowl') || value.includes('spin')) return 'bowler';
+  if (value.includes('bat')) return 'batsman';
+  return null;
+};
+
 export const userService = {
   getUserByEmail: async (email) => {
     const user = await User.findOne({ email });
@@ -886,21 +896,41 @@ export const userService = {
     };
   },
 
+  // Saving a playing style is the app's "complete your Cricket Profile"
+  // action. It merges into the existing cricketProfile (rather than
+  // replacing it) and, the first time a Fan account does this, promotes
+  // them to the 'player' role and creates their linked Player document -
+  // players are no longer chosen at registration, they're earned by
+  // filling out their cricket profile.
   updatePlayingStyle: async (userId, playingStyleData) => {
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        cricketProfile: {
-          ...playingStyleData
-        }
-      },
-      { new: true, runValidators: true }
-    );
-
+    const user = await User.findById(userId);
     if (!user) {
       throw new ApiError(404, 'User not found');
     }
 
+    const playerType = normalizePlayingStyleToPlayerType(playingStyleData?.playingStyle);
+    const existingProfile = user.cricketProfile ? user.cricketProfile.toObject() : {};
+    user.cricketProfile = {
+      ...existingProfile,
+      ...(playerType ? { playerType } : {})
+    };
+
+    if (user.role === 'user' && !user.cricketProfile.playerId) {
+      user.role = 'player';
+      user.isPublicPlayer = true;
+      const player = await Player.create({
+        user: user._id,
+        playerName: user.fullName,
+        phone: user.phone || undefined,
+        role: playerType || 'batsman',
+        battingStyle: 'right-hand bat',
+        bowlingStyle: 'none',
+        isActive: true
+      });
+      user.cricketProfile.playerId = player._id;
+    }
+
+    await user.save();
     return user;
   },
 
