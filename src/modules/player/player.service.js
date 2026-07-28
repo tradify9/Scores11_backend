@@ -169,6 +169,64 @@ const playerLookupFilter = async (query, extraFilter = {}) => {
   };
 };
 
+const playerTypeFromUser = (user) => user.cricketProfile?.playerType || 'batsman';
+
+const toPlayerListItemFromUser = (user) => ({
+  _id: user.cricketProfile?.playerId || user._id,
+  user: {
+    _id: user._id,
+    fullName: user.fullName,
+    name: user.fullName,
+    username: user.username,
+    email: user.email,
+    phone: user.phone,
+    avatar: user.avatar
+  },
+  playerName: user.fullName,
+  email: user.email,
+  phone: user.phone,
+  profileImage: user.avatar,
+  role: playerTypeFromUser(user),
+  battingStyle: user.cricketProfile?.battingStyle || 'right-hand',
+  bowlingStyle: user.cricketProfile?.bowlingStyle || 'none',
+  stats: user.stats || {},
+  isActive: user.isActive !== false,
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
+  source: 'user'
+});
+
+const userPublicPlayerFilter = (query = {}) => {
+  const filter = {
+    isActive: true,
+    isBlocked: { $ne: true },
+    $or: [
+      { role: 'player' },
+      { isPublicPlayer: true },
+      { 'cricketProfile.playerId': { $exists: true, $ne: null } },
+      { 'cricketProfile.playerType': { $exists: true, $ne: null } }
+    ]
+  };
+
+  if (query.role) {
+    filter['cricketProfile.playerType'] = query.role;
+  }
+
+  if (query.search) {
+    const searchRegex = { $regex: escapeRegex(query.search.toString().trim()), $options: 'i' };
+    filter.$and = [{
+      $or: [
+        { fullName: searchRegex },
+        { username: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex }
+      ]
+    }];
+  }
+
+  return filter;
+};
+
 export const playerService = {
   createPlayer: async (playerData, userId) => {
     // 🔥 PUBLIC PLAYER CREATION: Allow creating players without login
@@ -293,15 +351,49 @@ export const playerService = {
       filter.playerName = { $regex: query.search, $options: 'i' };
     }
 
-    const [players, total] = await Promise.all([
+    const shouldIncludePublicUsers = query.my !== 'true';
+    const userFilter = shouldIncludePublicUsers ? userPublicPlayerFilter(query) : null;
+
+    const mergeLimit = skip + limit;
+    const [playerDocs, playerTotal, playerUsers, userTotal, allLinkedUserIds] = await Promise.all([
       Player.find(filter)
-        .populate('user', 'name email')
+        .populate('user', 'name fullName username email phone avatar')
         .populate('team', 'name shortName')
         .sort({ [sortBy]: sortOrder })
-        .skip(skip)
-        .limit(limit),
-      Player.countDocuments(filter)
+        .limit(mergeLimit),
+      Player.countDocuments(filter),
+      shouldIncludePublicUsers
+        ? User.find(userFilter)
+            .select('fullName username email phone avatar role cricketProfile stats isActive createdAt updatedAt')
+            .sort({ [sortBy]: sortOrder })
+            .limit(mergeLimit)
+            .lean()
+        : Promise.resolve([]),
+      shouldIncludePublicUsers ? User.countDocuments(userFilter) : Promise.resolve(0),
+      shouldIncludePublicUsers ? Player.distinct('user', { ...filter, user: { $ne: null } }) : Promise.resolve([])
     ]);
+
+    const linkedUserIds = new Set(
+      allLinkedUserIds.filter(Boolean).map(id => id.toString())
+    );
+
+    const players = [
+      ...playerDocs,
+      ...playerUsers
+        .filter(user => !linkedUserIds.has(user._id.toString()))
+        .map(toPlayerListItemFromUser)
+    ].sort((a, b) => {
+      const aValue = new Date(a[sortBy] || a.createdAt || 0).getTime();
+      const bValue = new Date(b[sortBy] || b.createdAt || 0).getTime();
+      return Number(sortOrder) === 1 || sortOrder === 'asc'
+        ? aValue - bValue
+        : bValue - aValue;
+    }).slice(skip, skip + limit);
+
+    const linkedPublicUserCount = shouldIncludePublicUsers
+      ? await User.countDocuments({ ...userFilter, _id: { $in: Array.from(linkedUserIds) } })
+      : 0;
+    const total = playerTotal + Math.max(userTotal - linkedPublicUserCount, 0);
 
     return {
       players,
@@ -388,13 +480,14 @@ export const playerService = {
       const searchQuery = query.trim();
       console.log(`Player search: "${searchQuery}" limit: ${limit}`);
 
-      const players = await Player.find(await playerLookupFilter(searchQuery) || {
+      const [playerDocs, playerUsers] = await Promise.all([
+        Player.find(await playerLookupFilter(searchQuery) || {
         isActive: true,
         playerName: { $regex: searchQuery, $options: 'i' }
       })
         .populate({
           path: 'user',
-          select: 'name fullName email phone',
+          select: 'name fullName username email phone avatar',
           match: { isActive: { $ne: false } }
         })
         .populate({
@@ -403,10 +496,25 @@ export const playerService = {
           match: { isActive: { $ne: false } }
         })
         .limit(limit)
-        .lean();
+          .lean(),
+        User.find(userPublicPlayerFilter({ search: searchQuery }))
+          .select('fullName username email phone avatar role cricketProfile stats isActive createdAt updatedAt')
+          .limit(limit)
+          .lean()
+      ]);
 
       // Filter out docs where populate failed (null refs)
-      const validPlayers = players.filter(p => p && p.isActive);
+      const linkedUserIds = new Set(
+        playerDocs
+          .filter(player => player.user?._id)
+          .map(player => player.user._id.toString())
+      );
+      const validPlayers = [
+        ...playerDocs.filter(p => p && p.isActive),
+        ...playerUsers
+          .filter(user => !linkedUserIds.has(user._id.toString()))
+          .map(toPlayerListItemFromUser)
+      ].slice(0, limit);
       
       console.log(`Player search found ${validPlayers.length} valid players`);
       return validPlayers;

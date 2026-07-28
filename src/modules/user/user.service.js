@@ -915,7 +915,7 @@ export const userService = {
       ...(playerType ? { playerType } : {})
     };
 
-    if (user.role === 'user' && !user.cricketProfile.playerId) {
+    if (!user.cricketProfile.playerId) {
       user.role = 'player';
       user.isPublicPlayer = true;
       const player = await Player.create({
@@ -1119,21 +1119,28 @@ export const userService = {
     const sortDirection = Number(sortOrder) === 1 || sortOrder === 'asc' ? 1 : -1;
 
     const userFilter = {
-      role: 'player',
       isActive: true,
-      isBlocked: false
+      isBlocked: { $ne: true },
+      $or: [
+        { role: 'player' },
+        { isPublicPlayer: true },
+        { 'cricketProfile.playerId': { $exists: true, $ne: null } },
+        { 'cricketProfile.playerType': { $exists: true, $ne: null } }
+      ]
     };
 
     const playerFilter = { isActive: true };
 
     if (search) {
       const searchRegex = { $regex: search, $options: 'i' };
-      userFilter.$or = [
+      userFilter.$and = [{
+        $or: [
         { fullName: searchRegex },
         { username: searchRegex },
         { email: searchRegex },
         { phone: searchRegex }
-      ];
+        ]
+      }];
       playerFilter.$or = [
         { playerName: searchRegex },
         { phone: searchRegex },
@@ -1157,24 +1164,37 @@ export const userService = {
         .lean()
     ]);
 
-    const userIdsWithPlayerDocs = new Set(
+    const playerDocByUserId = new Map(
       playerDocs
         .filter(player => player.user?._id)
-        .map(player => player.user._id.toString())
+        .map(player => [player.user._id.toString(), player])
     );
 
-    const normalizedUsers = playerUsers.map(user => ({
-      ...user,
-      isPublicPlayer: true,
-      cricketProfile: {
-        ...(user.cricketProfile || {}),
-        playerType: user.cricketProfile?.playerType || 'batsman'
-      },
-      source: 'user'
-    }));
+    const normalizedUsers = playerUsers.map(user => {
+      const linkedPlayer = playerDocByUserId.get(user._id.toString());
+      return {
+        ...user,
+        role: 'player',
+        isPublicPlayer: true,
+        cricketProfile: {
+          ...(user.cricketProfile || {}),
+          playerId: linkedPlayer?._id || user.cricketProfile?.playerId,
+          playerType: linkedPlayer?.role || user.cricketProfile?.playerType || 'batsman',
+          battingStyle: linkedPlayer?.battingStyle || user.cricketProfile?.battingStyle,
+          bowlingStyle: linkedPlayer?.bowlingStyle || user.cricketProfile?.bowlingStyle,
+          matchesPlayed: linkedPlayer?.stats?.matches || user.cricketProfile?.matchesPlayed || 0,
+          totalRuns: linkedPlayer?.stats?.runs || user.cricketProfile?.totalRuns || 0,
+          totalWickets: linkedPlayer?.stats?.wickets || user.cricketProfile?.totalWickets || 0,
+          highestScore: linkedPlayer?.stats?.highestScore || user.cricketProfile?.highestScore || 0,
+          battingAverage: linkedPlayer?.stats?.average || user.cricketProfile?.battingAverage || 0
+        },
+        teamName: linkedPlayer?.team?.name || linkedPlayer?.team?.shortName || linkedPlayer?.teamName || user.cricketProfile?.teamName || '',
+        source: 'user'
+      };
+    });
 
     const normalizedPlayers = playerDocs
-      .filter(player => !player.user?._id || !userIdsWithPlayerDocs.has(player.user._id.toString()))
+      .filter(player => !player.user?._id || !playerUsers.some(user => user._id.toString() === player.user._id.toString()))
       .map(player => ({
         _id: player._id,
         fullName: player.playerName,
