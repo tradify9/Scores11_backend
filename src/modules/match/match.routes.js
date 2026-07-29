@@ -4,6 +4,7 @@ import { authenticate } from '../../middleware/auth.middleware.js';
 import { authorize } from '../../middleware/role.middleware.js';
 import { ROLES } from "../../constants/roles.js";
 import { createMatchSchema } from './match.validation.js';
+import { friendlyValidationMessage, sanitizeErrorDetails } from '../../utils/friendlyError.js';
 
 const router = express.Router();
 
@@ -15,8 +16,8 @@ const validateMatchCreate = (req, res, next) => {
   if (error) {
     return res.status(400).json({
       success: false,
-      message: error.details[0].message,
-      ...(process.env.NODE_ENV === 'development' && { details: error.details })
+      message: friendlyValidationMessage(error.details),
+      errors: sanitizeErrorDetails(error.details)
     });
   }
   next();

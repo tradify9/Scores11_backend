@@ -1,36 +1,38 @@
+import {
+  getErrorStatusCode,
+  sanitizeErrorDetails,
+  toFriendlyError
+} from '../utils/friendlyError.js';
+
 const errorMiddleware = (err, req, res, next) => {
   let error = { ...err };
-  error.statusCode = err.statusCode || 500;
-  error.message = err.message || 'Internal Server Error';
+  error.statusCode = getErrorStatusCode(err);
+  error.message = toFriendlyError(err);
 
   if (err.name === 'CastError') {
-    error.message = 'Resource not found';
-    error.statusCode = 404;
+    error.message = toFriendlyError(err);
+    error.statusCode = getErrorStatusCode(err);
   }
 
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
-    error.message = `Duplicate field value: ${field}`;
-    error.statusCode = 400;
+    error.message = toFriendlyError(err);
+    error.statusCode = getErrorStatusCode(err);
   }
 
   if (err.name === 'ValidationError') {
-    const messages = Object.values(err.errors).map(val => val.message);
-    error.message = messages.join(', ');
-    error.statusCode = 400;
+    error.message = toFriendlyError(err);
+    error.statusCode = getErrorStatusCode(err);
   }
 
   const response = {
+    success: false,
     statusCode: error.statusCode,
     message: error.message
   };
 
-  if (err.errors?.length) {
-    response.errors = err.errors;
-  }
-
-  if (process.env.NODE_ENV === 'development') {
-    response.stack = err.stack;
+  const details = sanitizeErrorDetails(err.errors);
+  if (details?.length) {
+    response.errors = details;
   }
 
   res.status(error.statusCode).json(response);

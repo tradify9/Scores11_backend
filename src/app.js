@@ -14,6 +14,7 @@ import notFoundMiddleware from './middleware/notFound.middleware.js';
 import rateLimiter from './middleware/rateLimiter.middleware.js';
 import routes from './routes.js';
 import schedulePurgeDeletedAccounts from './jobs/purgeDeletedAccounts.js';
+import { toFriendlyError } from './utils/friendlyError.js';
 
 const app = express();
 
@@ -77,7 +78,9 @@ app.get('/health', async (req, res) => {
   } catch (error) {
     res.status(503).json({
       status: 'error',
-      message: error.message
+      message: toFriendlyError(error, {
+        fallback: 'Health check failed. Please try again shortly.'
+      })
     });
   }
 });

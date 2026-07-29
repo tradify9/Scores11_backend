@@ -1,4 +1,5 @@
 import ApiError from '../utils/ApiError.js';
+import { friendlyValidationMessage, sanitizeErrorDetails } from '../utils/friendlyError.js';
 
 export const validate = (schema) => {
   return (req, res, next) => {
@@ -15,8 +16,8 @@ export const validate = (schema) => {
         field: detail.path.join('.'),
         message: detail.message
       }));
-      const errorMessage = errors.length > 0 ? `Validation Error: ${errors[0].message}` : 'Validation failed';
-      return next(new ApiError(400, errorMessage, { details: errors }));
+      const errorMessage = friendlyValidationMessage(error.details);
+      return next(new ApiError(400, errorMessage, { details: sanitizeErrorDetails(errors) }));
     }
 
     req.body = value;
@@ -38,8 +39,8 @@ export const validateQuery = (schema) => {
         field: detail.path.join('.'),
         message: detail.message
       }));
-      const errorMessage = errors.length > 0 ? `Query Validation Error: ${errors[0].message}` : 'Query validation failed';
-      return next(new ApiError(400, errorMessage, { details: errors }));
+      const errorMessage = friendlyValidationMessage(error.details, 'Query validation');
+      return next(new ApiError(400, errorMessage, { details: sanitizeErrorDetails(errors) }));
     }
 
     req.query = value;
@@ -61,8 +62,8 @@ export const validateParams = (schema) => {
         field: detail.path.join('.'),
         message: detail.message
       }));
-      const errorMessage = errors.length > 0 ? `Params Validation Error: ${errors[0].message}` : 'Params validation failed';
-      return next(new ApiError(400, errorMessage, { details: errors }));
+      const errorMessage = friendlyValidationMessage(error.details, 'Params validation');
+      return next(new ApiError(400, errorMessage, { details: sanitizeErrorDetails(errors) }));
     }
 
     req.params = value;

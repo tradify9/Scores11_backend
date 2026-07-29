@@ -15,8 +15,9 @@ const rateLimiter = rateLimit({
   max: config.rateLimit.maxRequests,
   skip: isFirebasePhoneAuthRoute,
   message: {
+    success: false,
     statusCode: 429,
-    message: 'Too many requests from this IP, please try again later'
+    message: 'Too many requests. Please try again after a moment.'
   },
   standardHeaders: true,
   legacyHeaders: false
@@ -26,8 +27,9 @@ export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: {
+    success: false,
     statusCode: 429,
-    message: 'Too many authentication attempts, please try again later'
+    message: 'Too many login attempts. Please try again after a moment.'
   },
   standardHeaders: true,
   legacyHeaders: false

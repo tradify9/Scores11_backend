@@ -2,6 +2,10 @@ import scoringService from './scoring.service.js';
 import ApiError from '../../utils/ApiError.js';
 import { ROLES } from '../../constants/roles.js';
 import auth from '../../middleware/auth.middleware.js';
+import { toFriendlyError } from '../../utils/friendlyError.js';
+
+const scoringErrorMessage = (error, fallback = 'Scoring action failed. Please try again.') =>
+  toFriendlyError(error, { fallback });
 
 export const scoringController = {
   // GET /match/:matchId/scorecard - Public scorecard (NO AUTH required)
@@ -16,7 +20,7 @@ export const scoringController = {
       console.error('Scorecard error:', error);
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message || 'Failed to load scorecard'
+        message: scoringErrorMessage(error, 'Scorecard load nahi ho paaya.')
       });
     }
   },
@@ -32,7 +36,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message || 'Failed to load over summary'
+        message: scoringErrorMessage(error, 'Over summary load nahi ho paaya.')
       });
     }
   },
@@ -49,7 +53,7 @@ export const scoringController = {
       console.error('Live score error:', error);
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message || 'Failed to load live score'
+        message: scoringErrorMessage(error, 'Live score load nahi ho paaya.')
       });
     }
   },
@@ -74,7 +78,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message
+        message: scoringErrorMessage(error, 'Match initialize nahi ho paaya.')
       });
     }
   },
@@ -95,7 +99,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message
+        message: scoringErrorMessage(error, 'Ball save nahi ho paayi.')
       });
     }
   },
@@ -110,7 +114,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message || 'Failed to load scoring rules'
+        message: scoringErrorMessage(error, 'Scoring rules load nahi ho paaye.')
       });
     }
   },
@@ -129,7 +133,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message
+        message: scoringErrorMessage(error, 'Last ball undo nahi ho paayi.')
       });
     }
   },
@@ -139,7 +143,7 @@ export const scoringController = {
       const result = await scoringService.retireBatter(req.params.matchId, req.body, req.user.userId);
       res.status(200).json({ success: true, data: result });
     } catch (error) {
-      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+      res.status(error.statusCode || 500).json({ success: false, message: scoringErrorMessage(error, 'Batter retire nahi ho paaya.') });
     }
   },
 
@@ -148,7 +152,7 @@ export const scoringController = {
       const result = await scoringService.updateInningsContinuation(req.params.matchId, req.body);
       res.status(200).json({ success: true, data: result });
     } catch (error) {
-      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+      res.status(error.statusCode || 500).json({ success: false, message: scoringErrorMessage(error, 'Innings continuation update nahi ho paaya.') });
     }
   },
 
@@ -167,7 +171,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message
+        message: scoringErrorMessage(error, 'Innings start nahi ho paayi.')
       });
     }
   },
@@ -186,7 +190,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message
+        message: scoringErrorMessage(error, 'Innings end nahi ho paayi.')
       });
     }
   },
@@ -205,7 +209,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message
+        message: scoringErrorMessage(error, 'Match end nahi ho paaya.')
       });
     }
   },
@@ -225,7 +229,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message
+        message: scoringErrorMessage(error, 'Result update nahi ho paaya.')
       });
     }
   },
@@ -244,7 +248,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message
+        message: scoringErrorMessage(error, 'Rain/DLS update nahi ho paaya.')
       });
     }
   },
@@ -264,7 +268,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message
+        message: scoringErrorMessage(error, 'Striker update nahi ho paaya.')
       });
     }
   },
@@ -283,7 +287,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message
+        message: scoringErrorMessage(error, 'Non-striker update nahi ho paaya.')
       });
     }
   },
@@ -299,7 +303,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message
+        message: scoringErrorMessage(error, 'Strike swap nahi ho paaya.')
       });
     }
   },
@@ -318,7 +322,7 @@ export const scoringController = {
     } catch (error) {
       res.status(error.statusCode || 500).json({
         success: false,
-        message: error.message
+        message: scoringErrorMessage(error, 'Bowler update nahi ho paaya.')
       });
     }
   }
