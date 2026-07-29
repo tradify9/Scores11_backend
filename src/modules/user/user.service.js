@@ -873,12 +873,19 @@ export const userService = {
       throw new ApiError(404, 'User not found');
     }
 
-    // Generate QR code data - this could be a URL to the user's profile
+    const playerId = user.cricketProfile?.playerId || user._id;
+    const profileQr = `scores11://profile/${user._id}?playerId=${playerId}&name=${encodeURIComponent(user.fullName || user.username || 'Player')}&app=scores11`;
+
     const qrCodeData = {
       userId: user._id,
+      playerId,
       username: user.username,
       referralCode: user.referralCode,
-      url: `https://scores11.com/profile/${user.username}`
+      type: 'profile',
+      app: 'scores11',
+      qrData: profileQr,
+      url: profileQr,
+      webUrl: `https://scores11.com/profile/${user.username || user._id}`
     };
 
     return qrCodeData;
@@ -1120,27 +1127,24 @@ export const userService = {
 
     const userFilter = {
       isActive: true,
-      isBlocked: { $ne: true },
-      $or: [
-        { role: 'player' },
-        { isPublicPlayer: true },
-        { 'cricketProfile.playerId': { $exists: true, $ne: null } },
-        { 'cricketProfile.playerType': { $exists: true, $ne: null } }
-      ]
+      isBlocked: { $ne: true }
     };
 
     const playerFilter = { isActive: true };
 
     if (search) {
       const searchRegex = { $regex: search, $options: 'i' };
-      userFilter.$and = [{
-        $or: [
-        { fullName: searchRegex },
-        { username: searchRegex },
-        { email: searchRegex },
-        { phone: searchRegex }
-        ]
-      }];
+      userFilter.$and = [
+        ...(userFilter.$and || []),
+        {
+          $or: [
+            { fullName: searchRegex },
+            { username: searchRegex },
+            { email: searchRegex },
+            { phone: searchRegex }
+          ]
+        }
+      ];
       playerFilter.$or = [
         { playerName: searchRegex },
         { phone: searchRegex },
@@ -1150,7 +1154,20 @@ export const userService = {
     }
 
     if (playerType) {
-      userFilter['cricketProfile.playerType'] = playerType;
+      userFilter.$and = [
+        ...(userFilter.$and || []),
+        {
+          $or: [
+            { 'cricketProfile.playerType': playerType },
+            ...(playerType === 'batsman'
+              ? [
+                  { 'cricketProfile.playerType': { $exists: false } },
+                  { 'cricketProfile.playerType': null }
+                ]
+              : [])
+          ]
+        }
+      ];
       playerFilter.role = playerType;
     }
 

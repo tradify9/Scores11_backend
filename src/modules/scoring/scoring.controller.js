@@ -215,7 +215,8 @@ export const scoringController = {
     try {
       const result = await scoringService.updateResult(
         req.params.matchId,
-        req.body
+        req.body,
+        req.user.userId
       );
       res.status(200).json({
         success: true,
@@ -324,4 +325,3 @@ export const scoringController = {
 };
 
 export default scoringController;
-

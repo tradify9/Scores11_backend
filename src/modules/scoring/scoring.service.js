@@ -56,6 +56,40 @@ const resolvePlayerUserId = async (playerId) => {
 const notifyMatchFollowers = async (match, payload, actorUserId) => {
   try {
     const recipients = await getMatchNotificationRecipients(match);
+    const data = payload.data || {};
+    const teamIds = [
+      match.team1,
+      match.team2,
+      data.teamId,
+      data.battingTeamId,
+      data.bowlingTeamId,
+      data.winnerTeamId
+    ].map(id => id?.toString?.()).filter(Boolean);
+    const teams = teamIds.length
+      ? await Team.find({ _id: { $in: [...new Set(teamIds)] } }).select('name shortName').lean()
+      : [];
+    const teamMap = new Map(teams.map(team => [team._id.toString(), team]));
+    const teamLabel = (id) => {
+      const team = teamMap.get(id?.toString?.());
+      return team?.shortName || team?.name || '';
+    };
+
+    const playerIds = [
+      data.playerId,
+      data.batsmanId,
+      data.bowlerId,
+      data.fielderId,
+      data.playerOfMatchId
+    ].map(id => id?.toString?.()).filter(Boolean);
+    const players = playerIds.length
+      ? await Player.find({ _id: { $in: [...new Set(playerIds)] } }).select('playerName name').lean()
+      : [];
+    const playerMap = new Map(players.map(player => [player._id.toString(), player]));
+    const playerLabel = (id) => {
+      const player = playerMap.get(id?.toString?.());
+      return player?.playerName || player?.name || '';
+    };
+
     await Promise.all(recipients.map(userId => notificationService.sendNotification({
       userId,
       title: payload.title,
@@ -64,11 +98,22 @@ const notifyMatchFollowers = async (match, payload, actorUserId) => {
       skipIfSelfUserId: actorUserId,
       data: {
         matchId: match._id,
+        team1Id: match.team1,
+        team2Id: match.team2,
+        team1Name: teamLabel(match.team1),
+        team2Name: teamLabel(match.team2),
         tournamentId: match.tournament,
         referenceId: match._id,
         actionUrl: `/match/${match._id}`,
         sound: 'scores11',
-        ...(payload.data || {})
+        ...data,
+        ...(data.battingTeamId ? { battingTeamName: teamLabel(data.battingTeamId) } : {}),
+        ...(data.bowlingTeamId ? { bowlingTeamName: teamLabel(data.bowlingTeamId) } : {}),
+        ...(data.winnerTeamId ? { winnerTeamName: teamLabel(data.winnerTeamId) } : {}),
+        ...(data.playerId ? { playerName: playerLabel(data.playerId) } : {}),
+        ...(data.batsmanId ? { batsmanName: playerLabel(data.batsmanId) } : {}),
+        ...(data.bowlerId ? { bowlerName: playerLabel(data.bowlerId) } : {}),
+        ...(data.playerOfMatchId ? { playerOfMatchName: playerLabel(data.playerOfMatchId) } : {})
       }
     })));
   } catch (error) {
@@ -205,7 +250,12 @@ console.log('[SCORING] Batting order set:', match.battingOrder.length, 'teams');
     await notifyMatchFollowers(match, {
       title: 'Match is live',
       message: 'Live scoring has started. Follow every update now.',
-      type: 'match'
+      type: 'match',
+      data: {
+        battingTeamId: firstInningsBattingTeam,
+        bowlingTeamId: firstInningsBowlingTeam,
+        event: 'live'
+      }
     }, userId);
 
     return await Match.findById(matchId)
@@ -708,7 +758,12 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       await notifyMatchFollowers(match, {
         title: 'Match completed',
         message: match.result?.message || 'The match result is ready.',
-        type: 'match'
+        type: 'match',
+        data: {
+          event: 'result',
+          winnerTeamId: match.result?.winner,
+          playerOfMatchId: match.result?.playerOfMatch
+        }
       }, userId);
     } else if (isWicket) {
       const dismissedUserId = await resolvePlayerUserId(dismissedId);
@@ -716,7 +771,15 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
         title: 'Wicket!',
         message: `${normalizedWicketType || 'Wicket'} at ${innings.totalRuns}/${innings.totalWickets}.`,
         type: 'score',
-        data: { event: 'wicket' }
+        data: {
+          event: 'wicket',
+          playerId: dismissedId,
+          batsmanId: dismissedId,
+          bowlerId: actualBowlerId,
+          fielderId,
+          battingTeamId: innings.battingTeam,
+          bowlingTeamId: innings.bowlingTeam
+        }
       }, dismissedUserId);
     } else if (scoredRuns === 4 || scoredRuns === 6) {
       const strikerUserId = await resolvePlayerUserId(scoringBatsmanId);
@@ -724,7 +787,14 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
         title: scoredRuns === 6 ? 'Six!' : 'Four!',
         message: `${scoredRuns} runs. Score ${innings.totalRuns}/${innings.totalWickets}.`,
         type: 'score',
-        data: { event: scoredRuns === 6 ? 'six' : 'four' }
+        data: {
+          event: scoredRuns === 6 ? 'six' : 'four',
+          playerId: scoringBatsmanId,
+          batsmanId: scoringBatsmanId,
+          bowlerId: actualBowlerId,
+          battingTeamId: innings.battingTeam,
+          bowlingTeamId: innings.bowlingTeam
+        }
       }, strikerUserId);
     }
 
@@ -1750,7 +1820,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
   },
 
   // Update match result
-  updateResult: async (matchId, resultData) => {
+  updateResult: async (matchId, resultData, userId) => {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
 
@@ -1769,6 +1839,16 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
 
     match.status = MATCH_STATUS.COMPLETED;
     await match.save();
+    await notifyMatchFollowers(match, {
+      title: 'Match result updated',
+      message: match.result?.message || 'The match result is ready.',
+      type: 'match',
+      data: {
+        event: 'result',
+        winnerTeamId: winner,
+        playerOfMatchId: resultData.playerOfMatch
+      }
+    }, userId);
 
     return await Match.findById(matchId)
       .populate('team1', 'name shortName')
@@ -1803,6 +1883,16 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       match: completedMatch,
       result: completedMatch.result
     });
+    await notifyMatchFollowers(match, {
+      title: 'Match completed',
+      message: match.result?.message || 'The match result is ready.',
+      type: 'match',
+      data: {
+        event: 'result',
+        winnerTeamId: match.result?.winner,
+        playerOfMatchId: match.result?.playerOfMatch
+      }
+    }, userId);
 
     return completedMatch;
   },

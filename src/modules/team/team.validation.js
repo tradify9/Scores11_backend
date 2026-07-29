@@ -7,7 +7,7 @@ export const createTeamSchema = Joi.object({
   contestId: Joi.string().allow(''),
   captainId: Joi.string().allow(''),
   viceCaptainId: Joi.string().allow(''),
-  players: Joi.array().items(Joi.string()).min(11).max(25).optional(),
+  players: Joi.array().items(Joi.string()).min(2).max(25).optional(),
   description: Joi.string().max(1000),
   homeGround: Joi.string().max(100),
   city: Joi.string().max(50),

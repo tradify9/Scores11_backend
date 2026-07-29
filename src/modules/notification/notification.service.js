@@ -34,13 +34,25 @@ const normalizeNotification = (notification) => {
 export const notificationService = {
   getNotifications: async (userId, query) => {
     const { page, limit, skip } = getPagination(query);
+    const filter = { user: userId };
+
+    if (query?.unread === 'true' || query?.isRead === 'false') {
+      filter.isRead = false;
+    } else if (query?.isRead === 'true') {
+      filter.isRead = true;
+    }
+
+    if (query?.type && query.type !== 'all') {
+      const types = query.type.toString().split(',').map(type => type.trim()).filter(Boolean);
+      if (types.length) filter.type = { $in: types };
+    }
     
     const [notifications, total] = await Promise.all([
-      Notification.find({ user: userId })
+      Notification.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
-      Notification.countDocuments({ user: userId })
+      Notification.countDocuments(filter)
     ]);
 
     return {

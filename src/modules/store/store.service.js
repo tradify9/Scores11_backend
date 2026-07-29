@@ -1,4 +1,4 @@
-import { Product, Order } from './product.model.js';
+import { Product, Order, Cart } from './product.model.js';
 import Wallet from '../wallet/wallet.model.js';
 import Transaction from '../wallet/transaction.model.js';
 import ApiError from '../../utils/ApiError.js';
@@ -120,7 +120,74 @@ export const storeService = {
       shippingAddress
     });
 
+    await Cart.findOneAndUpdate({ user: userId }, { items: [] }).catch(() => null);
+
     return order;
+  },
+
+  getCart: async (userId) => {
+    let cart = await Cart.findOne({ user: userId })
+      .populate('items.product', 'name price originalPrice images stock category brand isActive');
+    if (!cart) {
+      cart = await Cart.create({ user: userId, items: [] });
+      await cart.populate('items.product', 'name price originalPrice images stock category brand isActive');
+    }
+    cart.items = cart.items.filter(item => item.product && item.product.isActive !== false);
+    await cart.save();
+    return cart;
+  },
+
+  addToCart: async (userId, { productId, quantity = 1 }) => {
+    const product = await Product.findOne({ _id: productId, isActive: true });
+    if (!product) throw new ApiError(404, 'Product not found');
+    if (product.stock < quantity) throw new ApiError(400, 'Insufficient stock');
+
+    let cart = await Cart.findOne({ user: userId });
+    if (!cart) cart = await Cart.create({ user: userId, items: [] });
+
+    const existing = cart.items.find(item => item.product.toString() === product._id.toString());
+    if (existing) {
+      existing.quantity = Math.min(existing.quantity + Number(quantity || 1), product.stock);
+    } else {
+      cart.items.push({ product: product._id, quantity: Number(quantity || 1) });
+    }
+    await cart.save();
+    return storeService.getCart(userId);
+  },
+
+  updateCartItem: async (userId, itemId, quantity) => {
+    const cart = await Cart.findOne({ user: userId });
+    if (!cart) throw new ApiError(404, 'Cart not found');
+    const item = cart.items.id(itemId);
+    if (!item) throw new ApiError(404, 'Cart item not found');
+    if (Number(quantity) <= 0) {
+      item.deleteOne();
+    } else {
+      const product = await Product.findById(item.product);
+      if (!product || product.isActive === false) throw new ApiError(404, 'Product not found');
+      if (product.stock < Number(quantity)) throw new ApiError(400, 'Insufficient stock');
+      item.quantity = Number(quantity);
+    }
+    await cart.save();
+    return storeService.getCart(userId);
+  },
+
+  removeFromCart: async (userId, itemId) => {
+    const cart = await Cart.findOne({ user: userId });
+    if (!cart) return { message: 'Cart already empty' };
+    const item = cart.items.id(itemId);
+    if (item) item.deleteOne();
+    await cart.save();
+    return storeService.getCart(userId);
+  },
+
+  clearCart: async (userId) => {
+    const cart = await Cart.findOneAndUpdate(
+      { user: userId },
+      { items: [] },
+      { new: true, upsert: true }
+    ).populate('items.product', 'name price originalPrice images stock category brand isActive');
+    return cart;
   },
 
   // Get my orders

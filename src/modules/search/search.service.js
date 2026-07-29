@@ -40,7 +40,7 @@ export const searchService = {
         ...(phoneDigits.length >= 4 ? [{ phone: { $regex: phoneDigits, $options: 'i' } }] : [])
       ]}
     )
-      .select('fullName username email avatar role')
+      .select('fullName username email phone avatar role cricketProfile')
       .limit(limit)
       .lean();
 
@@ -57,7 +57,7 @@ export const searchService = {
       .lean();
 
     // Search players
-    const players = await Player.find(
+    const playerDocs = await Player.find(
       { $or: [
         { playerName: searchRegex },
         { teamName: searchRegex },
@@ -70,6 +70,34 @@ export const searchService = {
       .populate('user', 'fullName name email phone')
       .limit(limit)
       .lean();
+
+    const playerUserIds = new Set(
+      playerDocs
+        .filter(player => player.user?._id)
+        .map(player => player.user._id.toString())
+    );
+
+    const players = [
+      ...playerDocs,
+      ...users
+        .filter(user => !playerUserIds.has(user._id.toString()))
+        .map(user => ({
+          _id: user.cricketProfile?.playerId || user._id,
+          user: {
+            _id: user._id,
+            fullName: user.fullName,
+            name: user.fullName,
+            email: user.email,
+            avatar: user.avatar
+          },
+          playerName: user.fullName,
+          role: user.cricketProfile?.playerType || 'batsman',
+          avatar: user.avatar,
+          email: user.email,
+          phone: user.phone,
+          source: 'user'
+        }))
+    ].slice(0, limit);
 
     // Search matches by populated team/tournament/venue fields used by this app.
     const matchingTeams = await Team.find(

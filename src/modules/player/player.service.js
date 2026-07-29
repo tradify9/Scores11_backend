@@ -31,6 +31,7 @@ const buildDynamicPlayerStats = async (playerId, fallbackStats = {}) => {
     $or: [
       { 'innings.battingScorecard.batsman': playerId },
       { 'innings.bowlingScorecard.bowler': playerId },
+      { 'battingOrder.players': playerId },
       { battingOrder: playerId }
     ]
   })
@@ -196,32 +197,43 @@ const toPlayerListItemFromUser = (user) => ({
   source: 'user'
 });
 
+const toPublicPlayerDetailFromUser = (user) => ({
+  ...toPlayerListItemFromUser(user),
+  nationality: user.country || 'India',
+  team: null
+});
+
 const userPublicPlayerFilter = (query = {}) => {
   const filter = {
     isActive: true,
-    isBlocked: { $ne: true },
-    $or: [
-      { role: 'player' },
-      { isPublicPlayer: true },
-      { 'cricketProfile.playerId': { $exists: true, $ne: null } },
-      { 'cricketProfile.playerType': { $exists: true, $ne: null } }
-    ]
+    isBlocked: { $ne: true }
   };
 
   if (query.role) {
-    filter['cricketProfile.playerType'] = query.role;
+    filter.$or = [
+      { 'cricketProfile.playerType': query.role },
+      ...(query.role === 'batsman'
+        ? [
+            { 'cricketProfile.playerType': { $exists: false } },
+            { 'cricketProfile.playerType': null }
+          ]
+        : [])
+    ];
   }
 
   if (query.search) {
     const searchRegex = { $regex: escapeRegex(query.search.toString().trim()), $options: 'i' };
-    filter.$and = [{
+    filter.$and = [
+      ...(filter.$and || []),
+      {
       $or: [
         { fullName: searchRegex },
         { username: searchRegex },
         { email: searchRegex },
         { phone: searchRegex }
       ]
-    }];
+      }
+    ];
   }
 
   return filter;
@@ -276,7 +288,17 @@ export const playerService = {
       .populate('user', 'name')
       .populate('team', 'name shortName avatar');
     
-    if (!player) throw new ApiError(404, 'Player not found');
+    if (!player) {
+      const user = await User.findOne({
+        _id: playerId,
+        isActive: true,
+        isBlocked: { $ne: true }
+      })
+        .select('fullName username email phone avatar role cricketProfile stats isActive createdAt updatedAt')
+        .lean();
+      if (user) return toPublicPlayerDetailFromUser(user);
+      throw new ApiError(404, 'Player not found');
+    }
     return player;
   },
 
@@ -286,7 +308,23 @@ export const playerService = {
       .populate('team', 'name shortName logo city state')
       .lean();
 
-    if (!player) throw new ApiError(404, 'Player not found');
+    if (!player) {
+      const user = await User.findOne({
+        _id: playerId,
+        isActive: true,
+        isBlocked: { $ne: true }
+      })
+        .select('fullName username email phone avatar role cricketProfile stats isActive createdAt updatedAt')
+        .lean();
+      if (!user) throw new ApiError(404, 'Player not found');
+      const userPlayer = toPublicPlayerDetailFromUser(user);
+      return {
+        player: userPlayer,
+        stats: userPlayer.stats || {},
+        team: null,
+        user
+      };
+    }
 
     const stats = await buildDynamicPlayerStats(playerId, player.stats || {});
     await Player.findByIdAndUpdate(playerId, {
@@ -462,12 +500,34 @@ export const playerService = {
   },
 
   getTrendingPlayers: async (limit = 10) => {
-    const players = await Player.find({ isActive: true })
+    const [playerDocs, users] = await Promise.all([
+      Player.find({ isActive: true })
       .populate('user', 'name')
       .populate('team', 'name shortName')
       .sort({ createdAt: -1 })
-      .limit(limit);
-    return players;
+        .limit(limit)
+        .lean(),
+      User.find({ isActive: true, isBlocked: { $ne: true } })
+        .select('fullName username email phone avatar role cricketProfile stats isActive createdAt updatedAt')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean()
+    ]);
+
+    const linkedUserIds = new Set(
+      playerDocs
+        .filter(player => player.user?._id)
+        .map(player => player.user._id.toString())
+    );
+
+    return [
+      ...playerDocs,
+      ...users
+        .filter(user => !linkedUserIds.has(user._id.toString()))
+        .map(toPlayerListItemFromUser)
+    ]
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      .slice(0, limit);
   },
 
   searchPlayers: async (query, limit = 10) => {
@@ -549,14 +609,60 @@ export const playerService = {
   },
 
   getPlayerStats: async (playerId) => {
-    const player = await Player.findById(playerId)
+    let player = await Player.findById(playerId)
       .populate('user', 'name')
       .populate('team', 'name shortName')
       .lean();
 
-    if (!player) throw new ApiError(404, 'Player not found');
+    if (!player) {
+      const user = await User.findOne({
+        _id: playerId,
+        isActive: true,
+        isBlocked: { $ne: true }
+      })
+        .select('fullName username email phone avatar role cricketProfile stats isActive createdAt updatedAt')
+        .lean();
 
-    const stats = await buildDynamicPlayerStats(playerId, player.stats || {});
+      if (!user) throw new ApiError(404, 'Player not found');
+
+      const linkedPlayerId = user.cricketProfile?.playerId;
+      if (linkedPlayerId) {
+        player = await Player.findById(linkedPlayerId)
+          .populate('user', 'name')
+          .populate('team', 'name shortName')
+          .lean();
+      }
+
+      if (!player) {
+        const userStats = user.stats || {};
+        const profile = user.cricketProfile || {};
+        return {
+          player: toPublicPlayerDetailFromUser(user),
+          stats: {
+            matches: userStats.matches || profile.matchesPlayed || 0,
+            innings: userStats.innings || 0,
+            runs: userStats.runs || profile.totalRuns || 0,
+            balls: userStats.balls || 0,
+            fours: userStats.fours || 0,
+            sixes: userStats.sixes || 0,
+            average: userStats.average || profile.battingAverage || 0,
+            strikeRate: userStats.strikeRate || 0,
+            highestScore: userStats.highestScore || profile.highestScore || 0,
+            wickets: userStats.wickets || profile.totalWickets || 0,
+            economy: userStats.economy || 0,
+            hundreds: userStats.hundreds || 0,
+            fifties: userStats.fifties || 0,
+            bestBowlingRuns: userStats.bestBowlingRuns || 0,
+            bestBowlingWickets: userStats.bestBowlingWickets || 0,
+            bowlingInnings: userStats.bowlingInnings || 0,
+            bowlingOvers: userStats.bowlingOvers || 0,
+            runsConceded: userStats.runsConceded || 0
+          }
+        };
+      }
+    }
+
+    const stats = await buildDynamicPlayerStats(player._id, player.stats || {});
 
     return {
       player,

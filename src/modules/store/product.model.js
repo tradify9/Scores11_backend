@@ -6,6 +6,21 @@ const orderItemSchema = new mongoose.Schema({
   price: { type: Number, required: true }
 });
 
+const cartItemSchema = new mongoose.Schema({
+  product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+  quantity: { type: Number, required: true, min: 1, default: 1 }
+}, { _id: true });
+
+const cartSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    unique: true
+  },
+  items: [cartItemSchema]
+}, { timestamps: true });
+
 const orderSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
@@ -104,6 +119,7 @@ productSchema.index({ isFeatured: 1 });
 
 const Product = mongoose.model('Product', productSchema);
 const Order = mongoose.model('Order', orderSchema);
+const Cart = mongoose.model('Cart', cartSchema);
 
-export { Product, Order };
+export { Product, Order, Cart };
 export default Product;

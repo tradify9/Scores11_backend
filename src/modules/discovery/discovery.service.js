@@ -1,6 +1,7 @@
 import Discovery from './discovery.model.js';
 import ApiError from '../../utils/ApiError.js';
 import Player from '../player/player.model.js';
+import User from '../user/user.model.js';
 import Team from '../team/team.model.js';
 import Tournament from '../tournament/tournament.model.js';
 import Match from '../match/match.model.js';
@@ -177,6 +178,46 @@ export const discoveryService = {
             },
             views: player.stats?.matches || 0,
             createdAt: player.updatedAt || player.createdAt,
+          })))
+      );
+
+      const userQuery = { isActive: true, isBlocked: { $ne: true } };
+      if (queryText) {
+        userQuery.$or = [
+          { fullName: queryText },
+          { username: queryText },
+          { email: queryText },
+          { phone: queryText },
+        ];
+      }
+      tasks.push(
+        User.find(userQuery)
+          .select('fullName username email phone avatar cricketProfile stats createdAt updatedAt')
+          .sort({ updatedAt: -1 })
+          .limit(max)
+          .lean()
+          .then((users) => users.map((user) => ({
+            id: `player-${user.cricketProfile?.playerId || user._id}`,
+            _id: `player-${user.cricketProfile?.playerId || user._id}`,
+            sourceId: (user.cricketProfile?.playerId || user._id)?.toString(),
+            type: 'player',
+            name: user.fullName || user.username || 'Player',
+            location: 'Location not added',
+            image: user.avatar?.url,
+            rating: 4.4,
+            isPro: false,
+            isVerified: true,
+            availability: 'available',
+            contact: { phone: user.phone, email: user.email },
+            details: {
+              role: user.cricketProfile?.playerType || 'batsman',
+              battingStyle: user.cricketProfile?.battingStyle,
+              bowlingStyle: user.cricketProfile?.bowlingStyle,
+              stats: user.stats || {},
+              bio: 'Registered Scores11 user available as a team player.',
+            },
+            views: user.stats?.matchesPlayed || 0,
+            createdAt: user.updatedAt || user.createdAt,
           })))
       );
     }

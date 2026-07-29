@@ -45,6 +45,31 @@ export const storeController = {
     res.status(201).json(new ApiResponse(201, 'Order placed successfully', order));
   }),
 
+  getCart: catchAsync(async (req, res) => {
+    const cart = await storeService.getCart(req.user.userId);
+    res.json(new ApiResponse(200, 'Cart retrieved', cart));
+  }),
+
+  addToCart: catchAsync(async (req, res) => {
+    const cart = await storeService.addToCart(req.user.userId, req.body);
+    res.status(201).json(new ApiResponse(201, 'Product added to cart', cart));
+  }),
+
+  updateCartItem: catchAsync(async (req, res) => {
+    const cart = await storeService.updateCartItem(req.user.userId, req.params.itemId, req.body.quantity);
+    res.json(new ApiResponse(200, 'Cart updated', cart));
+  }),
+
+  removeFromCart: catchAsync(async (req, res) => {
+    const cart = await storeService.removeFromCart(req.user.userId, req.params.itemId);
+    res.json(new ApiResponse(200, 'Product removed from cart', cart));
+  }),
+
+  clearCart: catchAsync(async (req, res) => {
+    const cart = await storeService.clearCart(req.user.userId);
+    res.json(new ApiResponse(200, 'Cart cleared', cart));
+  }),
+
   // Get my orders
   getMyOrders: catchAsync(async (req, res) => {
     const { orders, pagination } = await storeService.getMyOrders(req.user.userId, req.query);

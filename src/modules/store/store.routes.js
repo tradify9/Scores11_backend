@@ -14,9 +14,14 @@ router.get('/products/:id', storeController.getProductById);
 // For backwards compatibility
 router.get('/', storeController.getAllProducts);
 router.get('/featured', storeController.getFeaturedProducts);
-router.get('/:id', storeController.getProductById);
 
 // Protected routes - Orders
+router.get('/cart', authenticate, storeController.getCart);
+router.post('/cart/add', authenticate, storeController.addToCart);
+router.put('/cart/item/:itemId', authenticate, storeController.updateCartItem);
+router.delete('/cart/item/:itemId', authenticate, storeController.removeFromCart);
+router.delete('/cart/clear', authenticate, storeController.clearCart);
+
 router.post('/orders', authenticate, storeController.placeOrder);
 router.get('/orders/my', authenticate, storeController.getMyOrders);
 router.get('/orders/:id', authenticate, storeController.getOrderById);
@@ -29,5 +34,8 @@ router.delete('/products/:id', authenticate, authorize(ROLES.ADMIN), storeContro
 
 // Admin routes - Orders
 router.patch('/orders/:id/status', authenticate, authorize(ROLES.ADMIN), storeController.updateOrderStatus);
+
+// For backwards compatibility: keep generic product lookup after concrete routes.
+router.get('/:id', storeController.getProductById);
 
 export default router;

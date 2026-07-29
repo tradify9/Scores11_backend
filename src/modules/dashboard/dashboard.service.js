@@ -226,12 +226,48 @@ export const dashboardService = {
   // Get trending players (players with most activity/runs/wickets)
   getTrendingPlayers: async (limit = 10) => {
     try {
-      const players = await Player.find({ isActive: true })
-        .select('playerName jerseyNumber role team avatar battingStats bowlingStats')
+      const [playerDocs, users] = await Promise.all([
+        Player.find({ isActive: true })
+        .select('playerName jerseyNumber role team user avatar battingStats bowlingStats')
         .populate('team', 'name shortName')
         .sort({ 'battingStats.runs': -1, 'bowlingStats.wickets': -1 })
         .limit(limit)
-        .lean();
+          .lean(),
+        User.find({ isActive: true, isBlocked: { $ne: true } })
+          .select('fullName username avatar cricketProfile stats createdAt')
+          .sort({ createdAt: -1 })
+          .limit(limit)
+          .lean()
+      ]);
+
+      const linkedUserIds = new Set(
+        playerDocs
+          .filter(player => player.user?._id)
+          .map(player => player.user._id.toString())
+      );
+
+      const players = [
+        ...playerDocs,
+        ...users
+          .filter(user => !linkedUserIds.has(user._id.toString()))
+          .map(user => ({
+            _id: user.cricketProfile?.playerId || user._id,
+            playerName: user.fullName || user.username,
+            role: user.cricketProfile?.playerType || 'batsman',
+            avatar: user.avatar,
+            battingStats: {
+              runs: user.cricketProfile?.totalRuns || 0,
+              matches: user.cricketProfile?.matchesPlayed || user.stats?.matchesPlayed || 0,
+              average: user.cricketProfile?.battingAverage || 0,
+              strikeRate: 0
+            },
+            bowlingStats: {
+              wickets: user.cricketProfile?.totalWickets || 0
+            },
+            createdAt: user.createdAt,
+            source: 'user'
+          }))
+      ].slice(0, limit);
 
       return players.map((player, index) => ({
         rank: index + 1,

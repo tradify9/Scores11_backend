@@ -76,6 +76,27 @@ const normalizeTeamBowlingStyle = (style) => {
   return map[value] || 'none';
 };
 
+const normalizeUserBowlingStyle = (style) => {
+  const value = (style || '').toString().trim().toLowerCase();
+  const map = {
+    'right-arm fast': 'right-arm-fast',
+    'right-arm-fast': 'right-arm-fast',
+    'right-arm medium': 'right-arm-medium',
+    'right-arm-medium': 'right-arm-medium',
+    'left-arm fast': 'left-arm-fast',
+    'left-arm-fast': 'left-arm-fast',
+    'left-arm medium': 'left-arm-medium',
+    'left-arm-medium': 'left-arm-medium',
+    'off-spin': 'spin',
+    'off spin': 'spin',
+    'leg-spin': 'spin',
+    'leg spin': 'spin',
+    spin: 'spin',
+    none: 'none'
+  };
+  return map[value] || 'none';
+};
+
 const normalizeContactInput = (input) => {
   if (input && typeof input === 'object' && !input._id) {
     const identifier = (input.playerId || input.identifier || input.email || input.phone || input.mobile || '').toString().trim();
@@ -96,6 +117,20 @@ const normalizeContactInput = (input) => {
 };
 
 const buildPublicInviteUrl = (code) => `/api/v1/teams/invite/${code}`;
+
+const uniqObjectIds = (values) => {
+  const seen = new Set();
+  const ids = [];
+
+  for (const value of values || []) {
+    const id = toIdString(value);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+
+  return ids;
+};
 
 const findPlayerByContact = async (contact) => {
   const rawIdentifier = contact.identifier || contact.email || contact.phone;
@@ -150,6 +185,7 @@ const findPlayerByContact = async (contact) => {
 const findOrCreatePlayerForTeam = async (team, playerInput) => {
   const contact = normalizeContactInput(playerInput);
   let player = await findPlayerByContact(contact);
+  let sourceUserId = null;
 
   if (!player) {
     const rawIdentifier = contact.identifier || contact.email || contact.phone;
@@ -165,6 +201,7 @@ const findOrCreatePlayerForTeam = async (team, playerInput) => {
 
       const source = profile || user;
       if (source) {
+        sourceUserId = profile?.user || user?._id || null;
         contact.name ||= source.fullName || source.name || '';
         contact.email ||= source.email || '';
         contact.phone ||= source.phone || '';
@@ -178,7 +215,7 @@ const findOrCreatePlayerForTeam = async (team, playerInput) => {
     if (!contact.name) {
       throw new ApiError(404, 'Player not found. Send player name with email/mobile to create and add.');
     }
-    if (!contact.email && !contact.phone) {
+    if (!sourceUserId && !contact.email && !contact.phone) {
       throw new ApiError(400, 'Email or mobile number is required to create player');
     }
 
@@ -192,8 +229,21 @@ const findOrCreatePlayerForTeam = async (team, playerInput) => {
       jerseyNumber: contact.jerseyNumber,
       team: team._id,
       teamName: team.name,
-      user: null
+      user: sourceUserId
     });
+
+    if (sourceUserId) {
+      await User.findByIdAndUpdate(sourceUserId, {
+        role: 'player',
+        isPublicPlayer: true,
+        $set: {
+          'cricketProfile.playerId': player._id,
+          'cricketProfile.playerType': player.role,
+          'cricketProfile.battingStyle': player.battingStyle === 'left-hand bat' ? 'left-hand' : 'right-hand',
+          'cricketProfile.bowlingStyle': normalizeUserBowlingStyle(player.bowlingStyle)
+        }
+      });
+    }
   }
 
   if (team.players.some(p => p.toString() === player._id.toString())) {
@@ -213,7 +263,15 @@ const findOrCreatePlayerForTeam = async (team, playerInput) => {
 export const teamService = {
   // Create a new team
   createTeam: async (teamData, userId) => {
-    const { matchId } = teamData;
+    const {
+      players: requestedPlayers = [],
+      captainId,
+      viceCaptainId,
+      captain,
+      viceCaptain,
+      matchId,
+      ...cleanTeamData
+    } = teamData;
 
     // ✅ MULTIPLE TEAMS: Check duplicate per match per user (allow same name different matches)
     if (matchId) {
@@ -234,14 +292,49 @@ export const teamService = {
       }
     }
 
-    // Create team
+    // Create team first, then resolve any User/Profile IDs into Player refs.
     const team = await Team.create({
-      ...teamData,
-      owner: userId
+      ...cleanTeamData,
+      matchId,
+      owner: userId,
+      players: []
     });
 
-    // Populate owner details
-    await team.populate("owner", "name email phone");
+    const resolvedByInputId = new Map();
+    const resolveAndAttachPlayer = async (input) => {
+      const inputId = toIdString(input);
+      if (!inputId) return null;
+
+      const player = await findOrCreatePlayerForTeam(team, { identifier: inputId });
+      const playerId = player._id.toString();
+      resolvedByInputId.set(inputId, playerId);
+      return playerId;
+    };
+
+    if (Array.isArray(requestedPlayers)) {
+      for (const playerInput of requestedPlayers) {
+        await resolveAndAttachPlayer(playerInput);
+      }
+    }
+
+    const requestedCaptainId = toIdString(captainId || captain);
+    const requestedViceCaptainId = toIdString(viceCaptainId || viceCaptain);
+    const resolvedCaptainId =
+      resolvedByInputId.get(requestedCaptainId) || (await resolveAndAttachPlayer(requestedCaptainId));
+    const resolvedViceCaptainId =
+      resolvedByInputId.get(requestedViceCaptainId) || (await resolveAndAttachPlayer(requestedViceCaptainId));
+
+    team.players = uniqObjectIds(team.players);
+    if (resolvedCaptainId) team.captain = resolvedCaptainId;
+    if (resolvedViceCaptainId) team.viceCaptain = resolvedViceCaptainId;
+    await team.save();
+
+    await team.populate([
+      { path: 'owner', select: 'name email phone' },
+      { path: 'captain', select: 'playerName jerseyNumber role avatar' },
+      { path: 'viceCaptain', select: 'playerName jerseyNumber role avatar' },
+      { path: 'players', select: 'playerName name email phone jerseyNumber role battingStyle bowlingStyle avatar stats' }
+    ]);
 
     return team;
   },
