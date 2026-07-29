@@ -1277,21 +1277,31 @@ console.log('[LIVE] getLiveScore populated:', {
       .sort({ innings: 1, overNumber: 1, ballNumber: 1 });
 
     const scorecardPlayerIds = new Set();
+    const addPlayerId = (value) => {
+      if (!value) return;
+      const raw = value._id || value.id || value;
+      if (raw) scorecardPlayerIds.add(raw.toString());
+    };
     match.innings.forEach(innings => {
       innings.battingScorecard.forEach(b => {
-        if (b.batsman) scorecardPlayerIds.add(b.batsman.toString());
-        if (b.bowler) scorecardPlayerIds.add(b.bowler.toString());
-        if (b.fielder) scorecardPlayerIds.add(b.fielder.toString());
+        addPlayerId(b.batsman);
+        addPlayerId(b.bowler);
+        addPlayerId(b.fielder);
       });
       innings.bowlingScorecard.forEach(b => {
-        if (b.bowler) scorecardPlayerIds.add(b.bowler.toString());
+        addPlayerId(b.bowler);
       });
       innings.fallOfWickets.forEach(w => {
-        if (w.batsman) scorecardPlayerIds.add(w.batsman.toString());
+        addPlayerId(w.batsman);
       });
     });
+    (match.team1Lineup || []).forEach(addPlayerId);
+    (match.team2Lineup || []).forEach(addPlayerId);
+    (match.battingOrder || []).forEach(order => {
+      (order?.players || []).forEach(addPlayerId);
+    });
     balls.forEach(ball => {
-      if (ball.wicketFielder) scorecardPlayerIds.add(ball.wicketFielder.toString());
+      addPlayerId(ball.wicketFielder);
     });
     const scorecardPlayers = await Player.find({ _id: { $in: Array.from(scorecardPlayerIds) } })
       .select('playerName name jerseyNumber avatar role')
@@ -1309,7 +1319,11 @@ console.log('[LIVE] getLiveScore populated:', {
     const playerPayload = (playerId) => {
       if (!playerId) return null;
       const id = playerId.toString();
-      return scorecardPlayerMap.get(id) || { playerName: 'Player' };
+      return scorecardPlayerMap.get(id) || {
+        _id: id,
+        playerName: 'Player',
+        name: 'Player'
+      };
     };
     const teamPayload = (teamId) => {
       if (!teamId) return null;
@@ -1479,7 +1493,18 @@ console.log('[LIVE] getLiveScore populated:', {
 
     return {
       match: {
+        ...(match.toObject ? match.toObject() : match),
         _id: match._id,
+        toss: match.toss ? {
+          ...(match.toss.toObject ? match.toss.toObject() : match.toss),
+          winner: teamPayload(match.toss.winner)
+        } : match.toss,
+        battingOrder: (match.battingOrder || []).map(order => ({
+          team: teamPayload(order?.team),
+          players: (order?.players || []).map(playerPayload).filter(Boolean)
+        })),
+        team1Lineup: (match.team1Lineup || []).map(playerPayload).filter(Boolean),
+        team2Lineup: (match.team2Lineup || []).map(playerPayload).filter(Boolean),
         team1: match.team1,
         team2: match.team2,
         venue: match.venue,
