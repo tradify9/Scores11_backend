@@ -179,6 +179,14 @@ const userSchema = new mongoose.Schema({
       default: Date.now
     }
   }],
+
+  equipment: [{
+    name: { type: String, trim: true },
+    icon: { type: String, trim: true },
+    brand: { type: String, trim: true },
+    model: { type: String, trim: true },
+    addedAt: { type: Date, default: Date.now }
+  }],
   
   // Teams & Groups
   currentTeam: {

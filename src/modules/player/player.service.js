@@ -299,7 +299,9 @@ export const playerService = {
       if (user) return toPublicPlayerDetailFromUser(user);
       throw new ApiError(404, 'Player not found');
     }
-    return player;
+    return Player.findById(player._id)
+      .populate('user', 'name fullName email phone')
+      .populate('team', 'name shortName');
   },
 
   getFullPlayerProfile: async (playerId) => {

@@ -5,164 +5,357 @@ import Match from '../match/match.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
 
+const toNumber = (value) => Number(value || 0) || 0;
+const playerId = (value) => (value?._id || value?.id || value)?.toString();
+
+const paginateRows = (rows, page, limit) => {
+  const start = (page - 1) * limit;
+  return rows.slice(start, start + limit).map((row, index) => ({
+    ...row,
+    rank: start + index + 1
+  }));
+};
+
+const oversToBalls = (overs) => {
+  const text = (overs || 0).toString();
+  const [overPart, ballPart = '0'] = text.split('.');
+  return (parseInt(overPart, 10) || 0) * 6 + Math.min(parseInt(ballPart, 10) || 0, 5);
+};
+
+const aggregatePlayerRows = async () => {
+  const matches = await Match.find({
+    isActive: { $ne: false },
+    innings: { $exists: true, $ne: [] }
+  })
+    .select('innings status')
+    .lean();
+
+  const byPlayer = new Map();
+  const ensure = (id) => {
+    if (!id) return null;
+    if (!byPlayer.has(id)) {
+      byPlayer.set(id, {
+        playerId: id,
+        matchIds: new Set(),
+        battingInnings: 0,
+        bowlingInnings: 0,
+        runs: 0,
+        balls: 0,
+        fours: 0,
+        sixes: 0,
+        outs: 0,
+        highestScore: 0,
+        wickets: 0,
+        ballsBowled: 0,
+        runsConceded: 0,
+        maidens: 0,
+      });
+    }
+    return byPlayer.get(id);
+  };
+
+  for (const match of matches) {
+    for (const innings of match.innings || []) {
+      for (const bat of innings.battingScorecard || []) {
+        const id = playerId(bat.batsman);
+        const row = ensure(id);
+        if (!row) continue;
+        const runs = toNumber(bat.runs);
+        const balls = toNumber(bat.balls);
+        row.matchIds.add(match._id.toString());
+        if (runs > 0 || balls > 0 || bat.howOut !== 'not_out') row.battingInnings += 1;
+        row.runs += runs;
+        row.balls += balls;
+        row.fours += toNumber(bat.fours);
+        row.sixes += toNumber(bat.sixes);
+        row.highestScore = Math.max(row.highestScore, runs);
+        if (bat.howOut && bat.howOut !== 'not_out' && bat.howOut !== 'retired_hurt') {
+          row.outs += 1;
+        }
+      }
+
+      for (const bowl of innings.bowlingScorecard || []) {
+        const id = playerId(bowl.bowler);
+        const row = ensure(id);
+        if (!row) continue;
+        const ballsBowled = toNumber(bowl.balls) || oversToBalls(bowl.overs);
+        row.matchIds.add(match._id.toString());
+        if (ballsBowled > 0 || toNumber(bowl.wickets) > 0) row.bowlingInnings += 1;
+        row.wickets += toNumber(bowl.wickets);
+        row.ballsBowled += ballsBowled;
+        row.runsConceded += toNumber(bowl.runsConceded ?? bowl.runs);
+        row.maidens += toNumber(bowl.maidens);
+      }
+    }
+  }
+
+  const players = await Player.find({ isActive: true })
+    .select('playerName name jerseyNumber role team avatar stats')
+    .populate('team', 'name shortName')
+    .lean();
+
+  return players
+    .map(player => {
+      const row = byPlayer.get(player._id.toString()) || {
+        matchIds: new Set(),
+        battingInnings: 0,
+        bowlingInnings: 0,
+        runs: 0,
+        balls: 0,
+        fours: 0,
+        sixes: 0,
+        outs: 0,
+        highestScore: 0,
+        wickets: 0,
+        ballsBowled: 0,
+        runsConceded: 0,
+        maidens: 0,
+      };
+      const stored = player.stats || {};
+      const matches = row.matchIds.size || toNumber(stored.matches);
+      const runs = row.runs || toNumber(stored.runs);
+      const balls = row.balls || toNumber(stored.balls);
+      const fours = row.fours || toNumber(stored.fours);
+      const sixes = row.sixes || toNumber(stored.sixes);
+      const wickets = row.wickets || toNumber(stored.wickets);
+      const highestScore = row.highestScore || toNumber(stored.highestScore);
+      const average = row.outs > 0
+        ? runs / row.outs
+        : toNumber(stored.average) || runs;
+      const strikeRate = balls > 0
+        ? (runs / balls) * 100
+        : toNumber(stored.strikeRate);
+      const economy = row.ballsBowled > 0
+        ? row.runsConceded / (row.ballsBowled / 6)
+        : toNumber(stored.economy);
+      const points = Math.round(
+        runs +
+        fours * 2 +
+        sixes * 3 +
+        wickets * 25 +
+        row.maidens * 8
+      );
+      return {
+        _id: player._id,
+        player,
+        playerName: player.playerName || player.name || 'Player',
+        name: player.playerName || player.name || 'Player',
+        role: player.role || 'player',
+        team: player.team || null,
+        matches,
+        innings: row.battingInnings,
+        bowlingInnings: row.bowlingInnings,
+        runs,
+        balls,
+        fours,
+        sixes,
+        highestScore,
+        average: Number(average.toFixed(2)),
+        strikeRate: Number(strikeRate.toFixed(2)),
+        wickets,
+        runsConceded: row.runsConceded,
+        economy: Number(economy.toFixed(2)),
+        points,
+        stats: {
+          matches,
+          runs,
+          balls,
+          fours,
+          sixes,
+          highestScore,
+          average: Number(average.toFixed(2)),
+          strikeRate: Number(strikeRate.toFixed(2)),
+          wickets,
+          economy: Number(economy.toFixed(2)),
+          points
+        }
+      };
+    })
+};
+
 export const leaderboardService = {
   // Get player leaderboard
   getPlayerLeaderboard: async (query) => {
-    const { page, limit, skip, sortBy, sortOrder } = getPagination(query);
-    
-    const filter = { isActive: true };
-    if (query.role) filter.role = query.role;
-    if (query.team) filter.team = query.team;
-
-    const [players, total] = await Promise.all([
-      Player.find(filter)
-        .select('playerName jerseyNumber role team avatar battingStats bowlingStats')
-        .populate('team', 'name shortName')
-        .sort({ 'battingStats.runs': -1 })
-        .skip(skip)
-        .limit(limit),
-      Player.countDocuments(filter)
-    ]);
-
-    // Add rank
-    const playersWithRank = players.map((player, index) => ({
-      rank: index + 1,
-      ...player.toObject()
-    }));
+    const { page, limit } = getPagination(query);
+    let rows = await aggregatePlayerRows();
+    if (query.role) rows = rows.filter(row => row.role === query.role);
+    if (query.team) rows = rows.filter(row => row.team?._id?.toString() === query.team);
+    rows.sort((a, b) => b.points - a.points || b.runs - a.runs || b.wickets - a.wickets);
 
     return {
-      players: playersWithRank,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+      players: paginateRows(rows, page, limit),
+      pagination: { page, limit, total: rows.length, pages: Math.ceil(rows.length / limit) }
     };
   },
 
   // Get batsman leaderboard
   getBatsmanLeaderboard: async (query) => {
-    const { page, limit, skip } = getPagination(query);
-    
-    const players = await Player.find({
-      isActive: true,
-      'battingStats.runs': { $gt: 0 }
-    })
-      .select('playerName jerseyNumber role team avatar battingStats')
-      .populate('team', 'name shortName')
-      .sort({ 'battingStats.runs': -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const playersWithRank = players.map((player, index) => ({
-      rank: index + 1,
-      runs: player.battingStats.runs,
-      matches: player.battingStats.matches,
-      average: player.battingStats.average,
-      strikeRate: player.battingStats.strikeRate,
-      centuries: player.battingStats.centuries,
-      fifties: player.battingStats.fifties,
-      ...player.toObject()
-    }));
+    const { page, limit } = getPagination(query);
+    const rows = (await aggregatePlayerRows())
+      .filter(row => row.runs > 0 || row.balls > 0)
+      .sort((a, b) => b.runs - a.runs || b.strikeRate - a.strikeRate);
 
     return {
-      batsmen: playersWithRank,
-      pagination: { page, limit, total: players.length }
+      batsmen: paginateRows(rows, page, limit),
+      pagination: { page, limit, total: rows.length, pages: Math.ceil(rows.length / limit) }
     };
   },
 
   // Get bowler leaderboard
   getBowlerLeaderboard: async (query) => {
-    const { page, limit, skip } = getPagination(query);
-    
-    const players = await Player.find({
-      isActive: true,
-      'bowlingStats.wickets': { $gt: 0 }
-    })
-      .select('playerName jerseyNumber role team avatar bowlingStats')
-      .populate('team', 'name shortName')
-      .sort({ 'bowlingStats.wickets': -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const playersWithRank = players.map((player, index) => ({
-      rank: index + 1,
-      wickets: player.bowlingStats.wickets,
-      matches: player.bowlingStats.matches,
-      economy: player.bowlingStats.economy,
-      bestFigures: player.bowlingStats.bestFigures,
-      fiveWickets: player.bowlingStats.fiveWickets,
-      ...player.toObject()
-    }));
+    const { page, limit } = getPagination(query);
+    const rows = (await aggregatePlayerRows())
+      .filter(row => row.wickets > 0 || row.bowlingInnings > 0)
+      .sort((a, b) => b.wickets - a.wickets || a.economy - b.economy);
 
     return {
-      bowlers: playersWithRank,
-      pagination: { page, limit, total: players.length }
+      bowlers: paginateRows(rows, page, limit),
+      pagination: { page, limit, total: rows.length, pages: Math.ceil(rows.length / limit) }
     };
   },
 
   // Get all-rounder leaderboard
   getAllRounderLeaderboard: async (query) => {
-    const { page, limit, skip } = getPagination(query);
-    
-    const players = await Player.find({
-      isActive: true,
-      role: 'all-rounder',
-      $or: [
-        { 'battingStats.runs': { $gt: 0 } },
-        { 'bowlingStats.wickets': { $gt: 0 } }
-      ]
-    })
-      .select('playerName jerseyNumber role team avatar battingStats bowlingStats')
-      .populate('team', 'name shortName')
-      .skip(skip)
-      .limit(limit);
-
-    // Calculate all-rounder points (simplified)
-    const playersWithPoints = players.map(player => {
-      const battingPoints = player.battingStats.runs / 10;
-      const bowlingPoints = player.bowlingStats.wickets * 2;
-      return {
-        ...player.toObject(),
-        allRounderPoints: Math.round(battingPoints + bowlingPoints)
-      };
-    });
-
-    // Sort by points
-    playersWithPoints.sort((a, b) => b.allRounderPoints - a.allRounderPoints);
-
-    const playersWithRank = playersWithPoints.map((player, index) => ({
-      rank: index + 1,
-      ...player
-    }));
+    const { page, limit } = getPagination(query);
+    const rows = (await aggregatePlayerRows())
+      .filter(row => row.runs > 0 || row.wickets > 0)
+      .sort((a, b) => b.points - a.points || b.runs - a.runs || b.wickets - a.wickets);
 
     return {
-      allRounders: playersWithRank,
-      pagination: { page, limit, total: players.length }
+      allRounders: paginateRows(rows, page, limit),
+      pagination: { page, limit, total: rows.length, pages: Math.ceil(rows.length / limit) }
     };
   },
 
   // Get team leaderboard
   getTeamLeaderboard: async (query) => {
-    const { page, limit, skip } = getPagination(query);
-    
+    const { page, limit } = getPagination(query);
     const teams = await Team.find({ isActive: true })
-      .select('name shortName logo city stats')
-      .sort({ 'stats.matchesWon': -1, 'stats.matchesPlayed': 1 })
-      .skip(skip)
-      .limit(limit);
+      .select('name shortName logo city stats players')
+      .lean();
+    const teamRows = new Map(teams.map(team => [team._id.toString(), {
+      _id: team._id,
+      team,
+      name: team.name,
+      shortName: team.shortName,
+      city: team.city,
+      playersCount: team.players?.length || 0,
+      matches: 0,
+      matchesPlayed: 0,
+      matchesWon: 0,
+      matchesLost: 0,
+      matchesTied: 0,
+      points: 0,
+      runs: 0,
+      wickets: 0,
+      stats: {
+        matches: 0,
+        matchesPlayed: 0,
+        matchesWon: 0,
+        matchesLost: 0,
+        matchesTied: 0,
+        points: 0,
+        runs: 0,
+        wickets: 0,
+      }
+    }]));
 
-    const teamsWithRank = teams.map((team, index) => ({
-      rank: index + 1,
-      matchesPlayed: team.stats.matchesPlayed,
-      matchesWon: team.stats.matchesWon,
-      matchesLost: team.stats.matchesLost,
-      winPercentage: team.stats.matchesPlayed > 0 
-        ? ((team.stats.matchesWon / team.stats.matchesPlayed) * 100).toFixed(2)
-        : 0,
-      ...team.toObject()
-    }));
+    const matches = await Match.find({
+      isActive: { $ne: false },
+      status: { $in: ['completed', 'COMPLETED', 'tie', 'tied', 'finished'] }
+    })
+      .select('team1 team2 score result innings status')
+      .lean();
+
+    const addTeamScore = (teamId, score) => {
+      const row = teamRows.get(teamId?.toString());
+      if (!row) return;
+      row.runs += toNumber(score?.runs);
+      row.wickets += toNumber(score?.wickets);
+    };
+
+    for (const match of matches) {
+      const team1 = playerId(match.team1);
+      const team2 = playerId(match.team2);
+      const winner = playerId(match.result?.winner);
+      const isTie = !winner && /tie|tied/i.test(`${match.result?.margin || match.result?.method || match.status || ''}`);
+
+      for (const teamId of [team1, team2]) {
+        const row = teamRows.get(teamId);
+        if (!row) continue;
+        row.matches += 1;
+        row.matchesPlayed += 1;
+        if (isTie) {
+          row.matchesTied += 1;
+          row.points += 1;
+        } else if (winner && winner === teamId) {
+          row.matchesWon += 1;
+          row.points += 2;
+        } else if (winner) {
+          row.matchesLost += 1;
+        }
+      }
+      addTeamScore(team1, match.score?.team1);
+      addTeamScore(team2, match.score?.team2);
+    }
+
+    const rows = [...teamRows.values()].map(row => {
+      const stored = row.team?.stats || {};
+      if (row.matchesPlayed === 0 && toNumber(stored.matchesPlayed) > 0) {
+        row.matches = toNumber(stored.matchesPlayed);
+        row.matchesPlayed = toNumber(stored.matchesPlayed);
+        row.matchesWon = toNumber(stored.matchesWon);
+        row.matchesLost = toNumber(stored.matchesLost);
+        row.matchesTied = toNumber(stored.matchesTied);
+        row.points = row.matchesWon * 2 + row.matchesTied;
+      }
+      if (row.runs === 0) row.runs = toNumber(stored.totalRuns);
+      if (row.wickets === 0) row.wickets = toNumber(stored.totalWickets);
+      const winPercentage = row.matchesPlayed > 0
+        ? Number(((row.matchesWon / row.matchesPlayed) * 100).toFixed(2))
+        : 0;
+      row.stats = {
+        ...row.stats,
+        matches: row.matches,
+        matchesPlayed: row.matchesPlayed,
+        matchesWon: row.matchesWon,
+        matchesLost: row.matchesLost,
+        matchesTied: row.matchesTied,
+        points: row.points,
+        runs: row.runs,
+        wickets: row.wickets,
+        players: row.playersCount,
+        winPercentage,
+      };
+      row.winPercentage = winPercentage;
+      return row;
+    }).sort((a, b) =>
+      b.points - a.points ||
+      b.matchesWon - a.matchesWon ||
+      b.runs - a.runs
+    );
 
     return {
-      teams: teamsWithRank,
-      pagination: { page, limit, total: teams.length }
+      teams: paginateRows(rows, page, limit),
+      pagination: { page, limit, total: rows.length, pages: Math.ceil(rows.length / limit) }
     };
+  },
+
+  // Get a single player's current leaderboard row
+  getPlayerRanking: async (playerIdValue) => {
+    const rows = await aggregatePlayerRows();
+    const sorted = rows.sort((a, b) => b.points - a.points || b.runs - a.runs || b.wickets - a.wickets);
+    const index = sorted.findIndex(row => row._id.toString() === playerIdValue);
+    if (index === -1) throw new ApiError(404, 'Player ranking not found');
+    return { ...sorted[index], rank: index + 1 };
+  },
+
+  // Get a single team's current leaderboard row
+  getTeamRanking: async (teamIdValue) => {
+    const { teams } = await leaderboardService.getTeamLeaderboard({ page: 1, limit: 10000 });
+    const team = teams.find(row => row._id.toString() === teamIdValue);
+    if (!team) throw new ApiError(404, 'Team ranking not found');
+    return team;
   },
 
   // Get tournament leaderboard
@@ -277,52 +470,40 @@ export const leaderboardService = {
 
   // Get global leaderboard (combined)
   getGlobalLeaderboard: async (query) => {
-    const { page, limit, skip } = getPagination(query);
-    
-    // Get top players by runs
-    const topBatsmen = await Player.find({
-      isActive: true,
-      'battingStats.runs': { $gt: 0 }
-    })
-      .select('playerName jerseyNumber role team battingStats')
-      .sort({ 'battingStats.runs': -1 })
-      .limit(10);
-
-    // Get top bowlers
-    const topBowlers = await Player.find({
-      isActive: true,
-      'bowlingStats.wickets': { $gt: 0 }
-    })
-      .select('playerName jerseyNumber role team bowlingStats')
-      .sort({ 'bowlingStats.wickets': -1 })
-      .limit(10);
-
-    // Get top teams
-    const topTeams = await Team.find({ isActive: true })
-      .select('name shortName logo stats')
-      .sort({ 'stats.matchesWon': -1 })
-      .limit(10);
+    const { limit } = getPagination(query);
+    const rows = await aggregatePlayerRows();
+    const { teams } = await leaderboardService.getTeamLeaderboard({ page: 1, limit });
 
     return {
-      topBatsmen: topBatsmen.map((p, i) => ({ rank: i + 1, ...p.toObject() })),
-      topBowlers: topBowlers.map((p, i) => ({ rank: i + 1, ...p.toObject() })),
-      topTeams: topTeams.map((t, i) => ({ rank: i + 1, ...t.toObject() }))
+      topBatsmen: paginateRows(
+        rows.filter(row => row.runs > 0 || row.balls > 0)
+          .sort((a, b) => b.runs - a.runs || b.strikeRate - a.strikeRate),
+        1,
+        limit
+      ),
+      topBowlers: paginateRows(
+        rows.filter(row => row.wickets > 0 || row.bowlingInnings > 0)
+          .sort((a, b) => b.wickets - a.wickets || a.economy - b.economy),
+        1,
+        limit
+      ),
+      topMvp: paginateRows(
+        [...rows].sort((a, b) => b.points - a.points || b.runs - a.runs || b.wickets - a.wickets),
+        1,
+        limit
+      ),
+      topTeams: teams
     };
   },
 
   // Search players on leaderboard
   searchLeaderboard: async (searchTerm, limit = 10) => {
-    const players = await Player.find({
-      isActive: true,
-      $or: [
-        { playerName: { $regex: searchTerm, $options: 'i' } }
-      ]
-    }) 
-      .select('playerName jerseyNumber role team battingStats bowlingStats')
-      .populate('team', 'name shortName')
-      .limit(limit);
-
-    return players;
+    const term = (searchTerm || '').toString().trim().toLowerCase();
+    const rows = await aggregatePlayerRows();
+    return rows
+      .filter(row => !term || row.playerName.toLowerCase().includes(term))
+      .sort((a, b) => b.points - a.points || b.runs - a.runs || b.wickets - a.wickets)
+      .slice(0, Number(limit) || 10);
   }
 };
 

@@ -5,12 +5,15 @@ import { createPlayerSchema } from './player.validation.js';
 import ApiResponse from '../../utils/ApiResponse.js';
 import ApiError from '../../utils/ApiError.js';
 import catchAsync from '../../utils/catchAsync.js';
+import { friendlyValidationMessage, sanitizeErrorDetails } from '../../utils/friendlyError.js';
 
 export const playerController = {
   createPlayer: catchAsync(async (req, res) => {
     const { error } = createPlayerSchema.validate(req.body);
     if (error) {
-      throw new ApiError(422, error.details[0].message);
+      throw new ApiError(422, friendlyValidationMessage(error.details), {
+        details: sanitizeErrorDetails(error.details)
+      });
     }
     // Use optional chaining to handle both authenticated and public requests
     // req.user may be undefined for public routes, so we pass undefined

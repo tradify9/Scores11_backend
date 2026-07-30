@@ -55,6 +55,34 @@ const notifyPostOwner = async ({ post, actorId, title, message, type = 'post', e
   }
 };
 
+const normalizeMedia = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const url = value.trim();
+    return url ? { url, publicId: 'manual' } : null;
+  }
+  const url = (
+    value.url ||
+    value.secureUrl ||
+    value.secure_url ||
+    value.path ||
+    value.src ||
+    value.location ||
+    value.imageUrl ||
+    ''
+  ).toString().trim();
+  if (!url) return null;
+  return {
+    url,
+    publicId: (
+      value.publicId ||
+      value.public_id ||
+      value.id ||
+      'manual'
+    ).toString()
+  };
+};
+
 export const communityService = {
   // Create post
  createPost: async (data, userId) => {
@@ -63,50 +91,38 @@ export const communityService = {
     let tags = [];
     if (data.tags) {
       if (Array.isArray(data.tags)) {
-        tags = data.tags;
+        tags = data.tags.map(tag => tag?.toString?.().trim()).filter(Boolean);
       } else if (typeof data.tags === "string") {
-        tags = data.tags.split(",").map(t => t.trim());
+        tags = data.tags.split(",").map(t => t.trim()).filter(Boolean);
       }
     }
 
     // 🖼 IMAGE SAFE HANDLE
-    let image = null;
-    if (data.image) {
-      if (typeof data.image === "string") {
-        image = { url: data.image, publicId: "manual" };
-      } else {
-        image = {
-          url: data.image.url || "",
-          publicId: data.image.publicId || "manual",
-        };
+    const image = normalizeMedia(data.image);
+
+    const images = [];
+    if (Array.isArray(data.images)) {
+      for (const item of data.images) {
+        const media = normalizeMedia(item);
+        if (media) images.push(media);
       }
     }
-
-    let images = [];
-    if (Array.isArray(data.images)) {
-      images = data.images
-        .map((item) => {
-          if (typeof item === "string") {
-            return { url: item, publicId: "manual" };
-          }
-          return {
-            url: item?.url || "",
-            publicId: item?.publicId || "manual",
-          };
-        })
-        .filter((item) => item.url);
-    }
     if (image && images.length === 0) {
-      images = [image];
+      images.push(image);
+    }
+
+    const content = (data.content || data.text || data.caption || '').toString().trim();
+    if (!content && images.length === 0) {
+      throw new ApiError(400, 'Please add post text or a photo.');
     }
 
     const post = await Post.create({
-      content: data.content || "",
+      content,
       name: data.name || "",
       email: data.email || "",
       category: data.category || "",
       tags,
-      image,
+      image: image || images[0] || null,
       images,
       user: userId,
     });

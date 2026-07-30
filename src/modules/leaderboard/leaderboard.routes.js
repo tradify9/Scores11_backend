@@ -12,9 +12,12 @@ router.get('/players', leaderboardController.getPlayerLeaderboard);
 router.get('/batsmen', leaderboardController.getBatsmanLeaderboard);
 router.get('/bowlers', leaderboardController.getBowlerLeaderboard);
 router.get('/all-rounders', leaderboardController.getAllRounderLeaderboard);
+router.get('/mvp', leaderboardController.getMVPLeaderboard);
 
 // Team leaderboards
 router.get('/teams', leaderboardController.getTeamLeaderboard);
+router.get('/player/:playerId', leaderboardController.getPlayerRanking);
+router.get('/team/:teamId', leaderboardController.getTeamRanking);
 
 // Tournament and match leaderboards
 router.get('/tournament/:tournamentId', leaderboardController.getTournamentLeaderboard);

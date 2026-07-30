@@ -9,6 +9,8 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { sendVerificationEmail } from '../../utils/sendVerificationEmail.js';
 import { notificationService } from '../notification/notification.service.js';
+import { Order } from '../store/product.model.js';
+import Subscription from '../subscription/subscription.model.js';
 
 const normalizePlayingStyleToPlayerType = (playingStyle) => {
   const value = playingStyle?.toString().trim().toLowerCase();
@@ -195,7 +197,7 @@ export const userService = {
 
   // Profile Management
   updateProfile: async (userId, updateData) => {
-    const allowedUpdates = ['name', 'phone', 'dateOfBirth', 'address', 'bio'];
+    const allowedUpdates = ['name', 'fullName', 'phone', 'dateOfBirth', 'address', 'bio'];
     const updates = {};
     
     allowedUpdates.forEach(field => {
@@ -203,6 +205,9 @@ export const userService = {
         updates[field] = updateData[field];
       }
     });
+    if (updates.name && !updates.fullName) {
+      updates.fullName = updates.name;
+    }
 
     const user = await User.findByIdAndUpdate(
       userId,
@@ -951,9 +956,14 @@ export const userService = {
   },
 
   updateEquipment: async (userId, equipmentData) => {
+    const equipment = Array.isArray(equipmentData)
+      ? equipmentData
+      : Array.isArray(equipmentData?.equipment)
+        ? equipmentData.equipment
+        : [];
     const user = await User.findByIdAndUpdate(
       userId,
-      { equipment: equipmentData },
+      { equipment },
       { new: true }
     );
 
@@ -967,7 +977,7 @@ export const userService = {
   updateNotificationPreferences: async (userId, preferences) => {
     const user = await User.findByIdAndUpdate(
       userId,
-      { notificationPreferences: preferences },
+      { 'preferences.notifications': preferences || {} },
       { new: true }
     );
 
@@ -975,13 +985,13 @@ export const userService = {
       throw new ApiError(404, 'User not found');
     }
 
-    return user.notificationPreferences;
+    return user.preferences?.notifications || {};
   },
 
   updateLanguage: async (userId, language) => {
     const user = await User.findByIdAndUpdate(
       userId,
-      { preferredLanguage: language },
+      { 'preferences.language': language || 'en' },
       { new: true }
     );
 
@@ -994,16 +1004,58 @@ export const userService = {
 
   getPurchaseHistory: async (userId, query) => {
     const { page, limit, skip } = getPagination(query);
-    
-    // This would need to integrate with subscription module
-    // For now, return empty array as placeholder
+
+    const [orders, subscriptions] = await Promise.all([
+      Order.find({ user: userId, isActive: { $ne: false } })
+        .select('items totalAmount paymentMethod paymentStatus paymentId orderStatus createdAt updatedAt')
+        .populate('items.product', 'name category images')
+        .lean(),
+      Subscription.find({ user: userId })
+        .select('plan amount currency paymentMethod transactionId isActive startDate endDate createdAt updatedAt')
+        .lean()
+    ]);
+
+    const purchases = [
+      ...orders.map(order => ({
+        _id: order._id,
+        id: order._id,
+        type: 'order',
+        title: `${order.items?.length || 0} store item${(order.items?.length || 0) === 1 ? '' : 's'}`,
+        amount: order.totalAmount || 0,
+        currency: 'INR',
+        status: order.paymentStatus || order.orderStatus || 'placed',
+        paymentMethod: order.paymentMethod,
+        referenceId: order.paymentId,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        items: order.items || []
+      })),
+      ...subscriptions.map(subscription => ({
+        _id: subscription._id,
+        id: subscription._id,
+        type: 'subscription',
+        title: `${subscription.plan || 'Subscription'} plan`,
+        amount: subscription.amount || 0,
+        currency: subscription.currency || 'INR',
+        status: subscription.isActive ? 'active' : 'expired',
+        paymentMethod: subscription.paymentMethod,
+        referenceId: subscription.transactionId,
+        startDate: subscription.startDate,
+        endDate: subscription.endDate,
+        createdAt: subscription.createdAt,
+        updatedAt: subscription.updatedAt
+      }))
+    ].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+    const paged = purchases.slice(skip, skip + limit);
+
     return {
-      purchases: [],
+      purchases: paged,
       pagination: {
         page,
         limit,
-        total: 0,
-        pages: 0
+        total: purchases.length,
+        pages: Math.ceil(purchases.length / limit)
       }
     };
   },

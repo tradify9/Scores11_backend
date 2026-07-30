@@ -20,8 +20,8 @@ export const createPlayerSchema = Joi.object({
   team: Joi.string(),      
   teamName: Joi.string().optional().allow(''),
   email: Joi.string().email().optional().allow(''),
-  phone: Joi.string().optional(),
-  nationality: Joi.string().optional()
+  phone: Joi.string().optional().allow(''),
+  nationality: Joi.string().optional().allow('')
 });
 
 export const updatePlayerSchema = Joi.object({

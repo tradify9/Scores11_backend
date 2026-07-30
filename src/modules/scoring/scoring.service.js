@@ -2135,7 +2135,7 @@ function finalizeSecondInningsResult(match, { force = false, continueAfterTarget
     match.result.winner = second.battingTeam;
     match.result.margin = `${wicketsLeft} wickets`;
     match.result.method = 'by wickets';
-    match.result.message = `Target chased. Won by ${wicketsLeft} wickets.`;
+    match.result.message = `Won by ${wicketsLeft} wickets.`;
   } else if ((second.totalRuns || 0) === (first.totalRuns || 0)) {
     match.result.winner = undefined;
     match.result.margin = 'Tie';
@@ -2146,7 +2146,7 @@ function finalizeSecondInningsResult(match, { force = false, continueAfterTarget
     match.result.winner = first.battingTeam;
     match.result.margin = `${runsMargin} runs`;
     match.result.method = 'by runs';
-    match.result.message = `Defended successfully. Won by ${runsMargin} runs.`;
+    match.result.message = `Won by ${runsMargin} runs.`;
   }
 
   match.result.playerOfMatch = pickPlayerOfMatch(match);

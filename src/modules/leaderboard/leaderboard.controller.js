@@ -33,10 +33,28 @@ export const leaderboardController = {
     res.json(new ApiResponse(200, 'All-rounder leaderboard retrieved', allRounders, pagination));
   }),
 
+  // Get MVP leaderboard
+  getMVPLeaderboard: catchAsync(async (req, res) => {
+    const { allRounders, pagination } = await leaderboardService.getAllRounderLeaderboard(req.query);
+    res.json(new ApiResponse(200, 'MVP leaderboard retrieved', allRounders, pagination));
+  }),
+
   // Get team leaderboard
   getTeamLeaderboard: catchAsync(async (req, res) => {
     const { teams, pagination } = await leaderboardService.getTeamLeaderboard(req.query);
     res.json(new ApiResponse(200, 'Team leaderboard retrieved', teams, pagination));
+  }),
+
+  // Get player ranking details
+  getPlayerRanking: catchAsync(async (req, res) => {
+    const ranking = await leaderboardService.getPlayerRanking(req.params.playerId);
+    res.json(new ApiResponse(200, 'Player ranking retrieved', ranking));
+  }),
+
+  // Get team ranking details
+  getTeamRanking: catchAsync(async (req, res) => {
+    const ranking = await leaderboardService.getTeamRanking(req.params.teamId);
+    res.json(new ApiResponse(200, 'Team ranking retrieved', ranking));
   }),
 
   // Get tournament leaderboard
