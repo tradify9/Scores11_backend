@@ -573,3 +573,5 @@ Services:
 - Configure ZenStream/YouTube keys before live provider automation.
 - Run seed once for required admin/role data.
 - Deploy behind HTTPS with a process manager, container, or orchestration layer.
+#   S c o r e s 1 1 _ b a c k e n d  
+ 
