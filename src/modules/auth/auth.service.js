@@ -97,11 +97,68 @@ const normalizePlayerBowlingStyle = (value) => {
   return 'none';
 };
 
+// Roles that must stay as-is when explicitly requested; every other signup
+// (including a missing role or a plain 'user') is registered as a 'player'
+// so the account shows up in the public player list by default.
+const NON_PLAYER_ROLES = ['admin', 'umpire', 'scorer', 'moderator', 'captain', 'manager'];
+const resolveSignupRole = (role) => (NON_PLAYER_ROLES.includes(role) ? role : 'player');
+
+// Ensure a Player document exists for this user, mark them a public player,
+// and link the player back into the user's cricketProfile. Idempotent and
+// non-fatal — a failure here never blocks registration/login.
+const ensurePlayerProfile = async (user, data = {}) => {
+  try {
+    const Player = (await import('../player/player.model.js')).default;
+
+    // Reuse an existing linked Player if there is one (idempotent).
+    let player = await Player.findOne({ user: user._id });
+
+    const playerType = normalizePlayerRole(data.playerRole || data.playerType);
+
+    if (!player) {
+      player = await Player.create({
+        user: user._id,
+        playerName: user.fullName,
+        role: playerType,
+        battingStyle: normalizePlayerBattingStyle(data.battingStyle),
+        bowlingStyle: normalizePlayerBowlingStyle(data.bowlingStyle),
+        phone: user.phone || undefined,
+        email: user.email || undefined,
+        dateOfBirth: data.dateOfBirth || undefined,
+        nationality: data.nationality || 'India',
+        isActive: true
+      });
+    }
+
+    user.isPublicPlayer = true;
+    user.cricketProfile = {
+      ...(user.cricketProfile || {}),
+      playerId: player._id,
+      playerType,
+      battingStyle: normalizeUserBattingStyle(data.battingStyle),
+      bowlingStyle: normalizeUserBowlingStyle(data.bowlingStyle),
+      preferredRole: [playerType]
+    };
+    await user.save();
+
+    return player;
+  } catch (playerError) {
+    console.error('ensurePlayerProfile failed (non-fatal):', playerError.message);
+    return null;
+  }
+};
+
 export const authService = {
   firebasePhoneLogin: async ({
     idToken,
     name,
-    email
+    email,
+    playerRole,
+    playerType,
+    battingStyle,
+    bowlingStyle,
+    dateOfBirth,
+    nationality
   }) => {
     let decoded;
     try {
@@ -129,10 +186,9 @@ export const authService = {
       if (emailValue && await User.exists({ email: emailValue })) {
         throw new ApiError(400, 'Email is already registered with another account');
       }
-      // Everyone registers as a plain 'user' (Fan). Player status and the
-      // linked Player document are granted later when the account
-      // completes its Cricket Profile (see userService.promoteToPlayer),
-      // not chosen/created at sign-up.
+      // New mobile signups register as a 'player' by default and immediately
+      // get a linked Player document, so they appear in the public player
+      // list right after sign-up (no separate "complete cricket profile" step).
       const username = await buildUniqueUsername(fullName, phone);
       const generatedPassword = crypto.randomBytes(24).toString('hex');
       user = await User.create({
@@ -141,10 +197,12 @@ export const authService = {
         username,
         fullName,
         phone,
-        role: 'user',
+        role: 'player',
+        isPublicPlayer: true,
         isPhoneVerified: true
       });
       await Wallet.create({ user: user._id, balance: 0 });
+      await ensurePlayerProfile(user, { playerRole, playerType, battingStyle, bowlingStyle, dateOfBirth, nationality });
     } else if (!user.isPhoneVerified) {
       user.isPhoneVerified = true;
     }
@@ -155,7 +213,9 @@ export const authService = {
   // Register new user
   register: async (userData) => {
       const { email, password, name, phone, role } = userData;
-      const userRole = role || 'user';
+      // Default every new signup to 'player' (only explicit privileged roles
+      // are kept) so the account lands in the public player list by default.
+      const userRole = resolveSignupRole(role);
       const isPlayer = userRole === 'player';
       const playerType = normalizePlayerRole(userData.playerRole || userData.playerType);
       const userBattingStyle = normalizeUserBattingStyle(userData.battingStyle);
@@ -347,7 +407,7 @@ export const authService = {
   // Existing verified accounts just get a fresh OTP; unknown emails require
   // a name and are created on the spot (mirrors firebasePhoneLogin's
   // auto-provisioning), matching the app's OTP-only auth flow.
-  requestEmailOtp: async ({ email, name }) => {
+  requestEmailOtp: async ({ email, name, playerRole, playerType, battingStyle, bowlingStyle, dateOfBirth, nationality }) => {
     const normalizedEmail = email?.toString().trim().toLowerCase();
     if (!normalizedEmail) {
       throw new ApiError(400, 'Email is required');
@@ -372,7 +432,8 @@ export const authService = {
         password: await hashPassword(generatedPassword),
         username,
         fullName,
-        role: 'user',
+        role: 'player',
+        isPublicPlayer: true,
         isEmailVerified: false
       });
       try {
@@ -380,6 +441,9 @@ export const authService = {
       } catch (walletError) {
         console.error('Wallet creation failed (non-fatal):', walletError.message);
       }
+      // New email signups also become players by default and get a linked
+      // Player document so they show up in the public player list.
+      await ensurePlayerProfile(user, { playerRole, playerType, battingStyle, bowlingStyle, dateOfBirth, nationality });
       isNewUser = true;
     }
 
