@@ -127,7 +127,6 @@ export const matchService = {
       matchNumber,
       createdBy: userId,
       scheduledDate: scheduledAt,
-      startTime: scheduledAt,
       status: MATCH_STATUS.SCHEDULED,
       format: matchData.format || 't20',
       matchType: matchData.matchType || 'league',

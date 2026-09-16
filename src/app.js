@@ -14,6 +14,7 @@ import notFoundMiddleware from './middleware/notFound.middleware.js';
 import rateLimiter from './middleware/rateLimiter.middleware.js';
 import routes from './routes.js';
 import schedulePurgeDeletedAccounts from './jobs/purgeDeletedAccounts.js';
+import scheduleAbandonStaleMatches from './jobs/abandonStaleMatches.js';
 import { toFriendlyError } from './utils/friendlyError.js';
 
 const app = express();
@@ -115,6 +116,7 @@ const startServer = async (server) => {
     initializeFirebase();
     initializeSocket(server);
     schedulePurgeDeletedAccounts();
+    scheduleAbandonStaleMatches();
 
     server.listen(config.port, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${config.port}`);

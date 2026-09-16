@@ -242,7 +242,18 @@ export const calculateChaseState = (match, innings) => {
   const firstInnings = match?.innings?.find(i => i.inningsNumber === 1) || match?.innings?.[0];
   if (!firstInnings || !innings) return null;
 
-  const target = Number(firstInnings.totalRuns || 0) + 1;
+  // A rain/DLS revision (applyRainDls) stores the revised target on
+  // match.result.dls. Without this check, every ball recomputed target
+  // from raw first-innings runs and silently reverted the revised target
+  // back to the pre-rain value on the very next delivery. Re-applying
+  // DLS overwrites match.result.dls wholesale, so this also naturally
+  // supports a later re-revision of the target.
+  const dlsRevision = match?.result?.dls;
+  const hasDlsTarget = dlsRevision?.inningsNumber === (innings.inningsNumber || 2)
+    && Number.isFinite(dlsRevision?.revisedTarget);
+  const target = hasDlsTarget
+    ? dlsRevision.revisedTarget
+    : Number(firstInnings.totalRuns || 0) + 1;
   const legalBallsBowled = (Number(innings.totalOvers || 0) * 6) + Number(innings.totalBalls || 0);
   const penaltyWindow = getPenaltyChaseWindow(match, innings.inningsNumber || 2);
   const effectiveBalls = penaltyWindow.effectiveBalls;

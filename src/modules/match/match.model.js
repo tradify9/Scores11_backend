@@ -171,8 +171,13 @@ status: { type: String, enum: Object.values(MATCH_STATUS), default: 'scheduled' 
   
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  isActive: { type: Boolean, default: true }
-}, { 
+  isActive: { type: Boolean, default: true },
+  // Set once, the first time the match moves out of 'scheduled' - marks
+  // when the match actually began, regardless of which flow (toss,
+  // lineups, the dedicated start endpoint) moved it forward. Used by the
+  // stale-match cleanup job to auto-abandon matches nobody ever completes.
+  actualStartTime: { type: Date }
+}, {
   timestamps: true,
   versionKey: false // Disabled optimistic concurrency control
 });
@@ -180,6 +185,14 @@ status: { type: String, enum: Object.values(MATCH_STATUS), default: 'scheduled' 
 matchSchema.pre('save', function(next) {
   if (!this.matchId) {
     this.matchId = `MATCH_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  }
+  if (
+    this.isModified('status') &&
+    this.status !== MATCH_STATUS.SCHEDULED &&
+    this.status !== MATCH_STATUS.CANCELLED &&
+    !this.actualStartTime
+  ) {
+    this.actualStartTime = new Date();
   }
   next();
 });

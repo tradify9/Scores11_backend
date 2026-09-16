@@ -3,6 +3,7 @@ import Match from '../match/match.model.js';
 import Ball from './ball.model.js';
 import Team from '../team/team.model.js';
 import Player from '../player/player.model.js';
+import User from '../user/user.model.js';
 import scoringValidation from './scoring.validation.js';
 import statCalculator from '../../utils/statCalculator.js';
 import ApiError from '../../utils/ApiError.js';
@@ -42,15 +43,6 @@ const getMatchNotificationRecipients = async (match) => {
     });
   }
   return [...ids];
-};
-
-// Resolves a Player document's linked User id, for notification
-// self-exclusion (recipients/skipIfSelfUserId are User ids, but in-match
-// actors like the striker/dismissed batsman are only known as Player ids).
-const resolvePlayerUserId = async (playerId) => {
-  if (!playerId) return undefined;
-  const player = await Player.findById(playerId).select('user').lean();
-  return player?.user ? player.user.toString() : undefined;
 };
 
 const notifyMatchFollowers = async (match, payload, actorUserId) => {
@@ -118,6 +110,43 @@ const notifyMatchFollowers = async (match, payload, actorUserId) => {
     })));
   } catch (error) {
     console.warn('Match notification skipped:', error.message);
+  }
+};
+
+// Notifies only the users who follow the given player's linked account -
+// used for milestone/best-performance alerts (fifty, hundred, hat-trick,
+// player of the match), never for per-ball events like every run/4/6/wicket.
+const notifyPlayerFollowers = async (match, playerId, payload) => {
+  try {
+    if (!playerId) return;
+    const player = await Player.findById(playerId).select('user playerName name').lean();
+    if (!player?.user) return;
+
+    const owner = await User.findById(player.user).select('followers').lean();
+    const followerIds = (owner?.followers || []).map(id => id.toString());
+    if (!followerIds.length) return;
+
+    const playerName = player.playerName || player.name || 'Player';
+    await notificationService.broadcastNotification({
+      userIds: followerIds,
+      title: payload.title,
+      message: `${playerName} ${payload.message}`,
+      type: payload.type || 'score',
+      data: {
+        matchId: match._id,
+        team1Id: match.team1,
+        team2Id: match.team2,
+        tournamentId: match.tournament,
+        referenceId: match._id,
+        actionUrl: `/match/${match._id}`,
+        sound: 'scores11',
+        playerId: player._id,
+        playerName,
+        ...(payload.data || {})
+      }
+    });
+  } catch (error) {
+    console.warn('Player follower notification skipped:', error.message);
   }
 };
 
@@ -374,28 +403,43 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     // Advance over/ball counters after creating ball
     const isValidDelivery = isLegalDelivery({ isWide, isNoBall, isPenalty });
     
-// STRIKER ROTATION LOGIC (Enhanced with odd runs)
-    let rotationReason = '';
-    let shouldRotate = false;
-    
-    // Rotate on odd runs (1,3,5), end of over, or scorer override.
-    const autoRotate = (!isPenalty && scoredRuns % 2 === 1 && scoredRuns > 0) || (ballNumber === 6 && isValidDelivery);
-    if (typeof forceStrikeChange === 'boolean' ? forceStrikeChange : autoRotate) {  
-      shouldRotate = true;
-      rotationReason = typeof forceStrikeChange === 'boolean'
-        ? 'manual'
-        : (scoredRuns % 2 === 1 ? 'odd runs' : 'end of over');
+// STRIKER ROTATION LOGIC
+    // The odd-run swap and the end-of-over swap are applied as two
+    // independent operations - matching the Flutter client's optimistic
+    // _applyLocalBall logic and real cricket rules - so they correctly
+    // cancel out when odd runs are scored off the last ball of an over
+    // (batsmen already crossed for the run, so the over-end rotation
+    // hands strike right back). The previous version OR'd both conditions
+    // into a single swap, which rotated to the wrong striker in exactly
+    // that case, and the server's (wrong) value would then overwrite the
+    // client's correct optimistic display.
+    const hasPartner = Boolean(innings.currentNonStriker);
+    let striker = innings.currentStriker;
+    let nonStriker = innings.currentNonStriker;
+    const previousStriker = striker;
+    const rotationEvents = [];
+
+    const rotateForRuns = typeof forceStrikeChange === 'boolean'
+      ? forceStrikeChange
+      : (!isPenalty && scoredRuns % 2 === 1 && scoredRuns > 0);
+    if (hasPartner && rotateForRuns) {
+      [striker, nonStriker] = [nonStriker, striker];
+      rotationEvents.push(typeof forceStrikeChange === 'boolean' ? 'manual' : 'odd runs');
     }
-    
-    let newStriker = innings.currentStriker;
-    const previousStriker = innings.currentStriker;
-    
-    if (shouldRotate && innings.currentNonStriker) {
-      // Swap striker/non-striker
-      newStriker = innings.currentNonStriker;
-      innings.currentNonStriker = innings.currentStriker;
-      console.log(`🔄 Striker rotated (${rotationReason}): ${innings.currentStriker} ↔ ${newStriker}`);
-      
+
+    const rotateForOver = ballNumber === 6 && isValidDelivery;
+    if (hasPartner && rotateForOver) {
+      [striker, nonStriker] = [nonStriker, striker];
+      rotationEvents.push('end of over');
+    }
+
+    const shouldRotate = rotationEvents.length % 2 === 1;
+    const rotationReason = rotationEvents.join(' + ');
+    const newStriker = striker;
+    innings.currentNonStriker = nonStriker;
+
+    if (shouldRotate) {
+      console.log(`🔄 Striker rotated (${rotationReason}): ${previousStriker} ↔ ${newStriker}`);
       // Emit turn update
       emitToMatch(matchId, 'turnUpdate', {
         matchId,
@@ -404,7 +448,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
         reason: rotationReason
       });
     }
-    
+
     // Advance ball counter
     innings.currentBallNumber += isValidDelivery ? 1 : 0;
     
@@ -536,6 +580,12 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
           timestamp: new Date()
         });
         emitToMatch(matchId, 'liveScoreUpdate', { matchId, action: 'milestone', type: 'fifty', player: scoringBatsmanId, runs: currentRuns });
+        await notifyPlayerFollowers(match, scoringBatsmanId, {
+          title: 'Fifty!',
+          message: `scored a fifty - ${currentRuns} runs.`,
+          type: 'score',
+          data: { event: 'milestone_fifty', runs: currentRuns }
+        });
       }
       if (previousRuns < 100 && currentRuns >= 100) {
         match.commentary ??= [];
@@ -549,6 +599,12 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
           timestamp: new Date()
         });
         emitToMatch(matchId, 'liveScoreUpdate', { matchId, action: 'milestone', type: 'hundred', player: scoringBatsmanId, runs: currentRuns });
+        await notifyPlayerFollowers(match, scoringBatsmanId, {
+          title: 'Century!',
+          message: `scored a century - ${currentRuns} runs.`,
+          type: 'score',
+          data: { event: 'milestone_hundred', runs: currentRuns }
+        });
       }
     }
 
@@ -714,6 +770,12 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
           timestamp: new Date()
         });
         emitToMatch(matchId, 'liveScoreUpdate', { matchId, action: 'milestone', type: 'hattrick', player: actualBowlerId });
+        await notifyPlayerFollowers(match, actualBowlerId, {
+          title: 'Hat-trick!',
+          message: 'took a hat-trick!',
+          type: 'score',
+          data: { event: 'milestone_hattrick' }
+        });
       }
     }
 
@@ -754,6 +816,9 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     
     emitToMatch(matchId, 'liveScoreUpdate', liveState);
 
+    // Only match-level events (completion) and player milestones notify
+    // followers - per-ball wicket/four/six events are deliberately silent
+    // (they still reach live viewers via the emitToMatch broadcast above).
     if (match.status === MATCH_STATUS.COMPLETED) {
       await notifyMatchFollowers(match, {
         title: 'Match completed',
@@ -765,37 +830,14 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
           playerOfMatchId: match.result?.playerOfMatch
         }
       }, userId);
-    } else if (isWicket) {
-      const dismissedUserId = await resolvePlayerUserId(dismissedId);
-      await notifyMatchFollowers(match, {
-        title: 'Wicket!',
-        message: `${normalizedWicketType || 'Wicket'} at ${innings.totalRuns}/${innings.totalWickets}.`,
-        type: 'score',
-        data: {
-          event: 'wicket',
-          playerId: dismissedId,
-          batsmanId: dismissedId,
-          bowlerId: actualBowlerId,
-          fielderId,
-          battingTeamId: innings.battingTeam,
-          bowlingTeamId: innings.bowlingTeam
-        }
-      }, dismissedUserId);
-    } else if (scoredRuns === 4 || scoredRuns === 6) {
-      const strikerUserId = await resolvePlayerUserId(scoringBatsmanId);
-      await notifyMatchFollowers(match, {
-        title: scoredRuns === 6 ? 'Six!' : 'Four!',
-        message: `${scoredRuns} runs. Score ${innings.totalRuns}/${innings.totalWickets}.`,
-        type: 'score',
-        data: {
-          event: scoredRuns === 6 ? 'six' : 'four',
-          playerId: scoringBatsmanId,
-          batsmanId: scoringBatsmanId,
-          bowlerId: actualBowlerId,
-          battingTeamId: innings.battingTeam,
-          bowlingTeamId: innings.bowlingTeam
-        }
-      }, strikerUserId);
+      if (match.result?.playerOfMatch) {
+        await notifyPlayerFollowers(match, match.result.playerOfMatch, {
+          title: 'Player of the Match!',
+          message: 'was named Player of the Match with a standout performance.',
+          type: 'score',
+          data: { event: 'player_of_match' }
+        });
+      }
     }
 
     return {
@@ -1874,6 +1916,14 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
         playerOfMatchId: resultData.playerOfMatch
       }
     }, userId);
+    if (match.result?.playerOfMatch) {
+      await notifyPlayerFollowers(match, match.result.playerOfMatch, {
+        title: 'Player of the Match!',
+        message: 'was named Player of the Match with a standout performance.',
+        type: 'score',
+        data: { event: 'player_of_match' }
+      });
+    }
 
     return await Match.findById(matchId)
       .populate('team1', 'name shortName')
@@ -1918,6 +1968,14 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
         playerOfMatchId: match.result?.playerOfMatch
       }
     }, userId);
+    if (match.result?.playerOfMatch) {
+      await notifyPlayerFollowers(match, match.result.playerOfMatch, {
+        title: 'Player of the Match!',
+        message: 'was named Player of the Match with a standout performance.',
+        type: 'score',
+        data: { event: 'player_of_match' }
+      });
+    }
 
     return completedMatch;
   },
