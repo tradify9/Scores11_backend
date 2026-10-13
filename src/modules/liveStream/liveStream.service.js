@@ -9,6 +9,7 @@ import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import { extractYoutubeVideoId } from '../../utils/youtube.js';
 import { createReplayFromStream } from '../highlight/highlight.service.js';
+import { fetchYoutubeVideoStatus } from '../../utils/youtubeApi.js';
 
 const trimTrailingSlash = (value = '') => value.toString().replace(/\/+$/, '');
 
@@ -281,6 +282,68 @@ export const disconnectYoutube = async (userId) => {
   return { connected: false };
 };
 
+// With YOUTUBE_API_KEY set, reject links that viewers could not actually watch
+// (deleted, private, embedding disabled) and pick up the real thumbnail.
+// Without a key the link is accepted as-is.
+const verifyPastedYoutubeVideo = async (stream) => {
+  let video;
+  try {
+    video = await fetchYoutubeVideoStatus(stream.youtubeVideoId);
+  } catch (error) {
+    console.warn('[YOUTUBE] Video check skipped:', error.response?.data?.error?.message || error.message);
+    return;
+  }
+  if (!video) return; // no API key configured
+  if (video.notFound) {
+    throw new ApiError(400, 'This YouTube video was not found. Make sure the live stream is Public or Unlisted, then paste its link again.');
+  }
+  if (video.privacyStatus === 'private') {
+    throw new ApiError(400, 'This YouTube video is Private. Change it to Public or Unlisted in YouTube Studio.');
+  }
+  if (!video.embeddable) {
+    throw new ApiError(400, 'Embedding is turned off for this YouTube video. Allow embedding in YouTube Studio so it can play in the app.');
+  }
+  if (!video.isLiveBroadcast) {
+    throw new ApiError(400, 'This link is a normal YouTube video, not a live stream. Start a live stream on YouTube and paste its link, or add this video from Highlights.');
+  }
+  if (video.hasEnded) {
+    throw new ApiError(400, 'This YouTube live stream has already ended. Add it from Highlights instead.');
+  }
+  if (!stream.thumbnail && video.thumbnail) stream.thumbnail = video.thumbnail;
+};
+
+/**
+ * Mark a stream as ended, publish its YouTube recording as the match replay
+ * and tell connected clients. Shared by the host's "End stream" action and
+ * the background sync that notices broadcasts ending on YouTube.
+ */
+export const finishLiveStream = async (stream, endedAt = new Date()) => {
+  if (stream.status !== 'ended') {
+    stream.status = 'ended';
+    stream.endedAt = endedAt;
+    if (stream.startedAt) {
+      stream.duration = Math.max(Math.floor((endedAt - stream.startedAt) / 1000), 0);
+    }
+  }
+  stream.viewers = [];
+  stream.viewerCount = 0;
+  await stream.save();
+
+  if (stream.youtubeVideoId) {
+    await createReplayFromStream(stream).catch((error) =>
+      console.warn('[HIGHLIGHT] Replay not created:', error.message));
+  }
+
+  try {
+    const io = getIO();
+    io.emit('streamEnded', { streamId: stream._id });
+    io.to(stream._id.toString()).emit('streamEnded', { streamId: stream._id });
+  } catch (_) {
+    // Socket layer not running (scripts/tests): nothing to notify.
+  }
+  return stream;
+};
+
 export const createLiveStream = async (userId, streamData) => {
   console.log(`[LIVESTREAM-SERVICE] createLiveStream userId: ${userId}`);
   
@@ -289,8 +352,13 @@ export const createLiveStream = async (userId, streamData) => {
     throw new ApiError(404, 'User not found');
   }
 
+  // Counters, ownership and lifecycle are set by the server, never the client.
+  const cleanData = { ...streamData };
+  ['_id', 'userId', 'status', 'viewers', 'viewerCount', 'likes', 'chat', 'startedAt', 'endedAt', 'duration', 'isFeatured']
+    .forEach((key) => delete cleanData[key]);
+
   const liveStream = new LiveStream({
-    ...streamData,
+    ...cleanData,
     provider: streamData.provider || (streamData.youtubeUrl || streamData.youtubeVideoId ? 'youtube' : 'zenstream'),
     streamType: streamData.streamType || (streamData.youtubeUrl || streamData.youtubeVideoId ? 'youtube' : 'mobile'),
     userId
@@ -300,6 +368,7 @@ export const createLiveStream = async (userId, streamData) => {
     const existingYoutubeInput = streamData.youtubeUrl || streamData.youtubeVideoId || streamData.streamUrl;
     if (existingYoutubeInput) {
       applyYoutubeUrls(liveStream, existingYoutubeInput);
+      await verifyPastedYoutubeVideo(liveStream);
     } else {
       await createYoutubeBroadcastForStream(userId, liveStream, streamData);
     }
@@ -481,23 +550,7 @@ export const endLiveStream = async (streamId, userId) => {
     }
   }
 
-  if (stream.status !== 'ended') {
-    stream.status = 'ended';
-    stream.endedAt = new Date();
-    if (stream.startedAt) stream.duration = Math.floor((stream.endedAt - stream.startedAt) / 1000);
-  }
-  await stream.save();
-
-  // The YouTube recording stays watchable, so publish it as the match replay.
-  if (stream.youtubeVideoId) {
-    await createReplayFromStream(stream).catch((error) =>
-      console.warn('[HIGHLIGHT] Replay not created:', error.message));
-  }
-
-  const io = getIO();
-  if (io) io.emit('streamEnded', { streamId: stream._id });
-  
-  return stream;
+  return finishLiveStream(stream);
 };
 
 export const joinLiveStream = async (streamId, userId) => {
