@@ -22,7 +22,7 @@ const oversToBalls = (overs) => {
   return (parseInt(overPart, 10) || 0) * 6 + Math.min(parseInt(ballPart, 10) || 0, 5);
 };
 
-const aggregatePlayerRows = async () => {
+export const aggregatePlayerRows = async () => {
   const matches = await Match.find({
     isActive: { $ne: false },
     innings: { $exists: true, $ne: [] }

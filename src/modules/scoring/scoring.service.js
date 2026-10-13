@@ -1111,7 +1111,7 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     const balls = await Ball.find({ match: matchId })
       .populate('batsman', 'playerName jerseyNumber')
       .populate('bowler', 'playerName jerseyNumber')
-      .populate('fielder', 'playerName')
+      .populate('wicketFielder', 'playerName')
       .sort({ innings: 1, overNumber: 1, ballNumber: 1 });
 
     return {
@@ -1224,7 +1224,9 @@ console.log('[LIVE] getLiveScore populated:', {
       })
         .sort({ overNumber: -1, ballNumber: -1 })
         .limit(6)
-        .populate('batsman bowler fielder', 'playerName jerseyNumber avatar teamId role');
+        // Ball schema names the catcher/keeper wicketFielder; populating a
+        // non-existent 'fielder' path throws and blanked every live over.
+        .populate('batsman bowler wicketFielder', 'playerName jerseyNumber avatar teamId role');
       
       recentBalls = recentQuery.reverse().map(ball => ({
         ...ball.toObject(),
@@ -1283,8 +1285,17 @@ console.log('[LIVE] getLiveScore populated:', {
       scorecard: {
         runs: currentInnings.totalRuns || 0,
         wickets: currentInnings.totalWickets || 0,
-        overs: `${currentInnings.totalOvers || 0}.${currentInnings.totalBalls || 0}`,
-        runRate: currentInnings.totalBalls > 0 ? ((currentInnings.totalRuns / (currentInnings.totalOvers * 6 + currentInnings.totalBalls)) * 6).toFixed(2) : '0.00',
+        // Issue-5 fix: always serialize as completedOvers.remainderBalls (e.g. "5.2")
+        // regardless of whether totalOvers is stored as float or integer.
+        overs: (() => {
+          const totalInningsBalls = Math.round((currentInnings.totalOvers || 0) * 6) + (currentInnings.totalBalls || 0);
+          return `${Math.floor(totalInningsBalls / 6)}.${totalInningsBalls % 6}`;
+        })(),
+        // Issue-2 fix: use the same statCalculator.calculateRunRate used in per-ball socket update
+        runRate: statCalculator.calculateRunRate(
+          currentInnings.totalRuns || 0,
+          (currentInnings.totalOvers || 0) + ((currentInnings.totalBalls || 0) / 6)
+        ),
         extras: currentInnings.extras || { total: 0 },
         battingScorecard: currentInnings.battingScorecard || [],
         bowlingScorecard: currentInnings.bowlingScorecard || []
@@ -1415,16 +1426,20 @@ console.log('[LIVE] getLiveScore populated:', {
       totalWickets: innings.totalWickets,
       totalOvers: innings.totalOvers,
       totalBalls: innings.totalBalls,
-      overs: `${Math.floor((innings.totalBalls || 0) / 6)}.${(innings.totalBalls || 0) % 6}`,
+      // totalOvers = completed overs, totalBalls = balls into the current over (0-5)
+      overs: `${innings.totalOvers || 0}.${innings.totalBalls || 0}`,
       extras: innings.extras,
-      battingScorecard: innings.battingScorecard.map(b => {
+      battingScorecard: innings.battingScorecard.map((b, idx) => {
         const row = b.toObject ? b.toObject() : b;
-        const battingPoints = calculateBattingPoints(b.runs || 0);
+        // Batting position = 1-based index in the scorecard array (order of appearance)
+        const battingPosition = idx + 1;
+        const battingPoints = calculateBattingPoints(b.runs || 0, b.balls || 0);
         const fielding = fieldingPoints.get(b.batsman?.toString()) || { dismissals: 0, points: 0 };
         const howOut = (b.howOut || 'not_out').toString();
         const wicketRule = getWicketRule(howOut);
         const isRetiredHurt = howOut === 'retired_hurt';
         const isOut = Boolean(howOut && howOut !== 'not_out' && (wicketRule ? wicketRule.countsAsWicket : !isRetiredHurt));
+        const displayPoints = Number((battingPoints.total + fielding.points).toFixed(2));
         return {
           ...row,
           batsman: playerPayload(b.batsman),
@@ -1434,15 +1449,16 @@ console.log('[LIVE] getLiveScore populated:', {
           isOut,
           canReturn: isRetiredHurt,
           wicketCounts: isOut,
+          battingPosition,
           strikeRate: b.balls > 0 ? ((b.runs / b.balls) * 100).toFixed(2) : 0,
-          scoringPoints: battingPoints.total + fielding.points,
+          scoringPoints: displayPoints,
           pointsBreakdown: {
             runs: battingPoints.runs,
-            battingBase: battingPoints.base,
-            runRateBonus: battingPoints.runRateBonus,
-            runRateBonusEveryRuns: battingPoints.formula.bonusEveryRuns,
-            runRateBonusPoints: battingPoints.formula.bonusPoints,
-            battingFormula: '1 run = 1 point, every 10 runs = +2 bonus points',
+            balls: battingPoints.balls,
+            strikeRate: battingPoints.strikeRate,
+            srFactor: battingPoints.srFactor,
+            battingPoints: Number(battingPoints.total.toFixed(2)),
+            battingFormula: battingPoints.formula,
             fieldingDismissals: fielding.dismissals,
             fielding: fielding.points
           }
@@ -1451,7 +1467,35 @@ console.log('[LIVE] getLiveScore populated:', {
       bowlingScorecard: innings.bowlingScorecard.map(b => {
         const row = b.toObject ? b.toObject() : b;
         const bowlerId = b.bowler?.toString();
-        const bowlingPoints = calculateBowlingPoints(b.wickets || 0);
+
+        // Collect batting positions of each batter dismissed by this bowler
+        // Only bowler-credited wicket types earn position-weighted points
+        const wicketPositions = innings.battingScorecard
+          .reduce((acc, bat, idx) => {
+            const dismissalBowler = bat.bowler?.toString();
+            const howOut = (bat.howOut || '').toString();
+            const rule = getWicketRule(howOut);
+            if (
+              bowlerId &&
+              dismissalBowler === bowlerId &&
+              rule?.bowlerCredit
+            ) {
+              acc.push(idx + 1); // 1-based batting position
+            }
+            return acc;
+          }, []);
+
+        // Economy = runsConceded / overs (overs stored as decimal e.g. 3.4 = 3 overs 4 balls)
+        const economy = b.overs > 0 ? b.runsConceded / b.overs : 0;
+
+        const bowlingPoints = calculateBowlingPoints(
+          b.wickets || 0,
+          wicketPositions,
+          economy,
+          match.format,
+          match.overs
+        );
+
         const wicketsTaken = innings.battingScorecard
           .filter(bat => {
             const dismissalBowler = bat.bowler?.toString();
@@ -1463,21 +1507,27 @@ console.log('[LIVE] getLiveScore populated:', {
             dismissal: bat.howOut,
             fielder: playerPayload(bat.fielder)
           }));
+
         return {
           ...row,
           bowler: playerPayload(b.bowler),
-          economy: b.overs > 0 ? (b.runsConceded / b.overs).toFixed(2) : 0,
+          economy: b.overs > 0 ? economy.toFixed(2) : 0,
           wicketsTaken,
-          scoringPoints: bowlingPoints.total,
+          scoringPoints: Number(bowlingPoints.total.toFixed(2)),
           pointsBreakdown: {
             wickets: bowlingPoints.wickets,
-            bowling: bowlingPoints.total,
-            pointsPerWicket: bowlingPoints.formula.pointsPerWicket,
+            wicketPositions: bowlingPoints.wicketPositions,
+            wicketPoints: bowlingPoints.wicketPoints,
+            economyAdjustment: bowlingPoints.economyAdjustment,
+            economyBenchmark: bowlingPoints.economyBenchmark,
+            economy: bowlingPoints.economy,
+            bowlingTotal: Number(bowlingPoints.total.toFixed(2)),
             creditedWicketTypes: bowlingPoints.formula.creditedWicketTypes,
             excludedWicketTypes: getScoringRuleCatalogue().wicketTypes
               .filter(rule => !rule.bowlerCredit)
               .map(rule => rule.key),
-            bowlingFormula: '1 bowler-credited wicket = 1 point; run-outs do not add bowler points'
+            wicketFormula: bowlingPoints.formula.wicketFormula,
+            economyFormula: bowlingPoints.formula.economyFormula
           }
         };
       }),
@@ -1564,8 +1614,8 @@ console.log('[LIVE] getLiveScore populated:', {
       stats: matchStats
       ,
       scoringRules: {
-        batting: '1 run = 1 point, every 10 runs = +2 bonus points',
-        bowling: '1 bowler-credited wicket = 1 point; run-outs do not add bowler points',
+        batting: 'Final Points = (Runs / 10) × √(SR / 100); benchmark: 10 off 10 = 1.00 pt',
+        bowling: 'Wicket points by batting position (pos ≤5: 2.00 pts, pos 6+: 2.00−0.20×(pos−5)) + economy adjustment (T20/≤30ov: clamp((8−E)/2,−2,+2); ODI/>30ov: clamp((6−E)/2,−2,+2); Test: 0)',
         fielding: 'catch/run-out/stumping = 0.5 point',
         penalty: 'Team 2 chase target is reduced only by configured remaining penalty overs, not by penalizing the full innings',
         childMatch: 'Child match: no-ball does not count as a legal ball; bye with 0 runs counts as 1 run',
@@ -2044,6 +2094,12 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     const method = (rainData.method || 'dls').toString();
     const revisedOvers = Number(rainData.revisedOvers || rainData.overs || match.overs);
     const currentInnings = match.currentInnings || 1;
+
+    // Issue-11 fix: DLS target adjustment only makes sense while chasing (2nd innings).
+    // Applying it during 1st innings is a logical error — only washout/abandoned is valid.
+    if (currentInnings === 1 && !['washout', 'abandoned'].includes(method)) {
+      throw new ApiError(400, 'DLS target can only be revised during the 2nd innings (chase). Use washout or abandoned for 1st innings interruptions.');
+    }
     const activeInnings = currentInnings === 2 ? second : first;
     const wicketsLost = Number(rainData.wicketsLost ?? activeInnings?.totalWickets ?? 0);
 

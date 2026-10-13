@@ -18,29 +18,66 @@ const IN_PROGRESS_STATUSES = [
 // already recorded for a genuinely-played match are never lost.
 export const abandonStaleMatches = async () => {
   const cutoff = new Date(Date.now() - STALE_AFTER_MS);
+
+  // ── 1. In-progress matches stuck for 8+ hours since actualStartTime ──────
   const staleMatches = await Match.find({
     status: { $in: IN_PROGRESS_STATUSES },
     actualStartTime: { $exists: true, $lte: cutoff }
   }).select('_id');
 
-  if (!staleMatches.length) return { abandoned: 0 };
+  // ── 2. Issue-13 fix: Scheduled matches whose scheduledDate is >24h in the past
+  //       and were never started (no actualStartTime). These would otherwise
+  //       sit in the scheduled list forever.
+  const PAST_SCHEDULED_CUTOFF_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const pastScheduledCutoff = new Date(Date.now() - PAST_SCHEDULED_CUTOFF_MS);
+  const pastScheduledMatches = await Match.find({
+    status: MATCH_STATUS.SCHEDULED,
+    scheduledDate: { $lte: pastScheduledCutoff },
+    actualStartTime: { $exists: false },
+    isActive: true
+  }).select('_id');
 
-  const ids = staleMatches.map((match) => match._id);
-  await Match.updateMany(
-    { _id: { $in: ids } },
-    {
-      $set: {
-        status: MATCH_STATUS.ABANDONED,
-        'result.method': 'timeout',
-        'result.message': 'Match automatically abandoned - not completed within 8 hours of starting.'
+  const staleIds = staleMatches.map((m) => m._id);
+  const pastScheduledIds = pastScheduledMatches.map((m) => m._id);
+
+  if (!staleIds.length && !pastScheduledIds.length) return { abandoned: 0, cancelled: 0 };
+
+  let abandoned = 0;
+  let cancelled = 0;
+
+  if (staleIds.length) {
+    await Match.updateMany(
+      { _id: { $in: staleIds } },
+      {
+        $set: {
+          status: MATCH_STATUS.ABANDONED,
+          'result.method': 'timeout',
+          'result.message': 'Match automatically abandoned - not completed within 8 hours of starting.'
+        }
       }
-    }
-  );
+    );
+    staleIds.forEach((id) => emitToAll('matchesUpdated', { _id: id, status: MATCH_STATUS.ABANDONED }));
+    abandoned = staleIds.length;
+    console.log(`Stale match cleanup: abandoned ${abandoned} match(es) inactive for 8+ hours`);
+  }
 
-  ids.forEach((id) => emitToAll('matchesUpdated', { _id: id, status: MATCH_STATUS.ABANDONED }));
+  if (pastScheduledIds.length) {
+    await Match.updateMany(
+      { _id: { $in: pastScheduledIds } },
+      {
+        $set: {
+          status: MATCH_STATUS.CANCELLED,
+          'result.method': 'expired',
+          'result.message': 'Match automatically cancelled - scheduled time passed without starting.'
+        }
+      }
+    );
+    pastScheduledIds.forEach((id) => emitToAll('matchesUpdated', { _id: id, status: MATCH_STATUS.CANCELLED }));
+    cancelled = pastScheduledIds.length;
+    console.log(`Stale match cleanup: cancelled ${cancelled} past-scheduled match(es) that never started`);
+  }
 
-  console.log(`Stale match cleanup: abandoned ${ids.length} match(es) inactive for 8+ hours`);
-  return { abandoned: ids.length };
+  return { abandoned, cancelled };
 };
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly

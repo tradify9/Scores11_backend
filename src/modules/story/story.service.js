@@ -1,13 +1,22 @@
 import Story from './story.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
+import { uploadImage, uploadVideo } from '../../utils/fileUploader.js';
 
 const storyService = {
-  createStory: async (data, userId) => {
-    const mediaUrl = data.mediaUrl || data.url || data.media?.url;
+  createStory: async (data, userId, file = null) => {
+    let uploaded = null;
+    if (file) {
+      const isVideo = file.mimetype?.startsWith('video/');
+      uploaded = isVideo
+        ? await uploadVideo(file.path, data.folder || 'crick11/stories/videos')
+        : await uploadImage(file.path, data.folder || 'crick11/stories');
+    }
+
+    const mediaUrl = uploaded?.url || data.mediaUrl || data.url || data.media?.url;
     if (!mediaUrl) throw new ApiError(400, 'Story media is required');
 
-    const mediaType = (data.mediaType || 'image').toString().toLowerCase() === 'video'
+    const mediaType = (data.mediaType || (file?.mimetype?.startsWith('video/') ? 'video' : 'image')).toString().toLowerCase() === 'video'
       ? 'video'
       : 'image';
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -18,8 +27,8 @@ const storyService = {
       mediaType,
       media: {
         url: mediaUrl,
-        publicId: data.publicId || data.media?.publicId || 'manual',
-        thumbnail: data.thumbnail || data.media?.thumbnail
+        publicId: uploaded?.publicId || data.publicId || data.media?.publicId || 'manual',
+        thumbnail: uploaded?.thumbnail || data.thumbnail || data.media?.thumbnail
       },
       expiresAt
     });

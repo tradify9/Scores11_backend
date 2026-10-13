@@ -4,18 +4,19 @@ import { authenticate } from '../../middleware/auth.middleware.js';
 import { authorize } from '../../middleware/role.middleware.js';
 import { upload } from '../../middleware/upload.middleware.js';
 import { ROLES } from '../../constants/roles.js';
+import { stripContact } from '../../middleware/stripContact.middleware.js';
 
 const router = express.Router();
 
 // Public routes
-router.get('/search', teamController.searchTeams);
+router.get('/search', stripContact, teamController.searchTeams);
 router.get('/rankings', teamController.getTeamRankings);
 router.get('/invite/:code', teamController.getInviteInfo);
 router.post('/invite/:code/join', teamController.joinByInvite);
-router.get('/public/:id', teamController.getTeamByIdPublic);
-router.get('/public/:id/players', teamController.getTeamByIdPublic); // 🔥 PUBLIC - Get team with all players (anyone can view team lineup)
-router.get('/list', teamController.getAllTeams);
-router.get('/list/populate', teamController.getAllTeams);
+router.get('/public/:id', stripContact, teamController.getTeamByIdPublic);
+router.get('/public/:id/players', stripContact, teamController.getTeamByIdPublic); // 🔥 PUBLIC - Get team with all players (anyone can view team lineup)
+router.get('/list', stripContact, teamController.getAllTeams);
+router.get('/list/populate', stripContact, teamController.getAllTeams);
 
 // Protected routes - require authentication
 router.post('/', authenticate, teamController.createTeam);

@@ -8,6 +8,10 @@ export const subscriptionController = {
     res.json(new ApiResponse(200, 'Plans retrieved', plans));
   }),
 
+  getPlanList: catchAsync(async (req, res) => {
+    res.json(new ApiResponse(200, 'Plans retrieved', subscriptionService.getPlanList()));
+  }),
+
   subscribe: catchAsync(async (req, res) => {
     const { plan, durationMonths } = req.body;
     const sub = await subscriptionService.subscribe(req.user.userId, plan, durationMonths);

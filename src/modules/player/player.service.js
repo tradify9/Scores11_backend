@@ -4,6 +4,7 @@ import Team from '../team/team.model.js';
 import Match from '../match/match.model.js';
 import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
+import { aggregatePlayerRows } from '../leaderboard/leaderboard.service.js';
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const normalizePhone = (value = '') => value.replace(/\D/g, '');
@@ -435,8 +436,39 @@ export const playerService = {
       : 0;
     const total = playerTotal + Math.max(userTotal - linkedPublicUserCount, 0);
 
+    // Player.stats is not updated by live scoring; overlay the real career
+    // numbers that the leaderboard computes from match scorecards.
+    let withStats = players;
+    try {
+      const rows = await aggregatePlayerRows();
+      const byId = new Map(rows.map((row) => [row._id?.toString(), row]));
+      withStats = players.map((player) => {
+        const row = byId.get(player._id?.toString());
+        if (!row) return player;
+        const plain = player.toObject ? player.toObject() : player;
+        return {
+          ...plain,
+          stats: {
+            ...(plain.stats || {}),
+            matches: row.matches ?? plain.stats?.matches ?? 0,
+            runs: row.runs ?? 0,
+            balls: row.balls ?? 0,
+            fours: row.fours ?? 0,
+            sixes: row.sixes ?? 0,
+            average: row.average ?? 0,
+            strikeRate: row.strikeRate ?? 0,
+            highestScore: row.highestScore ?? 0,
+            wickets: row.wickets ?? 0,
+            economy: row.economy ?? plain.stats?.economy ?? 0
+          }
+        };
+      });
+    } catch (error) {
+      console.warn('getAllPlayers: live stats overlay skipped:', error.message);
+    }
+
     return {
-      players,
+      players: withStats,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) }
     };
   },
@@ -529,7 +561,9 @@ export const playerService = {
         .map(toPlayerListItemFromUser)
     ]
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-      .slice(0, limit);
+      .slice(0, limit)
+      // Public endpoint: never expose contact details.
+      .map(({ phone, email, ...rest }) => rest);
   },
 
   searchPlayers: async (query, limit = 10) => {

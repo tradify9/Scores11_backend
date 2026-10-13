@@ -120,15 +120,18 @@ export const playerMatchesService = {
                 { $in: [player._id, { $ifNull: ['$team2Lineup', []] }] }
               ]
             },
+            // Constants must be $literal: a bare false/0 in $project means
+            // "exclude this field" and Mongo rejects the whole stage.
+            // team1/team2 are still lookup arrays here, hence $arrayElemAt.
             inTeam: teamIds.length
               ? {
                   $or: [
-                    { $in: ['$team1._id', teamIds] },
-                    { $in: ['$team2._id', teamIds] }
+                    { $in: [{ $arrayElemAt: ['$team1._id', 0] }, teamIds] },
+                    { $in: [{ $arrayElemAt: ['$team2._id', 0] }, teamIds] }
                   ]
                 }
-              : false,
-            role: player.role || null
+              : { $literal: false },
+            role: { $literal: player.role || null }
           },
           canOptOut: { $in: ['$status', optOutStatuses] }
         }

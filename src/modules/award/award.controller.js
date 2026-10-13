@@ -36,7 +36,8 @@ export const awardController = {
 
   getWinnersByType: catchAsync(async (req, res) => {
     const { awardType, year } = req.query;
-    const award = await awardService.getWinnersByType(awardType, parseInt(year));
+    const parsedYear = parseInt(year, 10);
+    const award = await awardService.getWinnersByType(awardType, Number.isNaN(parsedYear) ? new Date().getFullYear() : parsedYear);
     res.json(new ApiResponse(200, 'Winners retrieved', award));
   })
 };

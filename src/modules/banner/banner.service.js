@@ -57,13 +57,10 @@ class BannerService {
     const query = {
       position: position || 'general',
       isActive: true,
-      $or: [
-        { startDate: { $exists: false } },
-        { startDate: { $lte: now } }
-      ],
-      $or: [
-        { endDate: { $exists: false } },
-        { endDate: { $gte: now } }
+      // Two separate windows: a second "$or" key would overwrite the first.
+      $and: [
+        { $or: [{ startDate: { $exists: false } }, { startDate: null }, { startDate: { $lte: now } }] },
+        { $or: [{ endDate: { $exists: false } }, { endDate: null }, { endDate: { $gte: now } }] }
       ]
     };
 

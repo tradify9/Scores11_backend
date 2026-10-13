@@ -140,7 +140,19 @@ export const communityService = {
     const { page, limit, skip } = getPagination(query);
     
     const filter = { isActive: true };
-    if (query.tag) filter.tags = query.tag;
+    const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (query.tag) {
+      // Hashtags live in tags[] or inline in the text ("#IndvsPak").
+      const tag = query.tag.toString().replace(/^#/, '').trim();
+      filter.$or = [
+        { tags: new RegExp(`^#?${escapeRegex(tag)}$`, 'i') },
+        { content: new RegExp(`#${escapeRegex(tag)}\\b`, 'i') }
+      ];
+    }
+    if (query.search) {
+      const search = query.search.toString().trim().slice(0, 100);
+      if (search) filter.content = new RegExp(escapeRegex(search), 'i');
+    }
     if (query.user) filter.user = query.user;
 
     const [posts, total] = await Promise.all([
@@ -157,6 +169,43 @@ export const communityService = {
       posts: posts.map(post => decoratePost(post, viewerId)),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) }
     };
+  },
+
+  // Most-used hashtags in recent posts (tags[] plus inline #hashtags).
+  getTrendingTags: async (query = {}) => {
+    const days = Math.min(Math.max(parseInt(query.days, 10) || 30, 1), 365);
+    const limit = Math.min(Math.max(parseInt(query.limit, 10) || 10, 1), 30);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const posts = await Post.find({ isActive: true, createdAt: { $gte: since } })
+      .select('content tags')
+      .sort({ createdAt: -1 })
+      .limit(1000)
+      .lean();
+
+    const counts = new Map();
+    for (const post of posts) {
+      const found = new Set();
+      for (const tag of post.tags || []) {
+        const clean = tag?.toString().replace(/^#/, '').trim();
+        if (clean) found.add(clean.toLowerCase() + '|' + clean);
+      }
+      for (const match of (post.content || '').matchAll(/#([\p{L}\p{N}_]{2,40})/gu)) {
+        found.add(match[1].toLowerCase() + '|' + match[1]);
+      }
+      // Count each tag once per post; keep the first spelling seen.
+      const perPost = new Map();
+      for (const entry of found) {
+        const [key, label] = entry.split('|');
+        if (!perPost.has(key)) perPost.set(key, label);
+      }
+      for (const [key, label] of perPost) {
+        const current = counts.get(key) || { tag: `#${label}`, posts: 0 };
+        current.posts += 1;
+        counts.set(key, current);
+      }
+    }
+
+    return [...counts.values()].sort((a, b) => b.posts - a.posts).slice(0, limit);
   },
 
   // Get post by ID

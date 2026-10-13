@@ -36,6 +36,7 @@ import dashboardRoutes from './modules/dashboard/dashboard.routes.js';
 import roleRoutes from './modules/role/role.routes.js';
 import chatRoutes from './modules/chat/chat.routes.js';
 import storyRoutes from './modules/story/story.routes.js';
+import highlightRoutes from './modules/highlight/highlight.routes.js';
 
 // import matchRoutes from './modules/match/match.routes.js';
 
@@ -76,6 +77,7 @@ router.use('/announcements', announcementRoutes);
 router.use('/feature-toggles', featureToggleRoutes);
 router.use('/chat', chatRoutes);
 router.use('/stories', storyRoutes);
+router.use('/highlights', highlightRoutes);
 router.use('/dashboard', dashboardRoutes);
 // router.use('/matches', matchRoutes);
 

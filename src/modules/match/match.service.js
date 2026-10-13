@@ -353,8 +353,9 @@ export const matchService = {
     const sortBy = query.sort || query.sortBy || 'updatedAt';
     const sortOrder = query.order === 'asc' ? 1 : -1;
 
+    // Issue-11 fix: include duckworth_lewis status so DLS matches appear in live feed
     const matches = await Match.find({ 
-      status: MATCH_STATUS.LIVE,
+      status: { $in: [MATCH_STATUS.LIVE, MATCH_STATUS.DUCKWORTH_LEWIS] },
       isActive: true 
     })
       .populate('team1', 'name shortName logo')
@@ -897,7 +898,11 @@ export const matchService = {
     
     const filter = { 
       status: 'scheduled', 
-      isActive: true 
+      isActive: true,
+      // Issue-13 fix: only show future matches in the public scheduled list.
+      // Past-dated matches that never started will be auto-cancelled by the
+      // cleanup job, but we hide them here immediately so the UI stays clean.
+      scheduledDate: { $gte: new Date() }
     };
     
     if (query.tournament) filter.tournament = query.tournament;

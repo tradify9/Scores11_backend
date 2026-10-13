@@ -17,21 +17,24 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|gif|webp|pdf|doc|docx/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
+  // Issue-15 fix: allow images, videos, and documents for story/profile uploads
+  const allowedExtensions = /jpeg|jpg|png|gif|webp|pdf|doc|docx|mp4|mov|avi|webm|mkv/;
+  const allowedMimetypes = /image\/(jpeg|jpg|png|gif|webp)|video\/(mp4|quicktime|x-msvideo|webm|x-matroska)|application\/(pdf|msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document)/;
+
+  const extname = allowedExtensions.test(path.extname(file.originalname).toLowerCase());
+  const mimetype = allowedMimetypes.test(file.mimetype);
 
   if (extname && mimetype) {
     return cb(null, true);
   } else {
-    cb(new ApiError(400, 'Invalid file type. Only images and documents are allowed.'));
+    cb(new ApiError(400, 'Invalid file type. Allowed: images (jpg/png/gif/webp), videos (mp4/mov/avi/webm) and documents (pdf/doc).'));
   }
 };
 
 export const upload = multer({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB
+    fileSize: 100 * 1024 * 1024 // Issue-15 fix: increase to 100MB to support video files
   },
   fileFilter
 });

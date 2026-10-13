@@ -16,7 +16,16 @@ router.get('/transactions/:id', authenticate, walletController.getTransactionByI
 router.get('/transactions/contest/:contestId', authenticate, walletController.getContestTransactions);
 
 // Money operations
-router.post('/deposit', authenticate, walletController.deposit);
+// No payment gateway verifies deposits yet, so a user-initiated deposit would
+// mint free balance. Only admins may credit until a gateway is integrated.
+router.post('/deposit', authenticate, (req, res, next) => {
+  if ((req.user?.role || '').toString().toLowerCase() === ROLES.ADMIN) return next();
+  return res.status(403).json({
+    success: false,
+    statusCode: 403,
+    message: 'Online payments are not enabled yet. Please contact support to add money.'
+  });
+}, walletController.deposit);
 router.post('/withdraw', authenticate, walletController.withdraw);
 router.post('/transfer', authenticate, walletController.transfer);
 
@@ -27,7 +36,7 @@ router.post('/contest/prize', authenticate, authorize(ROLES.ADMIN), walletContro
 // Statement
 router.get('/statement', authenticate, walletController.getStatement);
 
-// Admin overview (public for dashboard)
-router.get('/admin/overview', walletController.getAdminOverview);
+// Admin overview (financial totals) - admin panel sends its token
+router.get('/admin/overview', authenticate, authorize(ROLES.ADMIN), walletController.getAdminOverview);
 
 export default router;

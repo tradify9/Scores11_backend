@@ -112,50 +112,171 @@ export const isLegalDelivery = ({
   isPenalty = false
 } = {}) => !isWide && !isNoBall && !isPenalty;
 
-export const BATTING_POINTS = {
-  POINTS_PER_RUN: 1,
-  RUN_RATE_BONUS_EVERY_RUNS: 10,
-  RUN_RATE_BONUS_POINTS: 2
-};
-
 export const BOWLING_POINTS = {
-  POINTS_PER_BOWLER_WICKET: 1,
   BOWLER_CREDITED_WICKET_TYPES: WICKET_RULES.filter(rule => rule.bowlerCredit).map(rule => rule.key)
 };
 
-export const calculateBattingPoints = (runs = 0) => {
-  const safeRuns = Math.max(0, Number(runs || 0));
-  const base = safeRuns * BATTING_POINTS.POINTS_PER_RUN;
-  const runRateBonus =
-    Math.floor(safeRuns / BATTING_POINTS.RUN_RATE_BONUS_EVERY_RUNS) *
-    BATTING_POINTS.RUN_RATE_BONUS_POINTS;
+/**
+ * Batting Points — Square-Root Strike Rate Model
+ *
+ * Formula:  Final Points = (runs / 10) × √(strikeRate / 100)
+ * SR = (runs / balls) × 100
+ * Benchmark: 10 runs off 10 balls = 1.00 point.
+ *
+ * @param {number} runs  - Actual runs scored by the batter (excludes extras)
+ * @param {number} balls - Actual balls faced (not rounded/displayed value)
+ * @returns {{ runs, balls, strikeRate, srFactor, total, formula }}
+ */
+export const calculateBattingPoints = (runs = 0, balls = 0) => {
+  const safeRuns  = Math.max(0, Number(runs  || 0));
+  const safeBalls = Math.max(0, Number(balls || 0));
+
+  // If no balls faced (e.g. retired hurt immediately), return 0 — spec rule 5
+  if (safeBalls === 0) {
+    return {
+      runs: safeRuns,
+      balls: 0,
+      strikeRate: 0,
+      srFactor: 0,
+      total: 0,
+      formula: 'Final Points = (Runs / 10) × √(SR / 100)'
+    };
+  }
+
+  const strikeRate = (safeRuns / safeBalls) * 100;     // full precision
+  const srFactor   = Math.sqrt(strikeRate / 100);       // √(SR / 100)
+  const basePoints = safeRuns / 10;                     // Runs / 10
+  const total      = basePoints * srFactor;             // final (full precision)
+
   return {
     runs: safeRuns,
-    base,
-    runRateBonus,
-    total: base + runRateBonus,
+    balls: safeBalls,
+    strikeRate: Number(strikeRate.toFixed(4)),
+    srFactor:   Number(srFactor.toFixed(6)),
+    total:      Number(total.toFixed(4)),               // displayed value rounded to 2 dp by caller
+    formula: 'Final Points = (Runs / 10) × √(SR / 100)'
+  };
+};
+
+/**
+ * Wicket points per batting position (PDF §2)
+ * Positions 1–5: 2.00 pts each.
+ * Position 6+:   2.00 − 0.20 × (position − 5), min 0.
+ */
+export const wicketPointsForPosition = (battingPosition = 1) => {
+  const pos = Math.max(1, Number(battingPosition || 1));
+  if (pos <= 5) return 2.00;
+  return Math.max(0, 2.00 - 0.20 * (pos - 5));
+};
+
+/**
+ * Economy adjustment by match format (PDF §3, §4, §5)
+ *
+ * T20 / ≤30 overs:    clamp((8 − E) / 2, −2, +2)
+ * ODI  / >30 overs:   clamp((6 − E) / 2, −2, +2)
+ * Test:               0  (economy not used)
+ *
+ * @param {number} economy     - runs per over (runsConceded / overs)
+ * @param {string} matchFormat - match.format value ('t20','odi','test','t10','custom','hundred')
+ * @param {number} matchOvers  - total overs for this match (used for custom/hundred)
+ */
+export const calculateEconomyAdjustment = (economy = 0, matchFormat = 't20', matchOvers = 20) => {
+  const fmt   = (matchFormat || '').toString().toLowerCase();
+  const E     = Number(economy || 0);
+  const overs = Number(matchOvers || 20);
+
+  // Test — no economy adjustment
+  if (fmt === 'test') {
+    return { adjustment: 0, benchmark: null, format: 'test' };
+  }
+
+  // Determine benchmark: ≤30 overs → 8.00, >30 overs → 6.00
+  const isShortFormat =
+    fmt === 't20'     ||
+    fmt === 't10'     ||
+    fmt === 'hundred' ||
+    (fmt === 'custom' && overs <= 30);
+
+  const isLongFormat =
+    fmt === 'odi' ||
+    (fmt === 'custom' && overs > 30);
+
+  if (!isShortFormat && !isLongFormat) {
+    // Unknown format — default to short-format rule
+    return { adjustment: Math.min(2, Math.max(-2, (8 - E) / 2)), benchmark: 8, format: fmt };
+  }
+
+  const benchmark = isShortFormat ? 8 : 6;
+  const raw       = (benchmark - E) / 2;
+  const adjustment = Math.min(2, Math.max(-2, raw));   // clamp(raw, -2, +2)
+
+  return {
+    adjustment: Number(adjustment.toFixed(4)),
+    benchmark,
+    economy: Number(E.toFixed(4)),
+    format: fmt
+  };
+};
+
+/**
+ * Bowling Points — Position-Weighted Wickets + Economy Adjustment
+ *
+ * Formula (PDF §7):
+ *   T20 / ≤30 overs:  W + clamp((8 − E) / 2, −2, +2)
+ *   ODI  / >30 overs: W + clamp((6 − E) / 2, −2, +2)
+ *   Test:             W  (economy not used)
+ *
+ * where W = sum of wicketPointsForPosition(battingPosition) for each wicket.
+ *
+ * @param {number}   wickets         - total bowler-credited wickets (fallback when positions unavailable)
+ * @param {number[]} wicketPositions - batting positions of each dismissed batter (array)
+ * @param {number}   economy         - runs per over
+ * @param {string}   matchFormat     - match.format
+ * @param {number}   matchOvers      - total overs for the match
+ */
+export const calculateBowlingPoints = (
+  wickets       = 0,
+  wicketPositions = [],
+  economy       = 0,
+  matchFormat   = 't20',
+  matchOvers    = 20
+) => {
+  const safeWickets = Math.max(0, Number(wickets || 0));
+  const positions   = Array.isArray(wicketPositions) ? wicketPositions : [];
+
+  // Calculate total wicket points
+  let wicketPoints;
+  if (positions.length > 0) {
+    // Use position-weighted formula
+    wicketPoints = positions.reduce((sum, pos) => sum + wicketPointsForPosition(pos), 0);
+  } else {
+    // Fallback: no position data — treat all wickets as top-order (2.00 each)
+    wicketPoints = safeWickets * 2.00;
+  }
+
+  const ecoAdj = calculateEconomyAdjustment(economy, matchFormat, matchOvers);
+  const total  = Number((wicketPoints + ecoAdj.adjustment).toFixed(4));
+
+  return {
+    wickets:         safeWickets,
+    wicketPositions: positions,
+    wicketPoints:    Number(wicketPoints.toFixed(4)),
+    economyAdjustment: ecoAdj.adjustment,
+    economyBenchmark:  ecoAdj.benchmark,
+    economy:           Number(Number(economy || 0).toFixed(4)),
+    total,
     formula: {
-      pointsPerRun: BATTING_POINTS.POINTS_PER_RUN,
-      bonusEveryRuns: BATTING_POINTS.RUN_RATE_BONUS_EVERY_RUNS,
-      bonusPoints: BATTING_POINTS.RUN_RATE_BONUS_POINTS
+      creditedWicketTypes: BOWLING_POINTS.BOWLER_CREDITED_WICKET_TYPES,
+      economyFormula: ecoAdj.benchmark
+        ? `clamp((${ecoAdj.benchmark} − E) / 2, −2, +2)`
+        : 'no economy adjustment (Test)',
+      wicketFormula: 'Wᵢ = 2.00 for pos ≤5; 2.00 − 0.20×(pos−5) for pos >5'
     }
   };
 };
 
 export const isBowlerCreditedWicket = (wicketType) =>
   BOWLING_POINTS.BOWLER_CREDITED_WICKET_TYPES.includes((wicketType || '').toString());
-
-export const calculateBowlingPoints = (wickets = 0) => {
-  const safeWickets = Math.max(0, Number(wickets || 0));
-  return {
-    wickets: safeWickets,
-    total: safeWickets * BOWLING_POINTS.POINTS_PER_BOWLER_WICKET,
-    formula: {
-      pointsPerWicket: BOWLING_POINTS.POINTS_PER_BOWLER_WICKET,
-      creditedWicketTypes: BOWLING_POINTS.BOWLER_CREDITED_WICKET_TYPES
-    }
-  };
-};
 
 export const calculateFieldingPointsByPlayer = (balls = []) => {
   const fielding = new Map();

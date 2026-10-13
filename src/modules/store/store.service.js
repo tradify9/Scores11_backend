@@ -116,7 +116,8 @@ export const storeService = {
       items: orderItems,
       totalAmount,
       paymentMethod,
-      paymentStatus: 'completed',
+      // Only wallet payments are actually collected here; COD is paid on delivery.
+      paymentStatus: paymentMethod === 'wallet' ? 'completed' : 'pending',
       shippingAddress
     });
 

@@ -25,8 +25,10 @@ export const auth = async (req, res, next) => {
     }
 
     req.user = user;  // FIXED: Attach full User document for req.user._id access
-    req.userId = user._id;
-    req.user.userId = user._id; // Legacy compatibility
+    // String form: services compare with `doc.owner.toString() !== userId`,
+    // which is always true against an ObjectId and locked owners out (403).
+    req.userId = user._id.toString();
+    req.user.userId = user._id.toString(); // Legacy compatibility
     console.log(`[${new Date().toISOString()}] [AUTH] SUCCESS userId: ${user._id} (${user.name || 'Unnamed'})`);
     next();
   } catch (error) {

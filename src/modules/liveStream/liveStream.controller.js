@@ -24,8 +24,19 @@ export const disconnectYoutube = catchAsync(async (req, res) => {
   ApiResponse.success(res, 'YouTube channel disconnected', data);
 });
 
-export const youtubeCallback = catchAsync(async (req, res) => {
-  const data = await liveStreamService.handleYoutubeCallback(req.query);
+const escapeHtml = (value = '') => value.toString()
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+export const youtubeCallback = async (req, res) => {
+  let data;
+  try {
+    data = await liveStreamService.handleYoutubeCallback(req.query);
+  } catch (error) {
+    // The user lands here in a browser, so answer with a page, not JSON.
+    const reason = req.query.error || error.message || 'YouTube connection failed';
+    return res.status(error.statusCode || 400).type('html').send(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1" /><title>YouTube not connected</title></head><body style="margin:0;font-family:Arial,sans-serif;background:#0f172a;color:#fff;display:grid;min-height:100vh;place-items:center;padding:24px"><div style="max-width:420px;background:#111827;border:1px solid #334155;border-radius:18px;padding:24px;text-align:center"><h1 style="margin:0 0 10px;font-size:24px">YouTube not connected</h1><p style="color:#cbd5e1;line-height:1.5">${escapeHtml(reason)}</p><p style="color:#cbd5e1">Return to the Scores11 app and try Connect again.</p></div></body></html>`);
+  }
   res.type('html').send(`<!doctype html>
 <html>
 <head>
@@ -41,11 +52,11 @@ export const youtubeCallback = catchAsync(async (req, res) => {
 <body>
   <div class="card">
     <h1>YouTube connected</h1>
-    <p>${data.channelTitle} is connected with Scores11. You can return to the app and create YouTube Live streams.</p>
+    <p>${escapeHtml(data.channelTitle)} is connected with Scores11. You can return to the app and create YouTube Live streams.</p>
   </div>
 </body>
 </html>`);
-});
+};
 
 export const getLiveStreams = catchAsync(async (req, res) => {
   const streams = await liveStreamService.getLiveStreams(req.query);

@@ -17,24 +17,53 @@ export const initializeSocket = (server) => {
   io.on('connection', (socket) => {
     console.log(`🔌 Socket connected: ${socket.id}`);
 
-    socket.on('join-match', (matchId) => {
+    // Clients send either a bare id or { matchId | tournamentId | streamId }.
+    const roomId = (payload, key) => {
+      const id = payload && typeof payload === 'object' ? payload[key] : payload;
+      return id ? id.toString() : '';
+    };
+
+    // Web uses kebab-case events, the mobile app uses camelCase/snake_case.
+    const joinMatch = (payload) => {
+      const matchId = roomId(payload, 'matchId');
       if (matchId) {
         socket.join(`match:${matchId}`);
         console.log(`📺 Socket ${socket.id} joined match:${matchId}`);
       }
-    });
-
-    socket.on('leave-match', (matchId) => {
+    };
+    const leaveMatch = (payload) => {
+      const matchId = roomId(payload, 'matchId');
       if (matchId) {
         socket.leave(`match:${matchId}`);
         console.log(`👋 Socket ${socket.id} left match:${matchId}`);
       }
-    });
+    };
+    socket.on('join-match', joinMatch);
+    socket.on('joinMatch', joinMatch);
+    socket.on('leave-match', leaveMatch);
+    socket.on('leaveMatch', leaveMatch);
 
-    socket.on('join-tournament', (tournamentId) => {
-      if (tournamentId) {
-        socket.join(`tournament:${tournamentId}`);
-      }
+    const joinTournament = (payload) => {
+      const tournamentId = roomId(payload, 'tournamentId');
+      if (tournamentId) socket.join(`tournament:${tournamentId}`);
+    };
+    const leaveTournament = (payload) => {
+      const tournamentId = roomId(payload, 'tournamentId');
+      if (tournamentId) socket.leave(`tournament:${tournamentId}`);
+    };
+    socket.on('join-tournament', joinTournament);
+    socket.on('join_tournament', joinTournament);
+    socket.on('leave-tournament', leaveTournament);
+    socket.on('leave_tournament', leaveTournament);
+
+    // Live stream rooms: liveStream.service emits chat/viewer events to io.to(streamId).
+    socket.on('joinStream', (payload) => {
+      const streamId = roomId(payload, 'streamId');
+      if (streamId) socket.join(streamId);
+    });
+    socket.on('leaveStream', (payload) => {
+      const streamId = roomId(payload, 'streamId');
+      if (streamId) socket.leave(streamId);
     });
 
     socket.on('authenticate', (userId) => {
@@ -62,7 +91,7 @@ export const emitToMatch = (matchId, event, data) => {
   if (io && matchId) {
     const room = `match:${matchId}`;
     io.to(room).emit(event, data);
-    console.log(`📤 Emitted ${event} to ${room} (${Object.keys(io.sockets.adapter.rooms[room] || {}).length} clients)`);
+    console.log(`📤 Emitted ${event} to ${room} (${io.sockets.adapter.rooms.get(room)?.size || 0} clients)`);
   }
 };
 

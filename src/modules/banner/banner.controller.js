@@ -11,7 +11,7 @@ const createBanner = catchAsync(async (req, res) => {
   
   const banner = await bannerService.createBanner(bannerData);
   
-  ApiResponse.success(res, banner, 'Banner created successfully', 201);
+  ApiResponse.success(res, 'Banner created successfully', banner, 201);
 });
 
 // Get all banners (admin)
@@ -26,7 +26,7 @@ const getAllBanners = catchAsync(async (req, res) => {
     search
   });
   
-  ApiResponse.success(res, result);
+  ApiResponse.success(res, 'Banners retrieved', result);
 });
 
 // Get active banners for a specific position (public API)
@@ -42,35 +42,35 @@ const getActiveBanners = catchAsync(async (req, res) => {
     );
   }
   
-  ApiResponse.success(res, banners);
+  ApiResponse.success(res, 'Banners retrieved', banners);
 });
 
 // Get banner by ID
 const getBannerById = catchAsync(async (req, res) => {
   const banner = await bannerService.getBannerById(req.params.id);
   
-  ApiResponse.success(res, banner);
+  ApiResponse.success(res, 'Banners retrieved', banner);
 });
 
 // Update banner
 const updateBanner = catchAsync(async (req, res) => {
   const banner = await bannerService.updateBanner(req.params.id, req.body);
   
-  ApiResponse.success(res, banner, 'Banner updated successfully');
+  ApiResponse.success(res, 'Banner updated successfully', banner);
 });
 
 // Delete banner
 const deleteBanner = catchAsync(async (req, res) => {
   await bannerService.deleteBanner(req.params.id);
   
-  ApiResponse.success(res, null, 'Banner deleted successfully');
+  ApiResponse.success(res, 'Banner deleted successfully', null);
 });
 
 // Toggle banner status
 const toggleBannerStatus = catchAsync(async (req, res) => {
   const banner = await bannerService.toggleBannerStatus(req.params.id);
   
-  ApiResponse.success(res, banner, `Banner ${banner.isActive ? 'activated' : 'deactivated'} successfully`);
+  ApiResponse.success(res, `Banner ${banner.isActive ? 'activated' : 'deactivated'} successfully`, banner);
 });
 
 // Reorder banners
@@ -79,28 +79,28 @@ const reorderBanners = catchAsync(async (req, res) => {
   
   const result = await bannerService.reorderBanners(position, orderedIds);
   
-  ApiResponse.success(res, result, 'Banners reordered successfully');
+  ApiResponse.success(res, 'Banners reordered successfully', result);
 });
 
 // Record banner click
 const recordBannerClick = catchAsync(async (req, res) => {
   const banner = await bannerService.recordClick(req.params.id);
   
-  ApiResponse.success(res, banner);
+  ApiResponse.success(res, 'Banners retrieved', banner);
 });
 
 // Get banner analytics
 const getBannerAnalytics = catchAsync(async (req, res) => {
   const analytics = await bannerService.getBannerAnalytics(req.params.id);
   
-  ApiResponse.success(res, analytics);
+  ApiResponse.success(res, 'Banners retrieved', analytics);
 });
 
 // Get all banners analytics
 const getAllBannersAnalytics = catchAsync(async (req, res) => {
   const analytics = await bannerService.getAllBannersAnalytics();
   
-  ApiResponse.success(res, analytics);
+  ApiResponse.success(res, 'Banners retrieved', analytics);
 });
 
 export {

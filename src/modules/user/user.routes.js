@@ -1,4 +1,5 @@
 import express from 'express';
+import { stripContact } from '../../middleware/stripContact.middleware.js';
 import userController from './user.controller.js';   // FIXED
 import { authenticate } from '../../middleware/auth.middleware.js';
 import { authorize } from '../../middleware/role.middleware.js';
@@ -17,14 +18,14 @@ const router = express.Router();
 
 router.post('/register', validate(registerSchema), userController.register);
 router.get('/verify-email/:token', userController.verifyEmail);
-router.get('/profile/:username', userController.getProfileByUsername);
+router.get('/profile/:username', stripContact, userController.getProfileByUsername);
 router.get('/users/:id/avatar', userController.getUserAvatarPublic);
-router.get('/list', userController.getAllUsers);
+router.get('/list', stripContact, userController.getAllUsers);
 router.get('/leaderboard', userController.getLeaderboard);
 
 /* ---------- PUBLIC PLAYERS API ---------- */
 // Get public players - for captains to search and add players to teams
-router.get('/players/public', userController.getPublicPlayers);
+router.get('/players/public', stripContact, userController.getPublicPlayers);
 
 /* ---------- AUTHENTICATED ROUTES ---------- */
 

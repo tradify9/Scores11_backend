@@ -1,8 +1,19 @@
 import { settingsService } from './settings.service.js';
 import ApiResponse from '../../utils/ApiResponse.js';
 import catchAsync from '../../utils/catchAsync.js';
+import config from '../../config/env.js';
 
 export const settingsController = {
+  // Public, no auth: app-wide config the mobile app reads at runtime.
+  getAppConfig: catchAsync(async (req, res) => {
+    res.json(new ApiResponse(200, 'App config', {
+      support: config.support,
+      youtube: {
+        channelConnectEnabled: Boolean(config.youtube.clientId && config.youtube.clientSecret)
+      }
+    }));
+  }),
+
   getSettings: catchAsync(async (req, res) => {
     const settings = await settingsService.getSettings(req.user.userId);
     res.json(new ApiResponse(200, 'Settings retrieved', settings));

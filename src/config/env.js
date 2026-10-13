@@ -86,6 +86,14 @@ export default {
     hlsUrl: process.env.ZENSTREAM_HLS_URL || ''
   },
 
+  // Public contact details shown in the app's Help & Support screen
+  support: {
+    email: process.env.SUPPORT_EMAIL || 'support@scores11.com',
+    phone: process.env.SUPPORT_PHONE || '',
+    whatsapp: process.env.SUPPORT_WHATSAPP || '',
+    website: process.env.SUPPORT_WEBSITE || 'https://scores11.com'
+  },
+
   // YouTube Live integration
   youtube: {
     apiKey: process.env.YOUTUBE_API_KEY || '',

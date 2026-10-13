@@ -5,7 +5,10 @@ import ApiError from '../../utils/ApiError.js';
 import { getIO } from '../../config/socket.js';
 import config from '../../config/env.js';
 import axios from 'axios';
+import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
+import { extractYoutubeVideoId } from '../../utils/youtube.js';
+import { createReplayFromStream } from '../highlight/highlight.service.js';
 
 const trimTrailingSlash = (value = '') => value.toString().replace(/\/+$/, '');
 
@@ -31,32 +34,6 @@ const applyZenStreamUrls = (stream, streamKey) => {
   stream.streamUrl = stream.hlsUrl || stream.playbackUrl || stream.zenstreamPlayerUrl;
 
   return stream;
-};
-
-const extractYoutubeVideoId = (value = '') => {
-  const input = value.toString().trim();
-  if (!input) return '';
-
-  const plainId = /^[a-zA-Z0-9_-]{11}$/;
-  if (plainId.test(input)) return input;
-
-  try {
-    const url = new URL(input);
-    if (url.hostname.includes('youtu.be')) {
-      return url.pathname.split('/').filter(Boolean)[0] || '';
-    }
-    if (url.searchParams.get('v')) return url.searchParams.get('v');
-    const parts = url.pathname.split('/').filter(Boolean);
-    const markers = ['embed', 'live', 'shorts'];
-    for (const marker of markers) {
-      const index = parts.indexOf(marker);
-      if (index >= 0 && parts[index + 1]) return parts[index + 1];
-    }
-  } catch (_) {
-    return '';
-  }
-
-  return '';
 };
 
 const applyYoutubeUrls = (stream, youtubeInput) => {
@@ -106,7 +83,8 @@ const getYoutubeAccessToken = async (userId) => {
   const shouldRefresh = account.expiryDate && account.expiryDate.getTime() < Date.now() + 120000;
   if (!shouldRefresh) return account.accessToken;
   if (!account.refreshToken) {
-    throw new ApiError(401, 'YouTube access expired. Please reconnect your YouTube channel.');
+    // 400, not 401: the app treats 401 as "Scores11 session expired" and logs out.
+    throw new ApiError(400, 'YouTube access expired. Please reconnect your YouTube channel.');
   }
 
   const response = await axios.post('https://oauth2.googleapis.com/token', new URLSearchParams({
@@ -141,7 +119,8 @@ const youtubeRequest = async (userId, method, url, data = null, params = {}) => 
     return response.data;
   } catch (error) {
     const message = error.response?.data?.error?.message || error.response?.data?.error_description || error.message;
-    throw new ApiError(error.response?.status || 502, `YouTube API error: ${message}`);
+    const status = error.response?.status;
+    throw new ApiError(status === 401 ? 400 : status || 502, `YouTube API error: ${message}`);
   }
 };
 
@@ -382,7 +361,7 @@ export const generateRealZenUrls = async (stream) => {
 };
 
 export const getLiveStreams = async (query) => {
-  const { status, category, streamType, search, isPremium, page = 1, limit = 20 } = query;
+  const { status, category, streamType, search, isPremium, matchId, page = 1, limit = 20 } = query;
   const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
   const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
   const skip = (pageNumber - 1) * limitNumber;
@@ -391,6 +370,10 @@ export const getLiveStreams = async (query) => {
   if (status) filter.status = status;
   if (category) filter.category = category;
   if (streamType) filter.streamType = streamType;
+  if (matchId) {
+    if (!mongoose.isValidObjectId(matchId)) throw new ApiError(400, 'Invalid matchId');
+    filter.matchId = matchId;
+  }
   if (isPremium !== undefined) filter.isPremium = isPremium === 'true';
   if (search) filter.$text = { $search: search };
   if (!status) filter.status = { $in: ['live', 'scheduled'] };
@@ -429,7 +412,13 @@ export const updateLiveStream = async (streamId, userId, updateData) => {
   const stream = await LiveStream.findOne({ _id: streamId, userId });
   if (!stream) throw new ApiError(404, 'Live stream not found or unauthorized');
   
-  Object.assign(stream, updateData);
+  // Ownership, counters and lifecycle are server-managed; start/end have their own routes.
+  const PROTECTED = ['_id', 'userId', 'viewers', 'viewerCount', 'likes', 'chat', 'status', 'startedAt', 'endedAt', 'duration', 'isFeatured'];
+  const safeData = { ...updateData };
+  PROTECTED.forEach((key) => delete safeData[key]);
+  const youtubeInput = safeData.youtubeUrl || safeData.youtubeVideoId;
+  Object.assign(stream, safeData);
+  if (youtubeInput) applyYoutubeUrls(stream, youtubeInput);
   await stream.save();
   return stream;
 };
@@ -498,6 +487,12 @@ export const endLiveStream = async (streamId, userId) => {
     if (stream.startedAt) stream.duration = Math.floor((stream.endedAt - stream.startedAt) / 1000);
   }
   await stream.save();
+
+  // The YouTube recording stays watchable, so publish it as the match replay.
+  if (stream.youtubeVideoId) {
+    await createReplayFromStream(stream).catch((error) =>
+      console.warn('[HIGHLIGHT] Replay not created:', error.message));
+  }
 
   const io = getIO();
   if (io) io.emit('streamEnded', { streamId: stream._id });

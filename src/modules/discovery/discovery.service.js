@@ -163,7 +163,7 @@ export const discoveryService = {
             name: player.playerName || 'Player',
             location: compact([player.team?.city, player.team?.homeGround, player.nationality]) || 'Location not added',
             image: player.profileImage?.url,
-            rating: 4.4,
+            rating: 0, // no review data yet; never invent a score
             isPro: false,
             isVerified: true,
             availability: 'available',
@@ -204,7 +204,7 @@ export const discoveryService = {
             name: user.fullName || user.username || 'Player',
             location: 'Location not added',
             image: user.avatar?.url,
-            rating: 4.4,
+            rating: 0, // no review data yet; never invent a score
             isPro: false,
             isVerified: true,
             availability: 'available',
@@ -236,13 +236,30 @@ export const discoveryService = {
           .sort({ updatedAt: -1 })
           .limit(max)
           .lean()
-          .then((teams) => teams.flatMap((team) => {
+          .then(async (teams) => {
+            // Team.stats is not maintained by live scoring, so count the
+            // completed matches straight from the Match collection.
+            const teamIds = teams.map((team) => team._id);
+            const completed = teamIds.length
+              ? await Match.find({
+                  status: 'completed',
+                  $or: [{ team1: { $in: teamIds } }, { team2: { $in: teamIds } }]
+                }).select('team1 team2').lean()
+              : [];
+            const played = new Map();
+            for (const match of completed) {
+              for (const id of [match.team1, match.team2]) {
+                if (id) played.set(id.toString(), (played.get(id.toString()) || 0) + 1);
+              }
+            }
+            return teams.flatMap((team) => {
+            const matchesPlayed = played.get(team._id.toString()) || 0;
             const base = {
               sourceId: team._id?.toString(),
               name: team.name || 'Team',
               location: compact([team.homeGround, team.city, team.state]) || 'Home ground not added',
               image: team.logo?.url,
-              rating: team.isVerified ? 4.6 : 4.1,
+              rating: 0, // no review data yet; never invent a score
               isPro: false,
               isVerified: !!team.isVerified,
               availability: 'available',
@@ -251,21 +268,23 @@ export const discoveryService = {
                 coach: team.coach,
                 captain: team.captain?.playerName,
                 trophies: team.stats?.matchesWon,
-                matches: team.stats?.matchesPlayed,
-                bio: team.description || 'Team profile from Scores11 live teams.',
+                matches: matchesPlayed,
+                bio: team.description || '',
               },
-              views: team.stats?.matchesPlayed || 0,
+              views: matchesPlayed,
               createdAt: team.updatedAt || team.createdAt,
             };
             const items = [];
             if (!type || type === 'all' || type === 'opponentTeam') {
               items.push({ ...base, id: `opponentTeam-${team._id}`, _id: `opponentTeam-${team._id}`, type: 'opponentTeam' });
             }
-            if (!type || type === 'all' || type === 'tournamentTeam') {
+            // In the combined "all" list a team appears once, not once per role.
+            if (type === 'tournamentTeam') {
               items.push({ ...base, id: `tournamentTeam-${team._id}`, _id: `tournamentTeam-${team._id}`, type: 'tournamentTeam' });
             }
             return items;
-          }))
+            });
+          })
       );
     }
 
@@ -293,7 +312,7 @@ export const discoveryService = {
             name: tournament.name || 'Tournament',
             location: compact([tournament.venue?.name, tournament.venue?.city, tournament.venue?.state]) || 'Venue not added',
             image: tournament.banner?.url || tournament.logo?.url,
-            rating: 4.5,
+            rating: 0, // no review data yet; never invent a score
             isPro: tournament.entryFee > 0,
             isVerified: true,
             availability: tournament.status,
@@ -332,7 +351,7 @@ export const discoveryService = {
                 type: 'ground',
                 name: venueName,
                 location: compact([match.venue?.city, match.venue?.country]) || 'Ground location not added',
-                rating: 4.2,
+                rating: 0, // no review data yet; never invent a score
                 isPro: false,
                 isVerified: true,
                 availability: 'available',

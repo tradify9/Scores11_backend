@@ -4,7 +4,12 @@ import catchAsync from '../../utils/catchAsync.js';
 
 const storyController = {
   createStory: catchAsync(async (req, res) => {
-    const story = await storyService.createStory(req.body, req.user.userId);
+    const file = req.file ||
+      req.files?.media?.[0] ||
+      req.files?.image?.[0] ||
+      req.files?.video?.[0] ||
+      null;
+    const story = await storyService.createStory(req.body, req.user.userId, file);
     res.status(201).json(new ApiResponse(201, 'Story created', story));
   }),
 

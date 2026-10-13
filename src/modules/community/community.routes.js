@@ -17,7 +17,7 @@ const optionalAuthenticate = async (req, res, next) => {
     const user = await User.findById(decoded.userId).select('-password');
     if (user?.isActive) {
       req.user = user;
-      req.user.userId = user._id;
+      req.user.userId = user._id.toString();
     }
   } catch (_) {
     // Public feed still works when the token is missing or stale.
@@ -27,6 +27,7 @@ const optionalAuthenticate = async (req, res, next) => {
 
 // Public routes
 router.get('/posts', optionalAuthenticate, communityController.getAllPosts);
+router.get('/trending-tags', communityController.getTrendingTags);
 router.get('/my-posts', authenticate, communityController.getMyPosts);
 router.get('/posts/:id', optionalAuthenticate, communityController.getPostById);
 

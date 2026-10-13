@@ -28,6 +28,16 @@ export const userService = {
     return user;
   },
 
+  getUserByUsername: async (username) => {
+    const value = (username || '').toString().trim();
+    if (!value) throw new ApiError(400, 'Username is required');
+    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const user = await User.findOne({ username: new RegExp(`^${escaped}$`, 'i') })
+      .select('-password -fcmTokens -refreshToken -resetPasswordToken -resetPasswordExpire -emailVerificationToken');
+    if (!user) throw new ApiError(404, 'User not found');
+    return user;
+  },
+
   getUserById: async (userId) => {
     if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
       throw new ApiError(400, 'Invalid user ID format');

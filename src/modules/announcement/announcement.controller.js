@@ -9,7 +9,7 @@ const createAnnouncement = catchAsync(async (req, res) => {
   };
 
   const announcement = await announcementService.createAnnouncement(data);
-  ApiResponse.success(res, announcement, 'Announcement created successfully', 201);
+  ApiResponse.success(res, 'Announcement created successfully', announcement, 201);
 });
 
 const getAllAnnouncements = catchAsync(async (req, res) => {
@@ -21,43 +21,43 @@ const getAllAnnouncements = catchAsync(async (req, res) => {
     isActive: isActive === 'true' ? true : isActive === 'false' ? false : undefined
   });
 
-  ApiResponse.success(res, result);
+  ApiResponse.success(res, 'Retrieved successfully', result);
 });
 
 // Public - the home page ticker feed.
 const getActiveAnnouncements = catchAsync(async (req, res) => {
   const announcements = await announcementService.getActiveAnnouncements();
-  ApiResponse.success(res, announcements);
+  ApiResponse.success(res, 'Retrieved successfully', announcements);
 });
 
 const getAnnouncementById = catchAsync(async (req, res) => {
   const announcement = await announcementService.getAnnouncementById(req.params.id);
-  ApiResponse.success(res, announcement);
+  ApiResponse.success(res, 'Retrieved successfully', announcement);
 });
 
 const updateAnnouncement = catchAsync(async (req, res) => {
   const announcement = await announcementService.updateAnnouncement(req.params.id, req.body);
-  ApiResponse.success(res, announcement, 'Announcement updated successfully');
+  ApiResponse.success(res, 'Announcement updated successfully', announcement);
 });
 
 const deleteAnnouncement = catchAsync(async (req, res) => {
   await announcementService.deleteAnnouncement(req.params.id);
-  ApiResponse.success(res, null, 'Announcement deleted successfully');
+  ApiResponse.success(res, 'Announcement deleted successfully', null);
 });
 
 const toggleAnnouncementStatus = catchAsync(async (req, res) => {
   const announcement = await announcementService.toggleAnnouncementStatus(req.params.id);
   ApiResponse.success(
     res,
-    announcement,
-    `Announcement ${announcement.isActive ? 'activated' : 'deactivated'} successfully`
+    `Announcement ${announcement.isActive ? 'activated' : 'deactivated'} successfully`,
+    announcement
   );
 });
 
 const reorderAnnouncements = catchAsync(async (req, res) => {
   const { orderedIds } = req.body;
   const result = await announcementService.reorderAnnouncements(orderedIds);
-  ApiResponse.success(res, result, 'Announcements reordered successfully');
+  ApiResponse.success(res, 'Announcements reordered successfully', result);
 });
 
 export {

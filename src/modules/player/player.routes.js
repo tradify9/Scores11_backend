@@ -1,21 +1,22 @@
 import express from 'express';
 import { playerController } from './player.controller.js';
 import { authenticate } from '../../middleware/auth.middleware.js';
+import { stripContact } from '../../middleware/stripContact.middleware.js';
 
 const router = express.Router();
 
 /* =========================
    PUBLIC ROUTES
 ========================= */
-router.get('/trending', playerController.getTrendingPlayers);
-router.get('/compare', playerController.comparePlayers);
-router.get('/search', playerController.searchPlayers);
-router.get('/public', playerController.getAllPlayers);
+router.get('/trending', stripContact, playerController.getTrendingPlayers);
+router.get('/compare', stripContact, playerController.comparePlayers);
+router.get('/search', stripContact, playerController.searchPlayers);
+router.get('/public', stripContact, playerController.getAllPlayers);
 router.post('/public/create', playerController.createPlayer);
-router.get('/public/:id/matches', playerController.getPlayerMatches);
+router.get('/public/:id/matches', stripContact, playerController.getPlayerMatches);
 router.patch('/public/:id/matches/:matchId/opt-out', playerController.optOutFromMatch);
-router.get('/public/:id/full-profile', playerController.getFullPlayerProfile);
-router.get('/public/:id', playerController.getPlayerByIdPublic);
+router.get('/public/:id/full-profile', stripContact, playerController.getFullPlayerProfile);
+router.get('/public/:id', stripContact, playerController.getPlayerByIdPublic);
 
 /* =========================
    USER-SPECIFIC ROUTES

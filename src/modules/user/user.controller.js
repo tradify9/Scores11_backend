@@ -287,8 +287,9 @@ getProfile: catchAsync(async (req, res) => {
     if (avatar) {
       res.redirect(301, avatar);
     } else {
-      // Return default avatar
-      res.redirect('https://via.placeholder.com/400x400/6B7280/FFFFFF?text=👤');
+      // Default silhouette served inline (the old placeholder host is gone)
+      res.set('Cache-Control', 'public, max-age=86400');
+      res.type('image/svg+xml').send('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><rect width="400" height="400" fill="#6B7280"/><circle cx="200" cy="150" r="70" fill="#E5E7EB"/><path d="M70 360c10-80 70-120 130-120s120 40 130 120z" fill="#E5E7EB"/></svg>');
     }
   }),
 

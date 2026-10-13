@@ -4,6 +4,7 @@ import { authenticate } from '../../middleware/auth.middleware.js';
 
 const router = express.Router();
 
+router.get('/app', settingsController.getAppConfig);
 router.get('/', authenticate, settingsController.getSettings);
 router.put('/', authenticate, settingsController.updateSettings);
 router.put('/notifications', authenticate, settingsController.updateNotifications);

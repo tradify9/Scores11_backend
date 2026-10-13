@@ -5,6 +5,7 @@ import Team from '../team/team.model.js';
 import User from '../user/user.model.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
 import { TOURNAMENT_STATUS } from '../../constants/tournamentStatus.js';
+import { leaderboardService } from '../leaderboard/leaderboard.service.js';
 
 export const dashboardService = {
   // Get complete dashboard overview - aggregates all data in one call
@@ -59,8 +60,9 @@ export const dashboardService = {
   // Get live matches
   getLiveMatches: async (limit = 25) => {
     try {
+      const liveStatuses = [MATCH_STATUS.LIVE, MATCH_STATUS.DUCKWORTH_LEWIS];
       const matches = await Match.find({
-        status: MATCH_STATUS.LIVE,
+        status: { $in: liveStatuses },
         isActive: true
       })
         .populate('team1', 'name shortName logo')
@@ -73,9 +75,8 @@ export const dashboardService = {
 
       const formatInningsScore = (innings) => {
         if (!innings) return null;
-        const balls = innings.totalBalls || 0;
-        const completedOvers = Math.floor(balls / 6);
-        const remainingBalls = balls % 6;
+        const completedOvers = Number(innings.totalOvers || 0);
+        const remainingBalls = Number(innings.totalBalls || 0);
         return {
           inningsNumber: innings.inningsNumber,
           battingTeam: innings.battingTeam?.toString(),
@@ -226,6 +227,32 @@ export const dashboardService = {
   // Get trending players (players with most activity/runs/wickets)
   getTrendingPlayers: async (limit = 10) => {
     try {
+      // Real per-match stats come from the leaderboard aggregation; the
+      // Player.battingStats fields are not updated by live scoring.
+      const { players: ranked = [] } = await leaderboardService.getPlayerLeaderboard({ page: 1, limit });
+      const fromLeaderboard = ranked.map((row) => ({
+        id: row._id || row.player?._id,
+        name: row.playerName || row.name || row.player?.playerName,
+        jerseyNumber: row.player?.jerseyNumber,
+        role: row.role || row.player?.role,
+        avatar: row.player?.avatar,
+        team: row.team ? {
+          id: row.team._id,
+          name: row.team.name,
+          shortName: row.team.shortName || ''
+        } : null,
+        stats: {
+          runs: row.runs || 0,
+          wickets: row.wickets || 0,
+          matches: row.matches || 0,
+          average: row.average || 0,
+          strikeRate: row.strikeRate || 0
+        }
+      })).filter((p) => p.id && p.name);
+      if (fromLeaderboard.length >= limit) {
+        return fromLeaderboard.slice(0, limit).map((p, index) => ({ rank: index + 1, ...p }));
+      }
+
       const [playerDocs, users] = await Promise.all([
         Player.find({ isActive: true })
         .select('playerName jerseyNumber role team user avatar battingStats bowlingStats')
@@ -269,8 +296,11 @@ export const dashboardService = {
           }))
       ].slice(0, limit);
 
-      return players.map((player, index) => ({
-        rank: index + 1,
+      const seen = new Set(fromLeaderboard.map((p) => p.id.toString()));
+      const extra = players.filter((p) => !seen.has(p._id?.toString()));
+      return [
+        ...fromLeaderboard,
+        ...extra.map((player) => ({
         id: player._id,
         name: player.playerName,
         jerseyNumber: player.jerseyNumber,
@@ -288,7 +318,8 @@ export const dashboardService = {
           average: player.battingStats?.average || 0,
           strikeRate: player.battingStats?.strikeRate || 0
         }
-      }));
+      }))
+      ].slice(0, limit).map((p, index) => ({ rank: index + 1, ...p }));
     } catch (error) {
       console.error('getTrendingPlayers error:', error);
       return [];
@@ -370,7 +401,7 @@ export const dashboardService = {
         weekMatches,
         activeTournaments,
         liveMatches: await Match.countDocuments({
-          status: MATCH_STATUS.LIVE,
+          status: { $in: [MATCH_STATUS.LIVE, MATCH_STATUS.DUCKWORTH_LEWIS] },
           isActive: true
         })
       };

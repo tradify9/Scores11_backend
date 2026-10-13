@@ -1,3 +1,4 @@
+import ApiError from '../../utils/ApiError.js';
 import { Chat, Message } from './chat.model.js';
 import User from '../user/user.model.js';
 import { notificationService } from '../notification/notification.service.js';
@@ -21,7 +22,7 @@ class ChatService {
   async getChat(chatId, userId) {
     const chat = await Chat.findById(chatId).populate('participants', 'name fullName username playerName avatar profileImage role');
     if (!chat || !chat.participants.some(p => p._id.toString() === userId)) {
-      throw new Error('Chat not found');
+      throw new ApiError(404, 'Chat not found');
     }
 
     const messages = await Message.find({ chat: chatId })
@@ -53,14 +54,14 @@ class ChatService {
 
   async sendMessage(userId, receiverId, text) {
     if (!receiverId || receiverId.toString() === userId.toString()) {
-      throw new Error('Valid receiver is required');
+      throw new ApiError(400, 'Valid receiver is required');
     }
     if (!text || !text.trim()) {
-      throw new Error('Message text is required');
+      throw new ApiError(400, 'Message text is required');
     }
     const receiver = await User.findById(receiverId).select('_id').lean();
     if (!receiver) {
-      throw new Error('Receiver not found');
+      throw new ApiError(404, 'Receiver not found');
     }
     const sender = await User.findById(userId).select('name fullName username playerName').lean();
 

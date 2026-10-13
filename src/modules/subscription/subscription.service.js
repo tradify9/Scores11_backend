@@ -13,6 +13,17 @@ const PLAN_PRICES = { FREE: 0, BASIC: 499, PREMIUM: 999, PRO: 1999 };
 export const subscriptionService = {
   getPlans: () => PLAN_FEATURES,
 
+  // Array form (with prices) for the mobile app's plan cards.
+  getPlanList: () => Object.entries(PLAN_FEATURES).map(([id, features]) => ({
+    id,
+    name: id.charAt(0) + id.slice(1).toLowerCase(),
+    price: PLAN_PRICES[id],
+    duration: 'month',
+    features: Object.entries(features)
+      .filter(([, v]) => v !== false && v !== 0)
+      .map(([k, v]) => (v === true ? k : `${k}: ${v === -1 ? 'Unlimited' : v}`)),
+  })),
+
   subscribe: async (userId, plan, durationMonths = 1) => {
     const features = PLAN_FEATURES[plan];
     if (!features) throw new ApiError(400, 'Invalid plan');

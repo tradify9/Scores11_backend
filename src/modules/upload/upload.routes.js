@@ -13,6 +13,7 @@ router.post('/image', upload.single('image'), uploadController.uploadImageHandle
 router.post('/video', upload.single('video'), uploadController.uploadVideoHandler);
 router.post('/images', upload.array('images', 10), uploadController.uploadImagesHandler);
 router.post('/base64', uploadController.uploadBase64Handler);
+router.post('/delete', uploadController.deleteFileHandler);
 router.delete('/delete', uploadController.deleteFileHandler);
 router.get('/signature', uploadController.getSignatureHandler);
 

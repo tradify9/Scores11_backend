@@ -15,6 +15,11 @@ export const communityController = {
     res.json(new ApiResponse(200, 'Posts retrieved', posts, pagination));
   }),
 
+  getTrendingTags: catchAsync(async (req, res) => {
+    const tags = await communityService.getTrendingTags(req.query);
+    res.json(new ApiResponse(200, 'Trending tags retrieved', tags));
+  }),
+
   // Get post by ID
   getPostById: catchAsync(async (req, res) => {
     const post = await communityService.getPostById(req.params.id, req.user?.userId || req.user?._id);
