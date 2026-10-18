@@ -457,9 +457,35 @@ userSchema.methods.removeFCMToken = function(token) {
   this.fcmTokens = this.fcmTokens.filter(t => t.token !== token);
 };
 
+// The display name lives in `fullName`, but many queries and populates
+// across the codebase (and the app) ask for `name`. Load fullName whenever a
+// projection names `name`, and expose it as `name` in every result.
+const NAME_FALLBACKS = ['fullName', 'username'];
+userSchema.pre(/^find/, function addFullNameToProjection() {
+  const projection = this.projection();
+  if (!projection || typeof projection !== 'object') return;
+  const inclusive = Object.values(projection).some((v) => v === 1 || v === true);
+  if (inclusive && (projection.name === 1 || projection.name === true)) {
+    NAME_FALLBACKS.forEach((field) => {
+      if (projection[field] === undefined) this.select(field);
+    });
+  }
+});
+
+const fillDisplayName = (doc) => {
+  if (!doc || typeof doc !== 'object') return;
+  const target = doc._doc || doc; // hydrated document or lean object
+  if (!target.name) target.name = target.fullName || target.username || undefined;
+};
+userSchema.post(/^find/, function setDisplayName(result) {
+  if (Array.isArray(result)) result.forEach(fillDisplayName);
+  else fillDisplayName(result);
+});
+
 // Remove sensitive data
 userSchema.methods.toJSON = function() {
   const user = this.toObject();
+  if (!user.name) user.name = user.fullName || user.username;
   delete user.password;
   delete user.refreshTokens;
   delete user.resetPasswordToken;

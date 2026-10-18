@@ -3,7 +3,9 @@ import { authController } from './auth.controller.js';
 import { authenticate } from '../../middleware/auth.middleware.js';
 import {
   authLimiter,
-  firebasePhoneAuthLimiter
+  firebasePhoneAuthLimiter,
+  phoneOtpSendLimiter,
+  phoneOtpVerifyLimiter
 } from '../../middleware/rateLimiter.middleware.js';
 
 const router = express.Router();
@@ -11,6 +13,9 @@ const router = express.Router();
 // Public routes
 router.post('/register', authLimiter, authController.register);
 router.post('/login', authLimiter, authController.login);
+router.post('/phone/send-otp', phoneOtpSendLimiter, authController.sendPhoneOtp);
+router.post('/phone/verify-otp', phoneOtpVerifyLimiter, authController.verifyPhoneOtp);
+// Older app builds that still use Firebase phone sign-in
 router.post('/phone/firebase', firebasePhoneAuthLimiter, authController.firebasePhoneLogin);
 router.post('/firebase/phone', firebasePhoneAuthLimiter, authController.firebasePhoneLogin);
 router.post('/phone-login', firebasePhoneAuthLimiter, authController.firebasePhoneLogin);

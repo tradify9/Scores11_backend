@@ -35,6 +35,13 @@ const errorMiddleware = (err, req, res, next) => {
     response.errors = details;
   }
 
+  // Data an ApiError attaches on purpose for the client (e.g. a phone
+  // verification token on PROFILE_REQUIRED). Never set for unexpected errors.
+  if (err instanceof Error && err.statusCode && err.statusCode < 500 &&
+      err.data && typeof err.data === 'object' && !Array.isArray(err.data)) {
+    response.data = err.data;
+  }
+
   res.status(error.statusCode).json(response);
 };
 

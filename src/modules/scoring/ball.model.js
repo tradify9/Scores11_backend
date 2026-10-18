@@ -26,11 +26,18 @@ const ballSchema = new mongoose.Schema({
   wagonZone: { type: Number },
   wagonLabel: { type: String },
   comment: { type: String },
-  scoredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
+  scoredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  // Id the scoring app gives each delivery. The app queues balls while offline
+  // and re-sends them; the same id must never be counted twice.
+  clientBallId: { type: String }
 }, { timestamps: true });
 
 ballSchema.index({ match: 1, innings: 1, overNumber: 1, ballNumber: 1 });
 ballSchema.index({ match: 1, createdAt: -1 });
+ballSchema.index(
+  { match: 1, clientBallId: 1 },
+  { unique: true, partialFilterExpression: { clientBallId: { $type: 'string' } } }
+);
 
 const Ball = mongoose.model('Ball', ballSchema);
 export default Ball;

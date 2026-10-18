@@ -32,7 +32,9 @@ export const toFriendlyError = (error, options = {}) => {
 
   if (!error) return fallback;
 
-  if (statusCode >= 500) {
+  // Errors thrown on purpose with a user-facing message (e.g. "OTP service
+  // not set up") keep it; everything else unexpected stays generic.
+  if (statusCode >= 500 && !(error.expose === true && error.message)) {
     return 'Server is busy right now. Please try again shortly.';
   }
 
@@ -71,8 +73,13 @@ export const sanitizeErrorDetails = (errors) => {
       const field = Array.isArray(detail.path)
         ? detail.path.join('.')
         : detail.field || detail.path || undefined;
+      // Short machine codes (e.g. PROFILE_REQUIRED) drive app flows; keep them.
+      const code = typeof detail.code === 'string' && /^[A-Z][A-Z0-9_]{1,40}$/.test(detail.code)
+        ? detail.code
+        : undefined;
       return {
         ...(field ? { field } : {}),
+        ...(code ? { code } : {}),
         message: sanitizeMessage(detail.message, 400, 'Please check this field.'),
       };
     })

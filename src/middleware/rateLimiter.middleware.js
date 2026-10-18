@@ -37,4 +37,30 @@ export const authLimiter = rateLimit({
 
 export const firebasePhoneAuthLimiter = (req, res, next) => next();
 
+// Per-IP caps for mobile OTP; per-number caps live in auth.service.
+// (Each SMS costs money, so the send side is the strict one.)
+export const phoneOtpSendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: {
+    success: false,
+    statusCode: 429,
+    message: 'Too many OTP requests from this network. Please try again in a few minutes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+export const phoneOtpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: {
+    success: false,
+    statusCode: 429,
+    message: 'Too many attempts. Please try again in a few minutes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 export default rateLimiter;

@@ -6,6 +6,19 @@ import ApiError from '../../utils/ApiError.js';
 import { getPagination } from '../../utils/pagination.js';
 import { TOURNAMENT_FORMAT, TOURNAMENT_STATUS, TOURNAMENT_TYPE } from '../../constants/tournamentStatus.js';
 import { MATCH_STATUS } from '../../constants/matchStatus.js';
+import User from '../user/user.model.js';
+
+// A team can be entered or withdrawn only by its owner, the tournament's
+// organiser, or an admin - not by any signed-in user.
+const assertCanManageEntry = async (tournament, team, userId) => {
+  const uid = userId?.toString();
+  if (!uid) throw new ApiError(401, 'Please login to continue');
+  if (team?.owner?.toString() === uid) return;
+  if (tournament.organizer?.toString() === uid) return;
+  const user = await User.findById(uid).select('role').lean();
+  if (['admin', 'moderator'].includes((user?.role || '').toString().toLowerCase())) return;
+  throw new ApiError(403, 'Only the team owner or the tournament organiser can do this');
+};
 
 const toId = (value) => {
   if (!value) return '';
@@ -329,6 +342,7 @@ export const tournamentService = {
     // Check if team exists
     const team = await Team.findById(teamId);
     if (!team) throw new ApiError(404, 'Team not found');
+    await assertCanManageEntry(tournament, team, userId);
 
     // Check if team is already registered
     if (tournament.teams.some(team => team.toString() === teamId.toString())) {
@@ -378,6 +392,7 @@ export const tournamentService = {
     if (!tournament.teams.some(team => team.toString() === teamId.toString())) {
       throw new ApiError(400, 'Team not registered in this tournament');
     }
+    await assertCanManageEntry(tournament, await Team.findById(teamId).select('owner').lean(), userId);
 
     tournament.teams = tournament.teams.filter(t => t.toString() !== teamId);
     await tournament.save();

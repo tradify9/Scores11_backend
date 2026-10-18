@@ -20,6 +20,12 @@ const youtubeAccountSchema = new mongoose.Schema({
   isConnected: {
     type: Boolean,
     default: true
+  },
+  // The official Scores11 channel (connected by an admin). Hosts without
+  // their own connected channel broadcast through it.
+  isPlatform: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

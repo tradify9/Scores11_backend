@@ -27,6 +27,28 @@ import {
   normalizeScoringRules
 } from '../../utils/cricketScoringRules.js';
 
+// Law 17.8: a bowler may not bowl two consecutive overs. Enforced for
+// standard/professional matches; gully, casual, indoor, child and custom
+// games are often played without it.
+const STRICT_OVER_CATEGORIES = ['standard', 'professional'];
+
+/** Bowler who must sit out the over that is about to start, or null. */
+const barredBowlerForNewOver = async (match, innings) => {
+  const category = (match.scoringRules?.matchCategory || 'standard').toString();
+  if (!STRICT_OVER_CATEGORIES.includes(category)) return null;
+  if (!innings || (innings.totalBalls || 0) !== 0 || (innings.totalOvers || 0) < 1) return null;
+  const lastLegal = await Ball.findOne({
+    match: match._id,
+    innings: innings.inningsNumber,
+    isWide: { $ne: true },
+    isNoBall: { $ne: true },
+    isPenalty: { $ne: true }
+  }).sort({ createdAt: -1, _id: -1 }).select('bowler').lean();
+  return lastLegal?.bowler?.toString() || null;
+};
+
+const CONSECUTIVE_OVER_MESSAGE = 'This bowler bowled the last over. Choose a different bowler for this over.';
+
 const getMatchNotificationRecipients = async (match) => {
   const ids = new Set();
   if (match.createdBy) ids.add(match.createdBy.toString());
@@ -318,6 +340,19 @@ console.log('[SCORING] Batting order set:', match.battingOrder.length, 'teams');
       if (expectedVersion) throw new ApiError(409, 'Match state changed by another scorer');
       throw new ApiError(404, 'Match not found');
     }
+    // Offline re-send: this delivery was already fully recorded, so answer
+    // with the current state instead of scoring it a second time.
+    const clientBallId = typeof ballData.clientBallId === 'string'
+      ? ballData.clientBallId.trim().slice(0, 64)
+      : '';
+    if (clientBallId) {
+      const alreadyRecorded = await Ball.findOne({ match: matchId, clientBallId });
+      if (alreadyRecorded) {
+        const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings) || null;
+        return { ball: alreadyRecorded, innings: currentInnings, score: match.score, duplicate: true };
+      }
+    }
+
     if (![MATCH_STATUS.LIVE, MATCH_STATUS.DUCKWORTH_LEWIS].includes(match.status)) throw new ApiError(400, 'Match is not live');
     
     const { 
@@ -394,6 +429,10 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
 
     const actualBowlerId = bowlerId || innings.currentBowler;
     if (!actualBowlerId) throw new ApiError(400, 'Set bowler first');
+    const barredBowler = await barredBowlerForNewOver(match, innings);
+    if (barredBowler && barredBowler === actualBowlerId.toString()) {
+      throw new ApiError(400, CONSECUTIVE_OVER_MESSAGE);
+    }
 
     // Use current state for consistency
     let overNumber = innings.currentOverNumber;
@@ -791,6 +830,17 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
     }
 
     await match.save();
+
+    // Tag the ball only once the whole delivery is saved, so a request that
+    // failed half-way is not mistaken for a recorded one when it is retried.
+    if (clientBallId) {
+      try {
+        await Ball.updateOne({ _id: newBall._id }, { $set: { clientBallId } });
+        newBall.clientBallId = clientBallId;
+      } catch (error) {
+        console.warn('[SCORING] clientBallId not stored:', error.message);
+      }
+    }
 
     // ENHANCED SOCKET BROADCAST (Professional real-time)
     const liveState = {
@@ -1304,6 +1354,8 @@ console.log('[LIVE] getLiveScore populated:', {
       currentStriker: currentInnings.currentStriker || null,
       currentNonStriker: currentInnings.currentNonStriker || null,
       currentBowler: currentInnings.currentBowler || null,
+      battingTeam: currentInnings.battingTeam?.toString() || null,
+      bowlingTeam: currentInnings.bowlingTeam?.toString() || null,
       target: match.result?.target || null,
       requiredRuns: match.result?.requiredRuns || null,
       requiredRunRate: rrr,
@@ -1879,6 +1931,11 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
 
     const currentInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
     if (!currentInnings) throw new ApiError(400, 'Innings not found');
+
+    const barredBowler = await barredBowlerForNewOver(match, currentInnings);
+    if (barredBowler && barredBowler === bowlerId.toString()) {
+      throw new ApiError(400, CONSECUTIVE_OVER_MESSAGE);
+    }
 
     // Check if bowler already bowled
     const existingBowler = currentInnings.bowlingScorecard.find(b => 

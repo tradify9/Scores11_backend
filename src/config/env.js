@@ -86,6 +86,36 @@ export default {
     hlsUrl: process.env.ZENSTREAM_HLS_URL || ''
   },
 
+  // Mobile OTP login via APITxT (https://apitxt.com, Dashboard -> API Keys)
+  apitxt: {
+    // Common spellings accepted so a differently named key still works.
+    authKey: (process.env.APITXT_AUTH_KEY || process.env.APITXT_API_KEY || process.env.APITXT_AUTHKEY ||
+      process.env.APITXT_KEY || '').trim().replace(/^["']|["']$/g, ''),
+    baseUrl: (process.env.APITXT_BASE_URL || 'https://apitxt.com').replace(/\/+$/, ''),
+    // sms (default) | whatsapp | voice
+    channel: ['sms', 'whatsapp', 'voice'].includes((process.env.APITXT_OTP_CHANNEL || '').trim().toLowerCase())
+      ? process.env.APITXT_OTP_CHANNEL.trim().toLowerCase()
+      : 'sms',
+    // Optional. Empty = APITxT's own default OTP template (no DLT template needed).
+    templateId: /^(|default|none|null)$/i.test((process.env.APITXT_TEMPLATE_ID || '').trim())
+      ? ''
+      : process.env.APITXT_TEMPLATE_ID.trim(),
+    // WhatsApp channel only
+    templateName: (process.env.APITXT_TEMPLATE_NAME || '').trim(),
+    projectRefId: (process.env.APITXT_PROJECT_REF_ID || '').trim()
+  },
+
+  otp: {
+    length: Math.min(Math.max(parseInt(process.env.OTP_LENGTH, 10) || 6, 4), 8),
+    expiryMinutes: Math.min(Math.max(parseInt(process.env.OTP_EXPIRY_MINUTES, 10) || 5, 1), 30),
+    resendSeconds: Math.max(parseInt(process.env.OTP_RESEND_SECONDS, 10) || 30, 20),
+    maxSendsPerHour: Math.max(parseInt(process.env.OTP_MAX_SENDS_PER_HOUR, 10) || 5, 1),
+    maxVerifyAttempts: Math.max(parseInt(process.env.OTP_MAX_VERIFY_ATTEMPTS, 10) || 5, 1),
+    // "9999999999:123456,8888888888:654321" - fixed codes for Play Store
+    // reviewers / QA; no SMS is sent for these numbers.
+    testNumbers: process.env.OTP_TEST_NUMBERS || ''
+  },
+
   // Public contact details shown in the app's Help & Support screen
   support: {
     email: process.env.SUPPORT_EMAIL || 'support@scores11.com',
@@ -96,10 +126,18 @@ export default {
 
   // YouTube Live integration
   youtube: {
-    apiKey: process.env.YOUTUBE_API_KEY || '',
-    clientId: process.env.GOOGLE_CLIENT_ID || process.env.YOUTUBE_CLIENT_ID || '',
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET || process.env.YOUTUBE_CLIENT_SECRET || '',
-    redirectUri: process.env.GOOGLE_REDIRECT_URI || process.env.YOUTUBE_REDIRECT_URI || 'http://localhost:3000/api/v1/live-streams/youtube/callback',
+    apiKey: (process.env.YOUTUBE_API_KEY || '').trim(),
+    // YOUTUBE_* first so an unrelated GOOGLE_CLIENT_ID (e.g. Google Sign-In) never overrides it.
+    clientId: (process.env.YOUTUBE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '').trim(),
+    clientSecret: (process.env.YOUTUBE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '').trim(),
+    redirectUri: (process.env.YOUTUBE_REDIRECT_URI || process.env.GOOGLE_REDIRECT_URI ||
+      (process.env.NODE_ENV === 'production'
+        ? 'https://scores11.com/api/v1/live-streams/youtube/callback'
+        : 'http://localhost:3000/api/v1/live-streams/youtube/callback')).trim(),
+    // Google Cloud project's daily YouTube Data API quota (default 10,000).
+    dailyQuota: Math.max(parseInt(process.env.YOUTUBE_DAILY_QUOTA, 10) || 10000, 1000),
+    // Phone broadcasts one host may start per day (admins are not limited).
+    maxBroadcastsPerUserPerDay: Math.max(parseInt(process.env.YOUTUBE_MAX_BROADCASTS_PER_USER_PER_DAY, 10) || 10, 1),
     scopes: (process.env.YOUTUBE_API_SCOPE || process.env.GOOGLE_YOUTUBE_SCOPE || 'https://www.googleapis.com/auth/youtube')
       .split(',')
       .map(scope => scope.trim())

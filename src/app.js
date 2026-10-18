@@ -20,6 +20,10 @@ import { toFriendlyError } from './utils/friendlyError.js';
 
 const app = express();
 
+// Behind nginx: use the real client IP (X-Forwarded-For) so rate limits apply
+// per user instead of to everyone at once.
+app.set('trust proxy', 1);
+
 /* -------------------------
    MIDDLEWARE
 ------------------------- */

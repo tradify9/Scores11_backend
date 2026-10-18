@@ -3,6 +3,28 @@ import ApiResponse from '../../utils/ApiResponse.js';
 import catchAsync from '../../utils/catchAsync.js';
 
 export const authController = {
+  // Mobile OTP via APITxT: step 1 - send the code
+  sendPhoneOtp: catchAsync(async (req, res) => {
+    const result = await authService.sendPhoneOtp(req.body);
+    const { message, ...data } = result;
+    res.json(new ApiResponse(200, message, data));
+  }),
+
+  // Mobile OTP via APITxT: step 2 - verify and sign in
+  verifyPhoneOtp: catchAsync(async (req, res) => {
+    const { user, accessToken, refreshToken } = await authService.verifyPhoneOtp(req.body);
+    const options = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    };
+    res
+      .status(200)
+      .cookie('refreshToken', refreshToken, { ...options, maxAge: 90 * 24 * 60 * 60 * 1000 })
+      .cookie('accessToken', accessToken, { ...options, maxAge: 24 * 60 * 60 * 1000 })
+      .json(new ApiResponse(200, 'Mobile number verified', { user, accessToken, refreshToken }));
+  }),
+
   firebasePhoneLogin: catchAsync(async (req, res) => {
     const { user, accessToken, refreshToken } =
       await authService.firebasePhoneLogin(req.body);

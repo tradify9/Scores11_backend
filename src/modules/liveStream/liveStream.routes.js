@@ -13,6 +13,8 @@ router.get('/youtube/auth-url', auth, liveStreamController.getYoutubeAuthUrl);
 router.get('/youtube/callback', liveStreamController.youtubeCallback);
 router.post('/youtube/disconnect', auth, liveStreamController.disconnectYoutube);
 router.get('/:streamId', liveStreamController.getLiveStreamById);
+router.get('/:streamId/ingest', auth, liveStreamController.getStreamIngest);
+router.get('/:streamId/health', auth, liveStreamController.getStreamHealth);
 
 // Protected routes
 router.post('/', auth, liveStreamController.createLiveStream);

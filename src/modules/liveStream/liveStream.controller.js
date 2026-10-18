@@ -52,7 +52,7 @@ export const youtubeCallback = async (req, res) => {
 <body>
   <div class="card">
     <h1>YouTube connected</h1>
-    <p>${escapeHtml(data.channelTitle)} is connected with Scores11. You can return to the app and create YouTube Live streams.</p>
+    <p>${escapeHtml(data.channelTitle)} is connected with Scores11${data.isPlatform ? ' as the official Scores11 channel. Every host without their own channel now goes live here' : ''}. Return to the app to go live.</p>
   </div>
 </body>
 </html>`);
@@ -136,6 +136,16 @@ export const getFeaturedStreams = catchAsync(async (req, res) => {
     parseInt(req.query.limit) || 10
   );
   ApiResponse.success(res, 'Featured streams fetched successfully', streams);
+});
+
+export const getStreamIngest = catchAsync(async (req, res) => {
+  const data = await liveStreamService.getStreamIngest(req.params.streamId, req.user._id);
+  ApiResponse.success(res, 'Stream ingest fetched', data);
+});
+
+export const getStreamHealth = catchAsync(async (req, res) => {
+  const data = await liveStreamService.getStreamHealth(req.params.streamId, req.user._id);
+  ApiResponse.success(res, 'Stream health fetched', data);
 });
 
 export const getMyStreams = catchAsync(async (req, res) => {

@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+export const INGEST_FIELDS = ['streamKey', 'rtmpUrl', 'zenstreamStreamKey', 'zenstreamRtmpUrl', 'youtubeIngestionAddress', 'password'];
+
 const liveStreamSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -49,6 +51,19 @@ const liveStreamSchema = new mongoose.Schema({
   youtubeBroadcastId: String,
   youtubeStreamId: String,
   youtubeIngestionAddress: String,
+  // Whose connected YouTube account created the broadcast (the host's own
+  // channel or the Scores11 platform channel); start/end use the same one.
+  youtubeAccountUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  // First moment the phone stopped sending video (cleared when it resumes).
+  youtubeInactiveSince: Date,
+  // Last YouTube status seen by the shared refresh (host badge reads these).
+  youtubeStreamStatus: String,
+  youtubeHealth: String,
+  youtubeLifeCycle: String,
+  youtubeStatusCheckedAt: Date,
   status: {
     type: String,
     enum: ['pending', 'live', 'ended', 'scheduled'],
@@ -118,7 +133,15 @@ const liveStreamSchema = new mongoose.Schema({
   zenstreamRtmpUrl: String,
   zenstreamPlayerUrl: String
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: {
+    // RTMP ingest details let anyone publish into the stream: only the owner
+    // gets them (the service sets $locals.includeIngest for owner responses).
+    transform(doc, ret) {
+      if (!doc.$locals?.includeIngest) INGEST_FIELDS.forEach((key) => delete ret[key]);
+      return ret;
+    }
+  }
 });
 
 // Zenstream auto-generation pre-save hook (now uses real API via service)
@@ -144,6 +167,8 @@ liveStreamSchema.index({ location: '2dsphere' });
 liveStreamSchema.index({ title: 'text', description: 'text', tags: 'text' });
 liveStreamSchema.index({ status: 1, viewerCount: -1 });
 liveStreamSchema.index({ userId: 1, createdAt: -1 });
+liveStreamSchema.index({ matchId: 1, status: 1 });
+liveStreamSchema.index({ youtubeAccountUserId: 1, status: 1 });
 
 const LiveStream = mongoose.model('LiveStream', liveStreamSchema);
 export default LiveStream;

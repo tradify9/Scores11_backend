@@ -1,5 +1,5 @@
 import LiveStream from '../modules/liveStream/liveStream.model.js';
-import { finishLiveStream } from '../modules/liveStream/liveStream.service.js';
+import { finishLiveStream, syncAppBroadcasts } from '../modules/liveStream/liveStream.service.js';
 import { fetchYoutubeVideoStatuses, isYoutubeApiKeyConfigured } from '../utils/youtubeApi.js';
 
 const CHECK_INTERVAL_MS = 2 * 60 * 1000;
@@ -18,6 +18,15 @@ const NOT_FOUND_GRACE_MS = 15 * 60 * 1000;
  * Needs YOUTUBE_API_KEY; without it only the 12-hour safety net applies.
  */
 export const syncYoutubeStreams = async () => {
+  // Phone broadcasts: batched status per channel, silence and stale cleanup.
+  let appEnded = 0;
+  try {
+    appEnded = await syncAppBroadcasts();
+  } catch (error) {
+    console.warn('[YOUTUBE] App broadcast sync skipped:', error.message);
+  }
+  if (appEnded) console.log(`YouTube stream sync: ended ${appEnded} phone broadcast(s)`);
+
   const streams = await LiveStream.find({
     status: 'live',
     youtubeVideoId: { $exists: true, $nin: [null, ''] }

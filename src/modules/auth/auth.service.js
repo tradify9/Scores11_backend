@@ -6,6 +6,10 @@ import { sendWelcomeEmail, sendPasswordResetEmail, sendLoginOtpEmail } from '../
 import ApiError from '../../utils/ApiError.js';
 import crypto from 'crypto';
 import { verifyFirebaseIdToken } from '../../config/firebase.js';
+import jwt from 'jsonwebtoken';
+import config from '../../config/env.js';
+import PhoneOtp from './phoneOtp.model.js';
+import { sendOtpViaApitxt } from '../../utils/apitxt.js';
 
 // Generate 6-digit OTP
 const generateOTP = () => {
@@ -131,14 +135,14 @@ const ensurePlayerProfile = async (user, data = {}) => {
     }
 
     user.isPublicPlayer = true;
-    user.cricketProfile = {
-      ...(user.cricketProfile || {}),
-      playerId: player._id,
-      playerType,
-      battingStyle: normalizeUserBattingStyle(data.battingStyle),
-      bowlingStyle: normalizeUserBowlingStyle(data.bowlingStyle),
-      preferredRole: [playerType]
-    };
+    // Set paths one by one: spreading the Mongoose sub-document copied
+    // undefined nested fields (bestBowlingFigures) and failed validation,
+    // which left brand-new accounts unable to sign in.
+    user.set('cricketProfile.playerId', player._id);
+    user.set('cricketProfile.playerType', playerType);
+    user.set('cricketProfile.battingStyle', normalizeUserBattingStyle(data.battingStyle));
+    user.set('cricketProfile.bowlingStyle', normalizeUserBowlingStyle(data.bowlingStyle));
+    user.set('cricketProfile.preferredRole', [playerType]);
     await user.save();
 
     return player;
@@ -148,7 +152,197 @@ const ensurePlayerProfile = async (user, data = {}) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Mobile OTP (APITxT)
+// ---------------------------------------------------------------------------
+
+const hashOtp = (phone, otp) =>
+  crypto.createHmac('sha256', config.jwt.secret).update(`${phone}:${otp}`).digest('hex');
+
+const generatePhoneOtp = () => {
+  const length = config.otp.length;
+  return crypto.randomInt(10 ** (length - 1), 10 ** length).toString();
+};
+
+/** OTP_TEST_NUMBERS="9999999999:123456,..." -> fixed code, no SMS sent. */
+const testOtpFor = (phone) => {
+  for (const entry of config.otp.testNumbers.split(',')) {
+    const [number, code] = entry.split(':').map((part) => part?.trim());
+    if (number && code && number.replace(/\D/g, '').slice(-10) === phone) return code;
+  }
+  return null;
+};
+
+const safeEqual = (a, b) => {
+  const left = Buffer.from(a || '', 'utf8');
+  const right = Buffer.from(b || '', 'utf8');
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+};
+
+const VERIFIED_PHONE_TOKEN = 'phone-verified';
+
+const issueVerifiedPhoneToken = (phone) =>
+  jwt.sign({ phone, type: VERIFIED_PHONE_TOKEN }, config.jwt.secret, { expiresIn: '20m' });
+
+const readVerifiedPhoneToken = (token) => {
+  try {
+    const decoded = jwt.verify(token, config.jwt.secret);
+    if (decoded?.type === VERIFIED_PHONE_TOKEN && decoded.phone) return decoded.phone;
+  } catch (_) {
+    // fall through
+  }
+  throw new ApiError(400, 'Your verification expired. Please request a new OTP.');
+};
+
+/**
+ * Log in the owner of a verified mobile number, creating the account on
+ * first sign-in. Throws 409 PROFILE_REQUIRED (with a short-lived token in
+ * `data`) when a new number has not sent a name yet.
+ */
+const loginVerifiedPhone = async (phone, profile = {}) => {
+  let user = await User.findOne({ phone });
+  if (!user) {
+    const fullName = profile.name?.toString().trim();
+    if (!fullName || fullName.length < 2) {
+      const error = new ApiError(409, 'Add your name to create your Scores11 account', [{
+        code: 'PROFILE_REQUIRED',
+        field: 'name',
+        message: 'Full name is required for a new mobile account'
+      }]);
+      error.data = { verificationToken: issueVerifiedPhoneToken(phone), phone };
+      throw error;
+    }
+    const emailValue = profile.email?.toString().trim().toLowerCase();
+    if (emailValue && await User.exists({ email: emailValue })) {
+      throw new ApiError(400, 'Email is already registered with another account');
+    }
+    // New mobile signups register as a 'player' by default and immediately
+    // get a linked Player document, so they appear in the public player list.
+    const username = await buildUniqueUsername(fullName, phone);
+    const generatedPassword = crypto.randomBytes(24).toString('hex');
+    user = await User.create({
+      email: emailValue || `${phone}@mobile.crick11.app`,
+      password: await hashPassword(generatedPassword),
+      username,
+      fullName,
+      phone,
+      role: 'player',
+      isPublicPlayer: true,
+      isPhoneVerified: true
+    });
+    try {
+      await Wallet.create({ user: user._id, balance: 0 });
+    } catch (walletError) {
+      console.error('Wallet creation failed (non-fatal):', walletError.message);
+    }
+    await ensurePlayerProfile(user, profile);
+  } else if (!user.isPhoneVerified) {
+    user.isPhoneVerified = true;
+  }
+  return issueAuthSession(user);
+};
+
 export const authService = {
+  /**
+   * Send a login OTP to a mobile number through APITxT. No account is
+   * created here - that only happens after the code is verified.
+   */
+  sendPhoneOtp: async ({ phone }) => {
+    const normalized = normalizePhone(phone);
+    const now = Date.now();
+    const otpConfig = config.otp;
+    let record = await PhoneOtp.findOne({ phone: normalized });
+
+    if (record) {
+      const sinceLast = (now - record.lastSentAt.getTime()) / 1000;
+      if (sinceLast < otpConfig.resendSeconds) {
+        const wait = Math.ceil(otpConfig.resendSeconds - sinceLast);
+        throw new ApiError(429, `Please wait ${wait} seconds before requesting a new OTP.`, [{
+          code: 'OTP_RESEND_WAIT', field: 'phone', message: `Retry after ${wait} seconds`
+        }]);
+      }
+      if (now - record.windowStartedAt.getTime() > 60 * 60 * 1000) {
+        record.windowStartedAt = new Date(now);
+        record.sendCount = 0;
+      }
+      if (record.sendCount >= otpConfig.maxSendsPerHour) {
+        throw new ApiError(429, 'Too many OTP requests for this number. Please try again after an hour.', [{
+          code: 'OTP_LIMIT', field: 'phone', message: 'Hourly OTP limit reached'
+        }]);
+      }
+    }
+
+    const fixedOtp = testOtpFor(normalized);
+    const otp = fixedOtp || generatePhoneOtp();
+    // Deliver first: if APITxT refuses, the number keeps its previous state.
+    const providerRequestId = fixedOtp ? 'TEST_NUMBER' : await sendOtpViaApitxt({ phone: normalized, otp });
+
+    if (!record) record = new PhoneOtp({ phone: normalized, windowStartedAt: new Date(now), sendCount: 0 });
+    record.otpHash = hashOtp(normalized, otp);
+    record.expiresAt = new Date(now + otpConfig.expiryMinutes * 60 * 1000);
+    record.attempts = 0;
+    record.sendCount += 1;
+    record.lastSentAt = new Date(now);
+    record.providerRequestId = providerRequestId || undefined;
+    await record.save();
+
+    const isNewUser = !(await User.exists({ phone: normalized }));
+    return {
+      message: 'OTP sent to your mobile',
+      phone: normalized,
+      isNewUser,
+      otpLength: otp.length,
+      expiresInSeconds: otpConfig.expiryMinutes * 60,
+      resendInSeconds: otpConfig.resendSeconds
+    };
+  },
+
+  /**
+   * Verify the mobile OTP (or a verificationToken from an earlier
+   * PROFILE_REQUIRED reply) and log the user in, creating the account for a
+   * new number once a name is supplied.
+   */
+  verifyPhoneOtp: async ({ phone, otp, verificationToken, ...profile }) => {
+    if (verificationToken) {
+      const verifiedPhone = readVerifiedPhoneToken(verificationToken);
+      return loginVerifiedPhone(verifiedPhone, profile);
+    }
+
+    const normalized = normalizePhone(phone);
+    const code = (otp ?? '').toString().trim();
+    if (!/^\d{4,8}$/.test(code)) {
+      throw new ApiError(400, 'Enter the OTP sent to your mobile');
+    }
+    const record = await PhoneOtp.findOne({ phone: normalized });
+    if (!record || record.expiresAt.getTime() < Date.now()) {
+      throw new ApiError(400, 'This OTP has expired. Please request a new one.', [{
+        code: 'OTP_EXPIRED', field: 'otp', message: 'OTP expired'
+      }]);
+    }
+    if (record.attempts >= config.otp.maxVerifyAttempts) {
+      throw new ApiError(429, 'Too many wrong attempts. Please request a new OTP.', [{
+        code: 'OTP_ATTEMPTS', field: 'otp', message: 'Too many attempts'
+      }]);
+    }
+    if (!safeEqual(record.otpHash, hashOtp(normalized, code))) {
+      record.attempts += 1;
+      await record.save();
+      const left = Math.max(config.otp.maxVerifyAttempts - record.attempts, 0);
+      throw new ApiError(400, left > 0
+        ? `Incorrect OTP. ${left} attempt${left === 1 ? '' : 's'} left.`
+        : 'Too many wrong attempts. Please request a new OTP.', [{
+        code: left > 0 ? 'OTP_INVALID' : 'OTP_ATTEMPTS', field: 'otp', message: 'Incorrect OTP'
+      }]);
+    }
+
+    // Single use: a verified code cannot be replayed. Keep the send counters.
+    record.expiresAt = new Date(0);
+    record.otpHash = 'used';
+    await record.save();
+
+    return loginVerifiedPhone(normalized, profile);
+  },
+
   firebasePhoneLogin: async ({
     idToken,
     name,
@@ -170,44 +364,11 @@ export const authService = {
       throw new ApiError(400, 'Firebase token does not contain a verified phone number');
     }
 
+    // Older app builds still sign in with Firebase; same account rules apply.
     const phone = normalizePhone(decoded.phone_number);
-    const existingUser = await User.findOne({ phone });
-    let user = existingUser;
-    if (!user) {
-      const fullName = name?.toString().trim();
-      if (!fullName || fullName.length < 2) {
-        throw new ApiError(409, 'Create your Scores11 account to continue', [{
-          code: 'PROFILE_REQUIRED',
-          field: 'name',
-          message: 'Full name is required for a new mobile account'
-        }]);
-      }
-      const emailValue = email?.toString().trim().toLowerCase();
-      if (emailValue && await User.exists({ email: emailValue })) {
-        throw new ApiError(400, 'Email is already registered with another account');
-      }
-      // New mobile signups register as a 'player' by default and immediately
-      // get a linked Player document, so they appear in the public player
-      // list right after sign-up (no separate "complete cricket profile" step).
-      const username = await buildUniqueUsername(fullName, phone);
-      const generatedPassword = crypto.randomBytes(24).toString('hex');
-      user = await User.create({
-        email: emailValue || `${phone}@mobile.crick11.app`,
-        password: await hashPassword(generatedPassword),
-        username,
-        fullName,
-        phone,
-        role: 'player',
-        isPublicPlayer: true,
-        isPhoneVerified: true
-      });
-      await Wallet.create({ user: user._id, balance: 0 });
-      await ensurePlayerProfile(user, { playerRole, playerType, battingStyle, bowlingStyle, dateOfBirth, nationality });
-    } else if (!user.isPhoneVerified) {
-      user.isPhoneVerified = true;
-    }
-
-    return issueAuthSession(user);
+    return loginVerifiedPhone(phone, {
+      name, email, playerRole, playerType, battingStyle, bowlingStyle, dateOfBirth, nationality
+    });
   },
 
   // Register new user
