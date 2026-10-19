@@ -25,6 +25,12 @@ const normalizePhone = (value = '') => {
   if (digits.length < 10 || digits.length > 15) {
     throw new ApiError(400, 'Enter a valid mobile number');
   }
+  // Indian mobile numbers start with 6-9 (so 0000000000 and landlines never
+  // cost an SMS); a number made of one repeated digit is never real.
+  // Numbers listed in OTP_TEST_NUMBERS (Play Store review) are always allowed.
+  if (!testOtpFor(digits) && ((digits.length === 10 && !/^[6-9]\d{9}$/.test(digits)) || /^(\d)\1+$/.test(digits))) {
+    throw new ApiError(400, 'Enter a valid 10-digit mobile number');
+  }
   return digits;
 };
 
