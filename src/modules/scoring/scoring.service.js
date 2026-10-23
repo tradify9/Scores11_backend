@@ -189,6 +189,33 @@ export const scoringService = {
     // ✅ FIXED: LiveControl access allowed for all authenticated users
     console.log(`[SCORING] Initialize match ${matchId} by user ${userId} (owner: ${match.createdBy})`);
 
+    const populatedMatch = () => Match.findById(matchId)
+      .populate('team1', 'name shortName')
+      .populate('team2', 'name shortName');
+
+    // A finished match is never re-initialized: reopening the scorer panel
+    // after the result used to push a fresh "innings 1" and reset the status,
+    // which wiped the result and showed the second innings as 0/0.
+    const FINISHED_STATUSES = [MATCH_STATUS.COMPLETED, MATCH_STATUS.ABANDONED, MATCH_STATUS.CANCELLED,
+      MATCH_STATUS.TIE, MATCH_STATUS.WASHED_OUT];
+    if (FINISHED_STATUSES.includes(match.status)) {
+      return populatedMatch();
+    }
+
+    // Already initialized: keep every run scored. Only refresh the batting
+    // order, point currentInnings at a real innings and resume live scoring.
+    if (match.innings?.length) {
+      if (normalizedBattingOrder.length) match.battingOrder = normalizedBattingOrder;
+      if (!match.innings.some(i => i.inningsNumber === match.currentInnings)) {
+        match.currentInnings = Math.max(...match.innings.map(i => i.inningsNumber || 1));
+      }
+      if ([MATCH_STATUS.SCHEDULED, MATCH_STATUS.TEAM_SELECTING, MATCH_STATUS.READY, MATCH_STATUS.PAUSED].includes(match.status)) {
+        match.status = MATCH_STATUS.LIVE;
+      }
+      await match.save();
+      return populatedMatch();
+    }
+
     const existingCurrentInnings = match.innings?.find(i => i.inningsNumber === (match.currentInnings || 1));
     if (match.status === MATCH_STATUS.LIVE && existingCurrentInnings) {
       if (normalizedBattingOrder.length) {
@@ -2445,3 +2472,6 @@ function calculateMatchStats(balls, match) {
 }
 
 export default scoringService;
+
+// Used by scripts/repairReinitializedMatches.js
+export { finalizeSecondInningsResult };

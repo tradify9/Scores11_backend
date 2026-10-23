@@ -2,7 +2,9 @@ import Match from '../modules/match/match.model.js';
 import { MATCH_STATUS } from '../constants/matchStatus.js';
 import { emitToAll } from '../config/socket.js';
 
-const STALE_AFTER_MS = 8 * 60 * 60 * 1000; // 8 hours
+// A started match with no score update (ball, toss, innings change) for this
+// long is over: the scorer left without finishing it.
+const STALE_AFTER_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 // Statuses a match can be "stuck" in once it has actually started
 // (match.actualStartTime is set) but nobody ever completes it.
@@ -19,10 +21,16 @@ const IN_PROGRESS_STATUSES = [
 export const abandonStaleMatches = async () => {
   const cutoff = new Date(Date.now() - STALE_AFTER_MS);
 
-  // ── 1. In-progress matches stuck for 8+ hours since actualStartTime ──────
+  // ── 1. In-progress matches with no update for 4+ hours ──────────────────
+  // Every ball saves the match, so updatedAt is its last scoring activity.
+  // Live/paused matches count even without actualStartTime (older matches
+  // never recorded it and stayed "live" for ever).
   const staleMatches = await Match.find({
-    status: { $in: IN_PROGRESS_STATUSES },
-    actualStartTime: { $exists: true, $lte: cutoff }
+    updatedAt: { $lte: cutoff },
+    $or: [
+      { status: { $in: [MATCH_STATUS.LIVE, MATCH_STATUS.PAUSED, MATCH_STATUS.DUCKWORTH_LEWIS] } },
+      { status: { $in: IN_PROGRESS_STATUSES }, actualStartTime: { $exists: true, $ne: null } }
+    ]
   }).select('_id');
 
   // ── 2. Issue-13 fix: Scheduled matches whose scheduledDate is >24h in the past
@@ -52,13 +60,13 @@ export const abandonStaleMatches = async () => {
         $set: {
           status: MATCH_STATUS.ABANDONED,
           'result.method': 'timeout',
-          'result.message': 'Match automatically abandoned - not completed within 8 hours of starting.'
+          'result.message': 'Match ended automatically - no score update for 4 hours.'
         }
       }
     );
     staleIds.forEach((id) => emitToAll('matchesUpdated', { _id: id, status: MATCH_STATUS.ABANDONED }));
     abandoned = staleIds.length;
-    console.log(`Stale match cleanup: abandoned ${abandoned} match(es) inactive for 8+ hours`);
+    console.log(`Stale match cleanup: ended ${abandoned} match(es) with no update for 4+ hours`);
   }
 
   if (pastScheduledIds.length) {
@@ -80,9 +88,9 @@ export const abandonStaleMatches = async () => {
   return { abandoned, cancelled };
 };
 
-const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly
+const CHECK_INTERVAL_MS = 15 * 60 * 1000; // every 15 minutes
 
-// Runs once on boot, then every hour. Not a precise cron - fine for a
+// Runs once on boot, then every 15 minutes. Not a precise cron - fine for a
 // low-frequency cleanup task like this.
 export const scheduleAbandonStaleMatches = () => {
   abandonStaleMatches().catch((error) =>
