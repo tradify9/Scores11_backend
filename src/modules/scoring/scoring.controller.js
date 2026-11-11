@@ -181,7 +181,8 @@ export const scoringController = {
     try {
       const result = await scoringService.endInnings(
         req.params.matchId,
-        req.user.userId
+        req.user.userId,
+        { inningsNumber: req.body?.inningsNumber, force: req.body?.force === true }
       );
       res.status(200).json({
         success: true,

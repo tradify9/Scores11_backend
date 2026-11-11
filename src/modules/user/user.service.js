@@ -11,6 +11,19 @@ import { sendVerificationEmail } from '../../utils/sendVerificationEmail.js';
 import { notificationService } from '../notification/notification.service.js';
 import { Order } from '../store/product.model.js';
 import Subscription from '../subscription/subscription.model.js';
+import { computeCareerStats } from '../../utils/careerStats.js';
+
+// Every Player record of this person: they are usually registered once per team.
+const findUserPlayerIds = async (user) => {
+  const or = [{ user: user._id }];
+  if (user.email) or.push({ email: user.email });
+  if (user.phone) or.push({ phone: user.phone });
+  if (user.cricketProfile?.playerId && mongoose.Types.ObjectId.isValid(user.cricketProfile.playerId)) {
+    or.push({ _id: user.cricketProfile.playerId });
+  }
+  const players = await Player.find({ $or: or }).select('_id').lean();
+  return players.map((p) => p._id.toString());
+};
 
 const normalizePlayingStyleToPlayerType = (playingStyle) => {
   const value = playingStyle?.toString().trim().toLowerCase();
@@ -50,7 +63,7 @@ export const userService = {
     return user;
   },
 
-  getFullProfile: async (userId) => {
+  getFullProfile: async (userId, { scope = 'all' } = {}) => {
     if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
       throw new ApiError(400, 'Invalid user ID format');
     }
@@ -69,19 +82,13 @@ export const userService = {
       .populate('team', 'name shortName logo')
       .lean();
 
-    const playerStats = player?.stats || {};
+    // Career figures come from the scorecards of every match played, so
+    // the header, summary and stats tab always agree with each other.
+    const career = await computeCareerStats(await findUserPlayerIds(user), { scope });
     const stats = {
       ...(user.stats || {}),
-      matches: playerStats.matches || user.stats?.matches || 0,
-      runs: playerStats.runs || user.stats?.runs || 0,
-      balls: playerStats.balls || user.stats?.balls || 0,
-      fours: playerStats.fours || user.stats?.fours || 0,
-      sixes: playerStats.sixes || user.stats?.sixes || 0,
-      average: playerStats.average || user.stats?.average || 0,
-      strikeRate: playerStats.strikeRate || user.stats?.strikeRate || 0,
-      highestScore: playerStats.highestScore || user.stats?.highestScore || 0,
-      wickets: playerStats.wickets || user.stats?.wickets || 0,
-      economy: playerStats.economy || user.stats?.economy || 0,
+      ...career,
+      scope,
       profileViews: user.profileViews || user.stats?.profileViews || 0,
       followers: user.followers?.length || 0,
       following: user.following?.length || 0
@@ -1138,22 +1145,16 @@ export const userService = {
     return { message: 'Verification email sent' };
   },
 
-  getCricketStats: async (userId) => {
-    const user = await User.findById(userId).select('cricketProfile stats');
+  getCricketStats: async (userId, { scope = 'all' } = {}) => {
+    const user = await User.findById(userId).select('cricketProfile stats email phone').lean();
     if (!user) {
       throw new ApiError(404, 'User not found');
     }
-
-    // Return cricket profile stats - this would need to aggregate from matches
+    const career = await computeCareerStats(await findUserPlayerIds(user), { scope });
     return {
       cricketProfile: user.cricketProfile,
-      stats: user.stats || {
-        totalMatches: 0,
-        totalRuns: 0,
-        totalWickets: 0,
-        highestScore: 0,
-        bestBowling: '0/0'
-      }
+      ...career,
+      stats: career
     };
   },
 

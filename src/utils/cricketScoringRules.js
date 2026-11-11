@@ -303,32 +303,157 @@ export const getScoringRuleCatalogue = () => ({
   }
 });
 
+// ── DLS resources ──────────────────────────────────────────────────────────
+// Resource percentages follow the Duckworth-Lewis Standard Edition model:
+//   R(u, w) = F(w) * (1 - e^(-b*u / F(w))) / (1 - e^(-50b))      (as % of a full 50-over innings)
+// u = overs remaining, w = wickets lost. b is fitted to the published
+// 0-wicket column and F(w) to the published 50-over row, which reproduces the
+// table, e.g. 45 overs = 95.0%, 40 = 89.3%, 35 = 82.7%, 20 = 56.6%,
+// 20 overs with 2 down = 52.4%.
+const DLS_DECAY = 0.0275;
+const DLS_FULL = 1 - Math.exp(-50 * DLS_DECAY);
+// Resources left at the start of a 50-over innings with w wickets already down.
+const DLS_50_OVER_ROW = [100, 93.4, 85.1, 74.9, 62.7, 49.0, 34.9, 22.0, 11.9, 4.7];
+const dlsRaw = (u, f) => (f * (1 - Math.exp((-DLS_DECAY * u) / f))) / DLS_FULL;
+const DLS_WICKET_FACTORS = DLS_50_OVER_ROW.map((percent) => {
+  const goal = percent / 100;
+  let lo = 0.0001;
+  let hi = 1.5;
+  for (let i = 0; i < 80; i += 1) {
+    const mid = (lo + hi) / 2;
+    if (dlsRaw(50, mid) < goal) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+});
+
+export const DLS_DEFAULT_G50 = 245;
+
+// Percentage of resources left with `oversLeft` overs to go and `wicketsLost` down.
+export const dlsResourcePercent = (oversLeft, wicketsLost = 0) => {
+  const u = Math.max(0, Math.min(50, Number(oversLeft) || 0));
+  const w = Math.max(0, Math.min(10, Math.floor(Number(wicketsLost) || 0)));
+  if (u <= 0 || w >= 10) return 0;
+  return Number((100 * dlsRaw(u, DLS_WICKET_FACTORS[w])).toFixed(1));
+};
+
+const ballsToOvers = (balls) => Math.max(0, Number(balls) || 0) / 6;
+
+/**
+ * Revised DLS target for the side batting second.
+ *
+ *   R2 < R1:  T = floor(S * R2 / R1 + 1)
+ *   R2 >= R1: T = floor(S + G50 * (R2 - R1) / 100 + 1)
+ *
+ * R1 = resources Team 1 had (its full allocation, unless `team1Overs` says otherwise).
+ * R2 = resources Team 2 had: it starts with its full allocation and loses
+ *      R(old overs left, w) - R(new overs left, w) at the interruption.
+ * `previous` is the earlier revision of this chase (match.result.dls), so a
+ * second interruption compounds on the first. When nothing was bowled since
+ * that revision the call corrects it instead of stacking on top of it.
+ */
+export const calculateDlsTarget = ({
+  firstInningsRuns = 0,
+  originalOvers = 20,
+  team1Overs,
+  revisedOvers,
+  legalBallsBowled = 0,
+  wicketsLost = 0,
+  g50 = DLS_DEFAULT_G50,
+  previous = null,
+  inningsNumber = 2
+} = {}) => {
+  const S = Math.max(0, Number(firstInningsRuns) || 0);
+  const fullOvers = Math.max(1, Number(originalOvers) || 20);
+  const t1Overs = Math.max(0, Math.min(fullOvers, Number(team1Overs ?? fullOvers)));
+  const balls = Math.max(0, Math.floor(Number(legalBallsBowled) || 0));
+  const oversBowled = ballsToOvers(balls);
+  const wickets = Math.max(0, Math.min(9, Math.floor(Number(wicketsLost) || 0)));
+  const gValue = Number(g50) > 0 ? Number(g50) : DLS_DEFAULT_G50;
+
+  const newAllotted = Number(revisedOvers);
+  if (!Number.isFinite(newAllotted) || newAllotted <= 0) {
+    throw new Error('Revised overs must be more than 0');
+  }
+  if (newAllotted > fullOvers) {
+    throw new Error(`Revised overs cannot be more than the match overs (${fullOvers})`);
+  }
+  if (newAllotted < oversBowled) {
+    throw new Error(`Revised overs cannot be less than the overs already bowled (${Math.floor(balls / 6)}.${balls % 6})`);
+  }
+
+  // Correcting the last revision (no ball bowled since) restarts from the
+  // state before it; otherwise this interruption stacks on the last one.
+  const isCorrection = Boolean(previous
+    && previous.legalBallsBowled === balls
+    && previous.wicketsLost === wickets
+    && previous.before);
+  const base = isCorrection
+    ? previous.before
+    : previous
+      ? { team2Resources: previous.team2Resources, allottedOvers: previous.revisedOvers }
+      : { team2Resources: dlsResourcePercent(fullOvers, 0), allottedOvers: fullOvers };
+
+  const R1 = dlsResourcePercent(t1Overs, 0);
+  const lost = dlsResourcePercent(base.allottedOvers - oversBowled, wickets)
+    - dlsResourcePercent(newAllotted - oversBowled, wickets);
+  const R2 = Number(Math.max(0, base.team2Resources - lost).toFixed(1));
+
+  const revisedTarget = R2 < R1
+    ? Math.floor((S * R2) / Math.max(R1, 0.1) + 1)
+    : Math.floor(S + (gValue * (R2 - R1)) / 100 + 1);
+  const parScore = revisedTarget - 1;
+  const caseUsed = R2 < R1 ? 'A' : 'B';
+
+  return {
+    method: 'dls',
+    inningsNumber,
+    originalOvers: fullOvers,
+    team1Overs: t1Overs,
+    revisedOvers: newAllotted,
+    legalBallsBowled: balls,
+    wicketsLost: wickets,
+    team1Resources: R1,
+    team2Resources: R2,
+    resourcePercent: R2,
+    g50: gValue,
+    formulaCase: caseUsed,
+    parScore,
+    revisedTarget,
+    before: { team2Resources: base.team2Resources, allottedOvers: base.allottedOvers },
+    appliedAt: new Date().toISOString(),
+    note: `DLS: target ${revisedTarget} in ${newAllotted} overs (par ${parScore}). Resources Team 1 ${R1}%, Team 2 ${R2}%.`
+  };
+};
+
+/**
+ * DLS par score at this moment of the chase, used when play cannot resume:
+ * the side batting second is "ahead" if its runs beat this.
+ */
+export const calculateDlsParNow = (dls, { legalBallsBowled = 0, wicketsLost = 0, firstInningsRuns = 0 } = {}) => {
+  if (!dls) return null;
+  const oversLeft = Number(dls.revisedOvers) - ballsToOvers(legalBallsBowled);
+  const used = Math.max(0, Number(dls.team2Resources) - dlsResourcePercent(oversLeft, wicketsLost));
+  const R1 = Number(dls.team1Resources) || 100;
+  const S = Number(firstInningsRuns) || 0;
+  return used < R1
+    ? Math.floor((S * used) / R1)
+    : Math.floor(S + ((Number(dls.g50) || DLS_DEFAULT_G50) * (used - R1)) / 100);
+};
+
+// Kept for older callers: same contract as before, real DLS resources inside.
 export const calculateDlsStyleTarget = ({
   firstInningsRuns = 0,
   originalOvers = 20,
   revisedOvers = 20,
   wicketsLost = 0,
   inningsNumber = 2
-} = {}) => {
-  const safeOriginalOvers = Math.max(1, Number(originalOvers || 20));
-  const safeRevisedOvers = Math.max(1, Math.min(Number(revisedOvers || safeOriginalOvers), safeOriginalOvers));
-  const safeWicketsLost = Math.max(0, Math.min(10, Number(wicketsLost || 0)));
-  const oversResource = safeRevisedOvers / safeOriginalOvers;
-  const wicketsResource = Math.max(0.35, 1 - (safeWicketsLost * 0.045));
-  const resourcePercent = Math.max(20, Math.min(100, oversResource * wicketsResource * 100));
-  const parScore = Math.floor(Number(firstInningsRuns || 0) * (resourcePercent / 100));
-  return {
-    method: 'dls',
-    inningsNumber,
-    originalOvers: safeOriginalOvers,
-    revisedOvers: safeRevisedOvers,
-    wicketsLost: safeWicketsLost,
-    resourcePercent: Number(resourcePercent.toFixed(2)),
-    parScore,
-    revisedTarget: parScore + 1,
-    note: 'DLS-style par score based on overs and wickets resources.'
-  };
-};
+} = {}) => calculateDlsTarget({
+  firstInningsRuns,
+  originalOvers,
+  revisedOvers: Math.min(Number(revisedOvers) || Number(originalOvers) || 20, Number(originalOvers) || 20),
+  wicketsLost,
+  inningsNumber
+});
 
 export const getPenaltyChaseWindow = (match, inningsNumber = 2) => {
   const overs = Number(match?.overs || 20);

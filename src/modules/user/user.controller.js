@@ -31,7 +31,7 @@ getProfile: catchAsync(async (req, res) => {
   getFullProfile: catchAsync(async (req, res) => {
     const userId = req.user._id || req.user.userId || req.userId;
     if (!userId) throw new ApiError(400, 'Missing user ID');
-    const profile = await userService.getFullProfile(userId);
+    const profile = await userService.getFullProfile(userId, { scope: (req.query.scope || 'all').toString() });
     res.json(new ApiResponse(200, 'Full profile fetched', profile));
   }),
 
@@ -271,7 +271,7 @@ getProfile: catchAsync(async (req, res) => {
   }),
 
   getCricketStats: catchAsync(async (req, res) => {
-    const stats = await userService.getCricketStats(req.user.userId);
+    const stats = await userService.getCricketStats(req.user.userId, { scope: (req.query.scope || 'all').toString() });
     res.json(new ApiResponse(200, 'Cricket stats retrieved', stats));
   }),
 

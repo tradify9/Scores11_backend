@@ -14,7 +14,8 @@ import {
   calculateBattingPoints,
   calculateBowlingPoints,
   calculateChaseState,
-  calculateDlsStyleTarget,
+  calculateDlsParNow,
+  calculateDlsTarget,
   calculateFieldingPointsByPlayer,
   getEffectiveChaseBalls,
   getPenaltyChaseWindow,
@@ -1169,7 +1170,13 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
       innings.isCompleted = false;
       innings.endTime = undefined;
       match.status = MATCH_STATUS.LIVE;
-      if (match.currentInnings === 2) match.result = { target: (match.innings[0]?.totalRuns || 0) + 1 };
+      if (match.currentInnings === 2) {
+        // Keep a DLS revision: the chase target stays the revised one.
+        const dls = match.result?.dls?.inningsNumber === 2 ? match.result.dls : undefined;
+        match.result = dls
+          ? { target: dls.revisedTarget, method: 'dls', dls }
+          : { target: (match.innings[0]?.totalRuns || 0) + 1 };
+      }
     }
     await match.save();
     emitToMatch(matchId, 'liveScoreUpdate', { matchId, action: 'inningsContinuation', continuation: innings.continuation });
@@ -1713,6 +1720,14 @@ console.log('[LIVE] getLiveScore populated:', {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
 
+    // Starting an innings that already exists (repeated tap / retried
+    // request) must not push a duplicate innings.
+    if (match.innings?.some(i => i.inningsNumber === inningsNumber)) {
+      return await Match.findById(matchId)
+        .populate('team1', 'name shortName')
+        .populate('team2', 'name shortName');
+    }
+
     // Check if previous innings is completed
     if (inningsNumber > 1) {
       const prevInnings = match.innings.find(i => i.inningsNumber === inningsNumber - 1);
@@ -1806,10 +1821,37 @@ console.log('[LIVE] getLiveScore populated:', {
   },
 
   // End innings
-  endInnings: async (matchId, userId) => {
+  endInnings: async (matchId, userId, options = {}) => {
     const match = await Match.findById(matchId);
     if (!match) throw new ApiError(404, 'Match not found');
-    
+
+    const populated = () => Match.findById(matchId)
+      .populate('team1', 'name shortName')
+      .populate('team2', 'name shortName');
+
+    // A repeated "End 1st Innings" tap used to arrive after the first one had
+    // already started innings 2, so it ended the chase at 0/0 and completed
+    // the match on its own. The app now says which innings it means to end;
+    // a request for an innings that is no longer current changes nothing.
+    const expectedInnings = Number(options.inningsNumber);
+    if (Number.isInteger(expectedInnings) && expectedInnings > 0 && expectedInnings !== match.currentInnings) {
+      return populated();
+    }
+    const FINISHED = [MATCH_STATUS.COMPLETED, MATCH_STATUS.ABANDONED, MATCH_STATUS.CANCELLED, MATCH_STATUS.TIE, MATCH_STATUS.WASHED_OUT];
+    if (FINISHED.includes(match.status)) return populated();
+
+    // Older app builds send no innings number: refuse to finish a chase in
+    // which not a single ball has been bowled yet (that is the repeated tap).
+    const activeInnings = match.innings.find(i => i.inningsNumber === match.currentInnings);
+    if (match.currentInnings === 2 && activeInnings && options.force !== true) {
+      const balls = ((activeInnings.totalOvers || 0) * 6) + (activeInnings.totalBalls || 0);
+      const started = balls > 0 || (activeInnings.totalRuns || 0) > 0 || (activeInnings.totalWickets || 0) > 0;
+      const justStarted = activeInnings.startTime && (Date.now() - new Date(activeInnings.startTime).getTime()) < 2 * 60 * 1000;
+      if (!started && (justStarted || !Number.isInteger(expectedInnings))) {
+        throw new ApiError(400, 'The 2nd innings has not started yet - bowl at least one ball before finishing the match.');
+      }
+    }
+
     // ✅ FIXED: LiveControl access allowed for all authenticated users
     console.log(`[SCORING] Ending innings ${matchId} by user ${userId} (owner: ${match.createdBy})`);
 
@@ -2200,54 +2242,82 @@ let currentInningsIndex = match.innings.findIndex(i => i.inningsNumber === match
         ? 'Match washed out due to rain.'
         : 'Match abandoned due to rain/interruption.';
     } else {
-      const dls = calculateDlsStyleTarget({
-        firstInningsRuns: first.totalRuns || 0,
-        originalOvers: match.overs,
-        revisedOvers,
-        wicketsLost,
-        inningsNumber: currentInnings
-      });
-      match.status = MATCH_STATUS.DUCKWORTH_LEWIS;
+      const secondBalls = second ? ((second.totalOvers || 0) * 6) + (second.totalBalls || 0) : 0;
+      const previousDls = match.result?.dls?.inningsNumber === 2 && match.result?.dls?.team2Resources != null
+        ? match.result.dls
+        : null;
+      let dls;
+      try {
+        dls = calculateDlsTarget({
+          firstInningsRuns: first.totalRuns || 0,
+          originalOvers: match.overs,
+          team1Overs: rainData.team1Overs,
+          revisedOvers,
+          legalBallsBowled: secondBalls,
+          wicketsLost: second?.totalWickets ?? wicketsLost,
+          g50: rainData.g50,
+          previous: previousDls,
+          inningsNumber: 2
+        });
+      } catch (error) {
+        throw new ApiError(400, error.message);
+      }
+
+      // The chase carries on: scoring stays open (status live) and nothing
+      // is written as the result until the match actually ends.
+      match.status = MATCH_STATUS.LIVE;
       match.scoringRules ??= {};
       match.scoringRules.penaltyOvers = Math.max(0, Number(match.overs || 0) - dls.revisedOvers);
+      match.markModified('scoringRules');
+      match.result.winner = undefined;
+      match.result.margin = undefined;
+      match.result.message = undefined;
+      match.result.method = 'dls';
+      match.result.dls = dls;
       match.result.target = dls.revisedTarget;
-      match.result.requiredRuns = second ? Math.max(0, dls.revisedTarget - (second.totalRuns || 0)) : dls.revisedTarget;
-      const secondBalls = second ? ((second.totalOvers || 0) * 6) + (second.totalBalls || 0) : 0;
+      match.result.requiredRuns = Math.max(0, dls.revisedTarget - (second?.totalRuns || 0));
       match.result.requiredBalls = Math.max(0, Math.round(dls.revisedOvers * 6) - secondBalls);
       match.result.requiredRunRate = match.result.requiredBalls > 0
         ? ((match.result.requiredRuns * 6) / match.result.requiredBalls).toFixed(2)
         : '0.00';
-      match.result.method = 'dls';
-      match.result.margin = `DLS target ${dls.revisedTarget}`;
-      match.result.message = `Rain DLS applied: revised target ${dls.revisedTarget} in ${dls.revisedOvers} overs. Par score ${dls.parScore}.`;
-      match.result.dls = dls;
 
       if (second && rainData.completeMatch === true) {
+        // No more play possible: compare with the DLS par score right now.
         second.isCompleted = true;
         second.endTime = second.endTime || new Date();
         match.status = MATCH_STATUS.COMPLETED;
-        if ((second.totalRuns || 0) >= dls.revisedTarget) {
+        const runs = second.totalRuns || 0;
+        const parNow = runs >= dls.revisedTarget
+          ? dls.parScore
+          : calculateDlsParNow(dls, {
+            legalBallsBowled: secondBalls,
+            wicketsLost: second.totalWickets || 0,
+            firstInningsRuns: first.totalRuns || 0
+          });
+        dls.parAtEnd = parNow;
+        if (runs > parNow) {
           const wicketsLeft = Math.max(0, 10 - (second.totalWickets || 0));
           match.result.winner = second.battingTeam;
           match.result.margin = `${wicketsLeft} wickets (DLS)`;
-          match.result.message = `Won by ${wicketsLeft} wickets by DLS method.`;
-        } else if ((second.totalRuns || 0) === dls.parScore) {
+          match.result.message = `Won by ${wicketsLeft} wickets (DLS method).`;
+        } else if (runs === parNow) {
           match.result.winner = undefined;
           match.result.margin = 'Tie (DLS)';
-          match.result.message = 'Match tied by DLS par score.';
+          match.result.message = 'Match tied on DLS par score.';
         } else {
           match.result.winner = first.battingTeam;
-          match.result.margin = `${dls.parScore - (second.totalRuns || 0)} runs (DLS)`;
-          match.result.message = `Won by ${dls.parScore - (second.totalRuns || 0)} runs by DLS method.`;
+          match.result.margin = `${parNow - runs} runs (DLS)`;
+          match.result.message = `Won by ${parNow - runs} runs (DLS method).`;
         }
         match.result.playerOfMatch = pickPlayerOfMatch(match);
       }
+      match.markModified('result');
     }
 
     match.commentary.push({
       over: activeInnings?.currentOverNumber || 0,
       ball: activeInnings?.currentBallNumber || 0,
-      text: match.result.message,
+      text: match.result.message || match.result.dls?.note || 'Rain interruption',
       batsmanRuns: 0,
       totalRuns: activeInnings?.totalRuns || 0,
       isWicket: false,
@@ -2306,7 +2376,12 @@ function finalizeSecondInningsResult(match, { force = false, continueAfterTarget
   const second = match.innings?.find(i => i.inningsNumber === 2) || match.innings?.[1];
   if (!first || !second) return false;
 
-  const target = (first.totalRuns || 0) + 1;
+  match.result ??= {};
+  // calculateChaseState already uses the DLS revised target when one is set.
+  const chase = calculateChaseState(match, second);
+  const isDls = Boolean(match.result?.dls?.inningsNumber === 2 && Number.isFinite(match.result?.dls?.revisedTarget));
+  const target = chase.target;
+  const parScore = target - 1;
   const ballsLimit = getEffectiveChaseBalls(match, 2);
   const legalBalls = ((second.totalOvers || 0) * 6) + (second.totalBalls || 0);
   const chaseWon = (second.totalRuns || 0) >= target;
@@ -2315,8 +2390,6 @@ function finalizeSecondInningsResult(match, { force = false, continueAfterTarget
     ((second.totalWickets || 0) >= 10 && second.continuation?.afterAllOut !== true) ||
     (legalBalls >= ballsLimit && second.continuation?.afterOvers !== true);
 
-  match.result ??= {};
-  const chase = calculateChaseState(match, second);
   match.result.target = chase.target;
   match.result.requiredRuns = chase.requiredRuns;
   match.result.requiredBalls = chase.requiredBalls;
@@ -2328,23 +2401,25 @@ function finalizeSecondInningsResult(match, { force = false, continueAfterTarget
   second.endTime = second.endTime || new Date();
   match.status = MATCH_STATUS.COMPLETED;
 
+  const dlsTag = isDls ? ' (DLS)' : '';
+  const dlsText = isDls ? ' (DLS method)' : '';
   if (chaseWon) {
     const wicketsLeft = Math.max(0, 10 - (second.totalWickets || 0));
     match.result.winner = second.battingTeam;
-    match.result.margin = `${wicketsLeft} wickets`;
-    match.result.method = 'by wickets';
-    match.result.message = `Won by ${wicketsLeft} wickets.`;
-  } else if ((second.totalRuns || 0) === (first.totalRuns || 0)) {
+    match.result.margin = `${wicketsLeft} wickets${dlsTag}`;
+    match.result.method = isDls ? 'dls' : 'by wickets';
+    match.result.message = `Won by ${wicketsLeft} wickets${dlsText}.`;
+  } else if ((second.totalRuns || 0) === parScore) {
     match.result.winner = undefined;
-    match.result.margin = 'Tie';
-    match.result.method = 'tie';
-    match.result.message = 'Match tied.';
+    match.result.margin = `Tie${dlsTag}`;
+    match.result.method = isDls ? 'dls' : 'tie';
+    match.result.message = `Match tied${dlsText}.`;
   } else {
-    const runsMargin = (first.totalRuns || 0) - (second.totalRuns || 0);
+    const runsMargin = Math.max(0, parScore - (second.totalRuns || 0));
     match.result.winner = first.battingTeam;
-    match.result.margin = `${runsMargin} runs`;
-    match.result.method = 'by runs';
-    match.result.message = `Won by ${runsMargin} runs.`;
+    match.result.margin = `${runsMargin} runs${dlsTag}`;
+    match.result.method = isDls ? 'dls' : 'by runs';
+    match.result.message = `Won by ${runsMargin} runs${dlsText}.`;
   }
 
   match.result.playerOfMatch = pickPlayerOfMatch(match);

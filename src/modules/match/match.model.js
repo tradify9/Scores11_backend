@@ -5,7 +5,10 @@ const venueSchema = new mongoose.Schema({
   name: { type: String, required: true },
   city: String,
   country: { type: String, default: 'India' },
-  capacity: Number
+  capacity: Number,
+  latitude: Number,
+  longitude: Number,
+  address: String
 });
 
 const teamScoreSchema = new mongoose.Schema({

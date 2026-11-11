@@ -27,9 +27,44 @@ const toId = (value) => {
   return value.toString();
 };
 
-const inningsOvers = (innings) => {
-  const balls = ((Number(innings?.totalOvers) || 0) * 6) + (Number(innings?.totalBalls) || 0);
-  return balls > 0 ? balls / 6 : 0;
+// Overs as balls / 6: 19.4 overs is 118 balls = 19.667 overs, never 19.4.
+const inningsBalls = (innings) =>
+  ((Number(innings?.totalOvers) || 0) * 6) + (Number(innings?.totalBalls) || 0);
+
+/**
+ * Runs and overs an innings counts for in Net Run Rate (ICC playing conditions):
+ * - a side bowled out is charged its full quota of overs, not the overs it faced;
+ * - in a DLS-revised match Team 1 is credited with (target - 1) runs from the
+ *   overs Team 2 was given, and Team 2's quota is its revised overs.
+ */
+const nrrInningsFigures = (match, inning) => {
+  const matchBalls = Math.max(0, Math.round((Number(match.overs) || 0) * 6));
+  const dls = match.result?.dls?.inningsNumber === 2 && Number.isFinite(Number(match.result?.dls?.revisedTarget))
+    ? match.result.dls
+    : null;
+  const dlsBalls = dls ? Math.round(Number(dls.revisedOvers) * 6) : 0;
+  const number = Number(inning.inningsNumber) || 1;
+  let runs = Number(inning.totalRuns) || 0;
+  let balls = inningsBalls(inning);
+  let quotaBalls = matchBalls;
+
+  if (dls && number === 1 && dlsBalls > 0) {
+    runs = Number(dls.revisedTarget) - 1;
+    balls = dlsBalls;
+    quotaBalls = dlsBalls;
+  } else if (dls && number === 2 && dlsBalls > 0) {
+    quotaBalls = dlsBalls;
+  }
+  if ((Number(inning.totalWickets) || 0) >= 10 && quotaBalls > 0) balls = quotaBalls;
+  return { runs, overs: balls / 6 };
+};
+
+const round3 = (value) => Math.round((Number(value) || 0) * 1000) / 1000;
+
+// 118 balls -> "19.4"
+const oversNotation = (overs) => {
+  const balls = Math.round((Number(overs) || 0) * 6);
+  return `${Math.floor(balls / 6)}.${balls % 6}`;
 };
 
 const emptyStanding = (teamId) => ({
@@ -83,22 +118,25 @@ const recalculatePointsTable = async (tournament) => {
     team1.matchesPlayed += 1;
     team2.matchesPlayed += 1;
 
-    const innings = Array.isArray(match.innings) ? match.innings : [];
+    const status = match.status?.toString();
+    // NRR counts only matches with a result: a no-result (abandoned /
+    // washed out) match adds nothing to runs or overs.
+    const isNoResult = status === MATCH_STATUS.ABANDONED || status === MATCH_STATUS.WASHED_OUT;
+    const innings = Array.isArray(match.innings) && !isNoResult ? match.innings : [];
     for (const inning of innings) {
       const battingId = toId(inning.battingTeam);
       const bowlingId = toId(inning.bowlingTeam);
       const batting = table.get(battingId);
       const bowling = table.get(bowlingId);
       if (!batting || !bowling) continue;
-      const runs = Number(inning.totalRuns) || 0;
-      const overs = inningsOvers(inning);
+      const { runs, overs } = nrrInningsFigures(match, inning);
+      if (overs <= 0) continue;
       batting.runsScored += runs;
       batting.oversFaced += overs;
       bowling.runsConceded += runs;
       bowling.oversBowled += overs;
     }
 
-    const status = match.status?.toString();
     const message = match.result?.message?.toString().toLowerCase() || '';
     const winnerId = toId(match.result?.winner);
     if (status === MATCH_STATUS.ABANDONED || status === MATCH_STATUS.WASHED_OUT) {
@@ -125,7 +163,9 @@ const recalculatePointsTable = async (tournament) => {
   for (const standing of table.values()) {
     const forRate = standing.oversFaced > 0 ? standing.runsScored / standing.oversFaced : 0;
     const againstRate = standing.oversBowled > 0 ? standing.runsConceded / standing.oversBowled : 0;
-    standing.netRunRate = Number((forRate - againstRate).toFixed(4));
+    // NRR = runs scored / overs faced - runs conceded / overs bowled,
+    // over the whole tournament (not an average of per-match NRRs).
+    standing.netRunRate = round3(forRate - againstRate);
   }
 
   pointsTable.teams = Array.from(table.values());
@@ -473,11 +513,14 @@ export const tournamentService = {
         matchesTied: team.matchesTied,
         noResult: team.noResult,
         points: team.points,
-        netRunRate: Number(team.netRunRate || 0).toFixed(4),
+        netRunRate: round3(team.netRunRate).toFixed(3),
+        netRunRateDisplay: `${round3(team.netRunRate) > 0 ? '+' : ''}${round3(team.netRunRate).toFixed(3)}`,
         runsFor: team.runsScored,
         runsAgainst: team.runsConceded,
-        oversFor: team.oversFaced,
-        oversAgainst: team.oversBowled
+        oversFor: round3(team.oversFaced),
+        oversAgainst: round3(team.oversBowled),
+        oversForDisplay: oversNotation(team.oversFaced),
+        oversAgainstDisplay: oversNotation(team.oversBowled)
       }))
     };
   },

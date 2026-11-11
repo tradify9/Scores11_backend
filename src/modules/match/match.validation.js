@@ -22,7 +22,11 @@ export const createMatchSchema = Joi.object({
     }),
     city: Joi.string().optional().allow('').max(50),
     country: Joi.string().optional().allow(''),
-    capacity: Joi.number().optional()
+    capacity: Joi.number().optional(),
+    // Captured from the scorer's phone GPS when creating the match.
+    latitude: Joi.number().min(-90).max(90).optional(),
+    longitude: Joi.number().min(-180).max(180).optional(),
+    address: Joi.string().optional().allow('').max(250)
   }).required().messages({
     'any.required': 'Venue information is required'
   }),
