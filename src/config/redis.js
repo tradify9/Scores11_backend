@@ -3,32 +3,55 @@ import config from './env.js';
 
 let redisClient = null;
 
+const REDIS_CONNECT_TIMEOUT_MS = 8000;
+
+// Redis is only a cache. If it cannot be reached the API runs without it:
+// an unreachable host used to keep connect() retrying for ever, so the
+// server never started listening and the whole site returned 502.
 export const connectRedis = async () => {
+  if (!config.redis?.host) return null;
+  let client = null;
   try {
-    redisClient = createClient({
+    client = createClient({
       socket: {
         host: config.redis.host,
-        port: config.redis.port
+        port: config.redis.port,
+        connectTimeout: 5000,
+        // Give up after a few attempts instead of retrying for ever.
+        reconnectStrategy: (retries) => (retries > 3 ? new Error('Redis unreachable') : Math.min(retries * 500, 2000))
       },
       password: config.redis.password || undefined
     });
 
-    redisClient.on('error', (err) => console.error('Redis Client Error:', err));
-    redisClient.on('connect', () => console.log('Redis Connected'));
-    redisClient.on('ready', () => console.log('Redis Ready'));
+    let lastError = '';
+    client.on('error', (err) => {
+      const message = err?.message || String(err);
+      if (message !== lastError) console.error('Redis Client Error:', message);
+      lastError = message;
+    });
+    client.on('connect', () => console.log('Redis Connected'));
+    client.on('ready', () => console.log('Redis Ready'));
 
-    await redisClient.connect();
+    await Promise.race([
+      client.connect(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Redis connect timed out')), REDIS_CONNECT_TIMEOUT_MS))
+    ]);
+    redisClient = client;
     return redisClient;
   } catch (error) {
-    console.error('Redis connection failed:', error.message);
+    console.error('Redis connection failed, continuing without cache:', error.message);
+    redisClient = null;
+    try { await client?.disconnect(); } catch { /* already closed */ }
     return null;
   }
 };
 
+const redisReady = () => Boolean(redisClient && redisClient.isReady);
+
 export const getRedisClient = () => redisClient;
 
 export const redisSet = async (key, value, expirySeconds = 3600) => {
-  if (!redisClient) return null;
+  if (!redisReady()) return null;
   try {
     await redisClient.setEx(key, expirySeconds, JSON.stringify(value));
     return true;
@@ -39,7 +62,7 @@ export const redisSet = async (key, value, expirySeconds = 3600) => {
 };
 
 export const redisGet = async (key) => {
-  if (!redisClient) return null;
+  if (!redisReady()) return null;
   try {
     const data = await redisClient.get(key);
     return data ? JSON.parse(data) : null;
@@ -50,7 +73,7 @@ export const redisGet = async (key) => {
 };
 
 export const redisDelete = async (key) => {
-  if (!redisClient) return null;
+  if (!redisReady()) return null;
   try {
     await redisClient.del(key);
     return true;
@@ -61,7 +84,7 @@ export const redisDelete = async (key) => {
 };
 
 export const redisClearPattern = async (pattern) => {
-  if (!redisClient) return null;
+  if (!redisReady()) return null;
   try {
     const keys = await redisClient.keys(pattern);
     if (keys.length > 0) {
